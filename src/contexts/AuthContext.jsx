@@ -37,16 +37,33 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
+    // Fallback: se o Supabase travar por causa de lock no localStorage, libera o app após 3s
+    const fallbackTimer = setTimeout(() => {
+      console.warn("Supabase getSession timeout - liberando app");
+      setLoading(false);
+    }, 3000);
+
     // Inicialização: busca sessão atual e carrega perfil/permissões
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      clearTimeout(fallbackTimer);
+      if (error) console.error("Erro no getSession:", error);
+      
       setSession(session);
       if (session?.user) {
-        await Promise.all([
-          loadProfile(session.user.id),
-          loadPermissions(session.user.id),
-        ]);
+        try {
+          await Promise.all([
+            loadProfile(session.user.id),
+            loadPermissions(session.user.id),
+          ]);
+        } catch (e) {
+          console.error("Erro ao carregar perfil/permissões:", e);
+        }
       }
       setLoading(false); // só libera o app após tudo carregar
+    }).catch(e => {
+      clearTimeout(fallbackTimer);
+      console.error("Exceção no getSession:", e);
+      setLoading(false);
     });
 
     // Escuta login/logout em tempo real
