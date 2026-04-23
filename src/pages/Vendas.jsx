@@ -301,6 +301,21 @@ export default function Vendas() {
     });
   };
 
+  const handleShopeePreset = (e) => {
+    const val = e.target.value;
+    if (!val) return;
+    
+    // format: "taxaMLPerc|taxaFixaVenda"
+    const [taxaPerc, taxaFixa] = val.split('|');
+    setGlobalFormData(prev => ({
+      ...prev,
+      taxaMLPerc: taxaPerc,
+      taxaFixaVenda: taxaFixa
+    }));
+    
+    e.target.value = '';
+  };
+
   // Cálculo do tempo total de produção para o canal ativo no mês
   const totalProductionTime = Object.entries(vendasMensal[currentMonth]?.[activeChannel] || {}).reduce((acc, [ftId, qty]) => {
     if (qty <= 0) return acc;
@@ -664,6 +679,25 @@ export default function Vendas() {
             </div>
 
             <div className="modal-body">
+               {activeChannel === 'shopee' && (
+                 <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '8px' }}>
+                   <label style={{ display: 'block', fontWeight: 'bold', color: '#B91C1C', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                     🛍️ Preenchimento Automático Shopee
+                   </label>
+                   <select 
+                     onChange={handleShopeePreset} 
+                     defaultValue=""
+                     style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #FCA5A5', cursor: 'pointer' }}
+                   >
+                     <option value="" disabled>Selecione a faixa de preço para preencher as taxas...</option>
+                     <option value="20|4">Até R$ 79,99 (20% + R$ 4,00)</option>
+                     <option value="14|16">R$ 80,00 até R$ 99,99 (14% + R$ 16,00)</option>
+                     <option value="14|20">R$ 100,00 até R$ 199,99 (14% + R$ 20,00)</option>
+                     <option value="14|26">R$ 200,00 até R$ 499,99 (14% + R$ 26,00)</option>
+                     <option value="14|26">Acima de R$ 500,00 (14% + R$ 26,00)</option>
+                   </select>
+                 </div>
+               )}
                <div className="override-grid">
                   <div className="input-group">
                     <label>Embalagem Padrão</label>
