@@ -50,52 +50,54 @@ export default function FichasTecnicas() {
   const fetchFichas = async () => {
     setLoadingDb(true);
     setSemDados(false);
-    const { data, error } = await supabase.from('fichas_tecnicas').select('*').order('id', { ascending: true });
     
-    if (error) {
-       console.error("Erro ao buscar FTs:", error);
-       setLoadingDb(false);
-       return;
-    }
-
-    console.log(`[FichasTecnicas] Banco retornou ${data.length} registros.`);
-
-    // Estratégia de Migração Automática!
-    if (data.length === 0) {
-      const locais = localStorage.getItem('am3d_saved_fts');
-      const parsedLocais = locais ? JSON.parse(locais) : [];
-      console.log(`[FichasTecnicas] localStorage tem ${parsedLocais.length} FTs.`);
-
-      if (parsedLocais.length > 0) {
-        setIsMigrating(true);
-        const inserts = parsedLocais.map(ft => ({
-           id: ft.indiceFt,
-           name: ft.nomePeca || 'Sem Nome',
-           cost: ft._custoFinal || 0,
-           data: ft
-        }));
-        console.log(`[FichasTecnicas] Migrando ${inserts.length} FTs para o Supabase...`, inserts);
-        
-        const { error: insertErr } = await supabase.from('fichas_tecnicas').insert(inserts);
-        if (insertErr) console.error("[FichasTecnicas] Erro na migração:", insertErr);
-        
-        const res2 = await supabase.from('fichas_tecnicas').select('*').order('id', { ascending: true });
-        if (res2.data) {
-           console.log(`[FichasTecnicas] Após migração: ${res2.data.length} FTs no banco.`);
-           setSavedFts(res2.data.map(r => r.data));
-           setInputs(prev => ({ ...prev, indiceFt: getNextFtId(res2.data.map(r => r.data)) }));
-        }
-        setIsMigrating(false);
-      } else {
-        console.warn("[FichasTecnicas] Banco vazio e localStorage também vazio. Dados precisam ser importados.");
-        setSavedFts([]);
-        setSemDados(true);
+    try {
+      const { data, error } = await supabase.from('fichas_tecnicas').select('*').order('id', { ascending: true });
+      
+      if (error) {
+         console.error("Erro ao buscar FTs:", error);
+         return;
       }
-    } else {
-      setSavedFts(data.map(r => r.data));
-      setInputs(prev => ({ ...prev, indiceFt: getNextFtId(data.map(r => r.data)) }));
+
+      const safeData = data || [];
+      console.log(`[FichasTecnicas] Banco retornou ${safeData.length} registros.`);
+
+      // Estratégia de Migração Automática!
+      if (safeData.length === 0) {
+        const locais = localStorage.getItem('am3d_saved_fts');
+        const parsedLocais = locais ? JSON.parse(locais) : [];
+
+        if (parsedLocais.length > 0) {
+          setIsMigrating(true);
+          const inserts = parsedLocais.map(ft => ({
+             id: ft.indiceFt,
+             name: ft.nomePeca || 'Sem Nome',
+             cost: ft._custoFinal || 0,
+             data: ft
+          }));
+          
+          const { error: insertErr } = await supabase.from('fichas_tecnicas').insert(inserts);
+          if (insertErr) console.error("[FichasTecnicas] Erro na migração:", insertErr);
+          
+          const res2 = await supabase.from('fichas_tecnicas').select('*').order('id', { ascending: true });
+          if (res2.data) {
+             setSavedFts(res2.data.map(r => r.data));
+             setInputs(prev => ({ ...prev, indiceFt: getNextFtId(res2.data.map(r => r.data)) }));
+          }
+          setIsMigrating(false);
+        } else {
+          setSavedFts([]);
+          setSemDados(true);
+        }
+      } else {
+        setSavedFts(safeData.map(r => r.data));
+        setInputs(prev => ({ ...prev, indiceFt: getNextFtId(safeData.map(r => r.data)) }));
+      }
+    } catch (e) {
+      console.error("Exceção não tratada ao buscar FTs:", e);
+    } finally {
+      setLoadingDb(false);
     }
-    setLoadingDb(false);
   };
 
   // Importar backup JSON manualmente
