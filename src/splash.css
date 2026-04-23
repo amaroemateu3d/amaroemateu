@@ -1,0 +1,63 @@
+/* ═══════════════════════════════════════════════
+   Splash Screen
+═══════════════════════════════════════════════ */
+
+.splash-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #E0F2FE 0%, #EDE9FE 50%, #D1FAE5 100%);
+  transition: opacity 0.6s ease;
+}
+
+.splash-overlay.splash-fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.splash-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  animation: splashEnter 0.5s ease;
+}
+
+@keyframes splashEnter {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.splash-logo {
+  max-width: 280px;
+  max-height: 200px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 24px rgba(139, 92, 246, 0.25));
+}
+
+/* Dots loader */
+.splash-dots {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.splash-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-primary, #8B5CF6);
+  animation: dotBounce 1.2s infinite ease-in-out;
+}
+.splash-dots span:nth-child(1) { animation-delay: 0s; }
+.splash-dots span:nth-child(2) { animation-delay: 0.2s; }
+.splash-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotBounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40%           { transform: scale(1.1); opacity: 1; }
+}

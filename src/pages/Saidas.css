@@ -1,0 +1,173 @@
+.saidas-page {
+  animation: fadeIn 0.4s ease;
+}
+
+.saidas-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.saidas-grid {
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+.balance-card {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(248, 113, 113, 0.05));
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.balance-icon {
+  background: var(--bg-primary);
+  color: var(--danger);
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.1);
+}
+
+.balance-label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.5rem;
+}
+
+.balance-value {
+  color: var(--danger);
+  font-size: 2.5rem;
+  font-weight: 900;
+  font-family: 'Outfit', sans-serif;
+}
+
+.saidas-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.saidas-form .input-group input,
+.saidas-form .input-group select {
+  padding: 0.8rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 1rem;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.saidas-form .input-group input:focus,
+.saidas-form .input-group select:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+  outline: none;
+}
+
+.saidas-table-wrapper {
+  overflow-x: auto;
+}
+
+.saidas-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 8px;
+}
+
+.saidas-table th {
+  padding: 0 1rem 0.5rem 1rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.saidas-table td {
+  padding: 1rem;
+  background: var(--bg-surface-hover);
+}
+
+.saidas-table tr td:first-child {
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+}
+
+.saidas-table tr td:last-child {
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+.date-badge {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: bold;
+}
+
+.cat-badge {
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--accent-primary);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 1rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+/* Modificações e Adaptações de Prefix (Reaproveitadas do escopo Vendas / Geral) */
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.input-wrapper .prefix {
+  position: absolute;
+  left: 12px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.input-wrapper input.has-prefix {
+  padding-left: 2.5rem !important;
+}
+
+@media (max-width: 900px) {
+  .saidas-grid {
+    grid-template-columns: 1fr;
+  }
+}
