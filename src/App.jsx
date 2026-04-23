@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { supabase } from './supabaseClient';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AppLayout from './layouts/AppLayout';
 import Dashboard from './pages/Dashboard';
 import FichasTecnicas from './pages/FichasTecnicas';
@@ -36,46 +35,33 @@ function SplashScreen({ onDone }) {
   );
 }
 
+// AppContent usa o AuthContext como ÚNICA fonte de verdade
 function AppContent() {
-  const [ready, setReady] = useState(false);
-  const [session, setSession] = useState(null);
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const { session, loading } = useAuth();
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setCheckingAuth(false);
-    });
+  // Aguarda o AuthContext resolver a sessão
+  if (loading) return null;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  if (checkingAuth) return null;
+  // Sem sessão = tela de login
   if (!session) return <Login />;
 
+  // Logado = app completo
   return (
-    <>
-      {!ready && <SplashScreen onDone={() => setReady(true)} />}
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<AppLayout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="fichas-tecnicas" element={<FichasTecnicas />} />
-            <Route path="orcamentos" element={<Orcamentos />} />
-            <Route path="pecas" element={<Pecas />} />
-            <Route path="vendas" element={<Vendas />} />
-            <Route path="pedidos" element={<Pedidos />} />
-            <Route path="saidas" element={<Saidas />} />
-            <Route path="resumo" element={<Resumo />} />
-            <Route path="usuarios" element={<Usuarios />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<AppLayout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="fichas-tecnicas" element={<FichasTecnicas />} />
+          <Route path="orcamentos" element={<Orcamentos />} />
+          <Route path="pecas" element={<Pecas />} />
+          <Route path="vendas" element={<Vendas />} />
+          <Route path="pedidos" element={<Pedidos />} />
+          <Route path="saidas" element={<Saidas />} />
+          <Route path="resumo" element={<Resumo />} />
+          <Route path="usuarios" element={<Usuarios />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
 

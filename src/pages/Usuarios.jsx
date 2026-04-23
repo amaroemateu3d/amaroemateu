@@ -57,6 +57,7 @@ export default function Usuarios() {
   const [loadingUsers, setLoadingUsers] = useState(true);
 
   const loadUsers = useCallback(async () => {
+    if (!session) return; // guard: não executa sem sessão
     setLoadingUsers(true);
     const data = await adminFetch('', {}, session);
     if (Array.isArray(data)) {

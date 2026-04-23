@@ -37,20 +37,26 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
+    // Inicialização: busca sessão atual e carrega perfil/permissões
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       if (session?.user) {
-        await loadProfile(session.user.id);
-        await loadPermissions(session.user.id);
+        await Promise.all([
+          loadProfile(session.user.id),
+          loadPermissions(session.user.id),
+        ]);
       }
-      setLoading(false);
+      setLoading(false); // só libera o app após tudo carregar
     });
 
+    // Escuta login/logout em tempo real
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       if (session?.user) {
-        await loadProfile(session.user.id);
-        await loadPermissions(session.user.id);
+        await Promise.all([
+          loadProfile(session.user.id),
+          loadPermissions(session.user.id),
+        ]);
       } else {
         setProfile(null);
         setPermissions({});
