@@ -116,6 +116,15 @@ export default function FtInputs({ inputs, onChange, savedFts = [] }) {
           <InputRow label="Qtd. Produzida" name="quantidade" suffix="un" {...commonProps} />
           <InputRow label="Peso Bruto (Lote)" name="pesoGramas" suffix="g" {...commonProps} />
           <InputRow label="Tempo Impressão (Lote)" name="tempoImpressao" type="text" placeholder="01:30" {...commonProps} />
+
+          <div style={{ gridColumn: '1 / -1', height: '1px', background: 'rgba(0,0,0,0.05)', margin: '1rem 0 0.5rem' }} />
+          
+          <InputRow label="Medida Sem Caixa" name="medidaSemCaixa" type="text" placeholder="Ex: 10x10x5 cm" {...commonProps} />
+          <InputRow label="Peso Sem Caixa" name="pesoSemCaixa" suffix="g" {...commonProps} />
+          <div style={{ gridColumn: 'span 1' }} /> {/* Espaçador */}
+          
+          <InputRow label="Medida Com Caixa" name="medidaComCaixa" type="text" placeholder="Ex: 15x15x10 cm" {...commonProps} />
+          <InputRow label="Peso Com Caixa" name="pesoComCaixa" suffix="g" {...commonProps} />
         </div>
       </section>
 

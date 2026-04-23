@@ -19,6 +19,12 @@ const INITIAL_STATE = {
   extraNome1: '', extraValor1: '',
   extraNome2: '', extraValor2: '',
   extraNome3: '', extraValor3: '',
+  
+  // Informações de Logística / Embalagem
+  medidaSemCaixa: '',
+  pesoSemCaixa: '',
+  medidaComCaixa: '',
+  pesoComCaixa: '',
 };
 
 const getNextFtId = (listaAtual) => {
@@ -189,6 +195,8 @@ export default function FichasTecnicas() {
           extraNome1: '', extraValor1: '',
           extraNome2: '', extraValor2: '',
           extraNome3: '', extraValor3: '',
+          medidaSemCaixa: '', pesoSemCaixa: '',
+          medidaComCaixa: '', pesoComCaixa: '',
         }));
       }, 100);
       return novaLista;
@@ -265,6 +273,8 @@ export default function FichasTecnicas() {
       extraValor1: kitSummary.extra.toFixed(2),
       extraNome2: '', extraValor2: '',
       extraNome3: '', extraValor3: '',
+      medidaSemCaixa: '', pesoSemCaixa: '',
+      medidaComCaixa: '', pesoComCaixa: '',
     }));
     
     setActiveTab('single');

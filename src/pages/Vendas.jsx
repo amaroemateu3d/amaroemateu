@@ -560,8 +560,14 @@ export default function Vendas() {
                                
                                <div style={{marginTop: '1.5rem', padding: '0.8rem', background: 'var(--bg-primary)', borderRadius: '8px', border: '1px solid var(--border-color)'}}>
                                   <div style={{fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '5px'}}>PROPRIEDADES FÍSICAS (UNIT)</div>
-                                  <div style={{fontSize: '0.85rem'}}>⚖️ {(parseNumber(editingOverride.ftBase.pesoGramas) / Math.max(1, parseNumber(editingOverride.ftBase.quantidade))).toFixed(1)}g</div>
-                                  <div style={{fontSize: '0.85rem'}}>⏱️ {formatTime(getUnitProductionTime(editingOverride.ftBase))}</div>
+                                  <div style={{fontSize: '0.85rem', marginBottom: '8px'}}>⚖️ Peso Bruto: {(parseNumber(editingOverride.ftBase.pesoGramas) / Math.max(1, parseNumber(editingOverride.ftBase.quantidade))).toFixed(1)}g</div>
+                                  <div style={{fontSize: '0.85rem', marginBottom: '8px'}}>⏱️ Impressão: {formatTime(getUnitProductionTime(editingOverride.ftBase))}</div>
+                                  
+                                  <div style={{fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginTop: '15px', marginBottom: '5px'}}>LOGÍSTICA E EMBALAGEM</div>
+                                  <div style={{fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '4px'}}>
+                                    <span>📦 <strong>Sem Caixa:</strong> {editingOverride.ftBase.medidaSemCaixa || '--'} ({editingOverride.ftBase.pesoSemCaixa ? editingOverride.ftBase.pesoSemCaixa + 'g' : '--'})</span>
+                                    <span>🏷️ <strong>Com Caixa:</strong> {editingOverride.ftBase.medidaComCaixa || '--'} ({editingOverride.ftBase.pesoComCaixa ? editingOverride.ftBase.pesoComCaixa + 'g' : '--'})</span>
+                                  </div>
                                </div>
                              </>
                            );
