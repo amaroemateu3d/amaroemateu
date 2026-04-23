@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { supabase } from './supabaseClient';
+import { AuthProvider } from './contexts/AuthContext';
 import AppLayout from './layouts/AppLayout';
 import Dashboard from './pages/Dashboard';
 import FichasTecnicas from './pages/FichasTecnicas';
@@ -10,6 +11,7 @@ import Vendas from './pages/Vendas';
 import Saidas from './pages/Saidas';
 import Pedidos from './pages/Pedidos';
 import Resumo from './pages/Resumo';
+import Usuarios from './pages/Usuarios';
 import Login from './pages/Login';
 import './splash.css';
 
@@ -34,19 +36,17 @@ function SplashScreen({ onDone }) {
   );
 }
 
-function App() {
+function AppContent() {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    // Verifica sessão atual
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setCheckingAuth(false);
     });
 
-    // Escuta mudanças de autenticação (login/logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
@@ -54,10 +54,7 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Enquanto verifica autenticação, mostra splash
   if (checkingAuth) return null;
-
-  // Se não estiver logado, mostra tela de login
   if (!session) return <Login />;
 
   return (
@@ -74,6 +71,7 @@ function App() {
             <Route path="pedidos" element={<Pedidos />} />
             <Route path="saidas" element={<Saidas />} />
             <Route path="resumo" element={<Resumo />} />
+            <Route path="usuarios" element={<Usuarios />} />
           </Route>
         </Routes>
       </BrowserRouter>
@@ -81,5 +79,12 @@ function App() {
   );
 }
 
-export default App;
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
 
+export default App;
