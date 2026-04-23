@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { supabase } from './supabaseClient';
 import AppLayout from './layouts/AppLayout';
 import Dashboard from './pages/Dashboard';
 import FichasTecnicas from './pages/FichasTecnicas';
@@ -9,13 +10,13 @@ import Vendas from './pages/Vendas';
 import Saidas from './pages/Saidas';
 import Pedidos from './pages/Pedidos';
 import Resumo from './pages/Resumo';
+import Login from './pages/Login';
 import './splash.css';
 
 function SplashScreen({ onDone }) {
   const [fading, setFading] = useState(false);
 
   useEffect(() => {
-    // Starts fade-out after 1.8s, then calls onDone after transition
     const t1 = setTimeout(() => setFading(true), 1800);
     const t2 = setTimeout(() => onDone(), 2400);
     return () => { clearTimeout(t1); clearTimeout(t2); };
@@ -35,6 +36,29 @@ function SplashScreen({ onDone }) {
 
 function App() {
   const [ready, setReady] = useState(false);
+  const [session, setSession] = useState(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    // Verifica sessão atual
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setCheckingAuth(false);
+    });
+
+    // Escuta mudanças de autenticação (login/logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Enquanto verifica autenticação, mostra splash
+  if (checkingAuth) return null;
+
+  // Se não estiver logado, mostra tela de login
+  if (!session) return <Login />;
 
   return (
     <>
@@ -58,3 +82,4 @@ function App() {
 }
 
 export default App;
+
