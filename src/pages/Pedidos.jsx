@@ -302,11 +302,12 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
   const [itens, setItens] = useState(() => {
     // Inicializa todos os itens disponíveis (FTs)
     // Se estiver editando, preenche com os valores já salvos anteriormente
+    if (!Array.isArray(fts)) return [];
     return fts.map(ft => {
       const savedItem = initialData?.itens?.find(it => it.indiceFt === ft.indiceFt);
       return {
         indiceFt: ft.indiceFt,
-        nomePeca: ft.nomePeca,
+        nomePeca: ft.nomePeca || 'Sem Nome',
         custoBase: ft._custoFinal || 0,
         precoUnit: savedItem ? savedItem.precoUnit : ((ft._custoFinal || 0) * 3).toFixed(2),
         qtd: savedItem ? savedItem.qtd : 0,
@@ -473,34 +474,37 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {itens
+                    {Array.isArray(itens) && itens
                       .filter(it => 
-                        it.nomePeca.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                        String(it.indiceFt).toLowerCase().includes(searchTerm.toLowerCase())
+                        (it.nomePeca || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
+                        String(it.indiceFt || '').toLowerCase().includes((searchTerm || '').toLowerCase())
                       )
-
                       .sort((a, b) => {
                         const qA = parseN(a.qtd) > 0 ? 1 : 0;
                         const qB = parseN(b.qtd) > 0 ? 1 : 0;
                         if (qA !== qB) return qB - qA;
-                        return String(a.indiceFt).localeCompare(String(b.indiceFt));
-
+                        return String(a.indiceFt || '').localeCompare(String(b.indiceFt || ''));
                       })
                       .map((it) => {
                         const originalIdx = itens.findIndex(original => original.indiceFt === it.indiceFt);
                         const qty = parseN(it.qtd);
                         const preco = parseN(it.precoUnit);
                         const sub = preco * qty;
-                        const lucroUnit = preco - it.custoBase;
+                        const custoBase = parseN(it.custoBase);
+                        const lucroUnit = preco - custoBase;
                         const lucroTotal = lucroUnit * qty;
                         const active = qty > 0;
+                        
+                        // Busca a FT original para pegar o tempo
+                        const ftOriginal = Array.isArray(fts) ? fts.find(f => f.indiceFt === it.indiceFt) : null;
+                        const tempoUnit = ftOriginal ? getUnitProductionTime(ftOriginal) : 0;
+
                         return (
-                          <tr key={it.indiceFt} className={active ? 'row-active' : ''}>
+                          <tr key={it.indiceFt || Math.random()} className={active ? 'row-active' : ''}>
                             <td><span className="badge-sm">{it.indiceFt}</span></td>
                             <td>{it.nomePeca}</td>
-                            <td className="cost-cell">R$ {fmt(it.custoBase)}</td>
-                            <td className="cost-cell">{formatTime(fts.find(f => f.indiceFt === it.indiceFt) ? getUnitProductionTime(fts.find(f => f.indiceFt === it.indiceFt)) : 0)}</td>
-
+                            <td className="cost-cell">R$ {fmt(custoBase)}</td>
+                            <td className="cost-cell">{formatTime(tempoUnit)}</td>
                             <td>
                               <input
                                 type="number"
@@ -529,6 +533,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                           </tr>
                         );
                       })}
+
                   </tbody>
                 </table>
               </div>
