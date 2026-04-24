@@ -41,36 +41,65 @@ export default function Vendas() {
   const fetchData = async () => {
     setLoadingDb(true);
     
-    const [defRes, overRes, salesRes, ftsRes] = await Promise.all([
-      supabase.from('ecommerce_channel_defaults').select('*'),
-      supabase.from('ecommerce_overrides').select('*'),
-      supabase.from('ecommerce_monthly_sales').select('*'),
-      supabase.from('fichas_tecnicas').select('*').order('id', { ascending: true })
-    ]);
+    try {
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    setSavedFts((ftsRes.data || []).map(r => r.data));
+      // FTs: usa fetch direto para evitar deadlock do cliente Supabase
+      const ftsController = new AbortController();
+      const ftsTimeout = setTimeout(() => ftsController.abort(), 10000);
+      let ftsData = [];
+      try {
+        const ftsResp = await fetch(
+          `${SUPA_URL}/rest/v1/fichas_tecnicas?select=*&order=id.asc`,
+          { signal: ftsController.signal, headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
+        );
+        if (ftsResp.ok) ftsData = await ftsResp.json();
+      } catch (e) {
+        console.error('[Vendas] Timeout/erro ao buscar FTs:', e);
+      } finally {
+        clearTimeout(ftsTimeout);
+      }
 
-    const newDefaults = {};
-    (defRes.data || []).forEach(d => { newDefaults[d.channel_id] = d.settings; });
-    setChannelDefaults(newDefaults);
+      // Outras tabelas: também via fetch direto
+      const headers = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
+      const [defResp, overResp, salesResp] = await Promise.allSettled([
+        fetch(`${SUPA_URL}/rest/v1/ecommerce_channel_defaults?select=*`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/ecommerce_overrides?select=*`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/ecommerce_monthly_sales?select=*`, { headers }),
+      ]);
 
-    const newOverrides = {};
-    (overRes.data || []).forEach(o => {
-      if (!newOverrides[o.channel_id]) newOverrides[o.channel_id] = {};
-      newOverrides[o.channel_id][o.ft_id] = o.settings;
-    });
-    setOverrides(newOverrides);
+      const defData = defResp.status === 'fulfilled' && defResp.value.ok ? await defResp.value.json() : [];
+      const overData = overResp.status === 'fulfilled' && overResp.value.ok ? await overResp.value.json() : [];
+      const salesData = salesResp.status === 'fulfilled' && salesResp.value.ok ? await salesResp.value.json() : [];
 
-    const newVendas = {};
-    (salesRes.data || []).forEach(s => {
-      if (!newVendas[s.month]) newVendas[s.month] = {};
-      if (!newVendas[s.month][s.channel_id]) newVendas[s.month][s.channel_id] = {};
-      newVendas[s.month][s.channel_id][s.ft_id] = s.quantity;
-    });
-    setVendasMensal(newVendas);
+      setSavedFts(ftsData.map(r => r.data));
 
-    setLoadingDb(false);
+      const newDefaults = {};
+      defData.forEach(d => { newDefaults[d.channel_id] = d.settings; });
+      setChannelDefaults(newDefaults);
+
+      const newOverrides = {};
+      overData.forEach(o => {
+        if (!newOverrides[o.channel_id]) newOverrides[o.channel_id] = {};
+        newOverrides[o.channel_id][o.ft_id] = o.settings;
+      });
+      setOverrides(newOverrides);
+
+      const newVendas = {};
+      salesData.forEach(s => {
+        if (!newVendas[s.month]) newVendas[s.month] = {};
+        if (!newVendas[s.month][s.channel_id]) newVendas[s.month][s.channel_id] = {};
+        newVendas[s.month][s.channel_id][s.ft_id] = s.quantity;
+      });
+      setVendasMensal(newVendas);
+    } catch (e) {
+      console.error('[Vendas] Erro geral no fetchData:', e);
+    } finally {
+      setLoadingDb(false);
+    }
   };
+
 
   const handleQtyChange = async (ftId, stringVal) => {
     const val = parseInt(stringVal, 10) || 0;
