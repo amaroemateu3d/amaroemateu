@@ -657,9 +657,14 @@ export default function Pedidos() {
       const dbRecord = {
         client_data: cliente,
         items: itens,
-        total: total,
-        status: initialData?.status || 'pending'
+        total: total
       };
+
+      // Se for um novo pedido, define status inicial
+      if (!id) {
+        dbRecord.status = 'pending';
+      }
+
 
 
 
