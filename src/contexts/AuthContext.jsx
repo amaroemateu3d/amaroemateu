@@ -37,16 +37,11 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    // Fallback: se o Supabase travar por causa de lock no localStorage, libera o app após 3s
-    const fallbackTimer = setTimeout(() => {
-      console.warn("Supabase getSession timeout - liberando app");
-      setLoading(false);
-    }, 3000);
+    let mounted = true;
 
-    // Inicialização: busca sessão atual e carrega perfil/permissões
-    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-      clearTimeout(fallbackTimer);
-      if (error) console.error("Erro no getSession:", error);
+    // onAuthStateChange dispara o evento 'INITIAL_SESSION' assim que é registrado
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
       
       setSession(session);
       if (session?.user) {
@@ -56,31 +51,21 @@ export function AuthProvider({ children }) {
             loadPermissions(session.user.id),
           ]);
         } catch (e) {
-          console.error("Erro ao carregar perfil/permissões:", e);
+          console.error("Erro ao carregar perfil/permissões no AuthContext:", e);
         }
-      }
-      setLoading(false); // só libera o app após tudo carregar
-    }).catch(e => {
-      clearTimeout(fallbackTimer);
-      console.error("Exceção no getSession:", e);
-      setLoading(false);
-    });
-
-    // Escuta login/logout em tempo real
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      if (session?.user) {
-        await Promise.all([
-          loadProfile(session.user.id),
-          loadPermissions(session.user.id),
-        ]);
       } else {
         setProfile(null);
         setPermissions({});
       }
+      
+      // Libera a tela de loading após o evento inicial ou após login/logout
+      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   function canView(page) {
