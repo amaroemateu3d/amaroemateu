@@ -32,21 +32,36 @@ export default function Resumo() {
   const fetchData = async () => {
     setIsLoading(true);
     
-    const [ordersRes, expensesRes, ftsRes, salesRes, overRes, defRes] = await Promise.all([
-      supabase.from('orders').select('*').not('client_data', 'is', null),
-      supabase.from('expenses').select('*'),
-      supabase.from('fichas_tecnicas').select('*'),
-      supabase.from('ecommerce_monthly_sales').select('*'),
-      supabase.from('ecommerce_overrides').select('*'),
-      supabase.from('ecommerce_channel_defaults').select('*')
-    ]);
+    try {
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const headers = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
 
-    const savedFts = (ftsRes.data || []).map(r => r.data);
-    const pedidos = ordersRes.data || [];
-    const saidas = expensesRes.data || [];
+      // Busca consolidada via fetch direto para evitar deadlock do cliente Supabase
+      const [ordersRes, expensesRes, ftsRes, salesRes, overRes, defRes] = await Promise.allSettled([
+        fetch(`${SUPA_URL}/rest/v1/orders?select=*&client_data=not.is.null`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/expenses?select=*`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=*`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/ecommerce_monthly_sales?select=*`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/ecommerce_overrides?select=*`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/ecommerce_channel_defaults?select=*`, { headers })
+      ]);
+
+      const getD = async (res) => (res.status === 'fulfilled' && res.value.ok) ? await res.value.json() : [];
+
+      const ordersData = await getD(ordersRes);
+      const expensesData = await getD(expensesRes);
+      const ftsDataRaw = await getD(ftsRes);
+      const salesData = await getD(salesRes);
+      const overData = await getD(overRes);
+      const defData = await getD(defRes);
+
+      const savedFts = ftsDataRaw.map(r => r.data);
+      const pedidos = ordersData || [];
+      const saidas = expensesData || [];
     
     const vendasQty = {};
-    (salesRes.data || []).forEach(s => {
+    (salesData || []).forEach(s => {
        if(!vendasQty[s.month]) vendasQty[s.month] = {};
        if(!vendasQty[s.month][s.channel_id]) vendasQty[s.month][s.channel_id] = {};
        vendasQty[s.month][s.channel_id][s.ft_id] = s.quantity;
@@ -151,8 +166,13 @@ export default function Resumo() {
     }
 
     setSummaryData(yearlyMonthsData);
-    setIsLoading(false);
+    } catch (e) {
+      console.error('[Resumo] Erro ao consolidar dados:', e);
+    } finally {
+      setIsLoading(false);
+    }
   };
+
 
   const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
 

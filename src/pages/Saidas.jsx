@@ -33,23 +33,31 @@ export default function Saidas() {
 
   const fetchSaidas = async () => {
     setLoading(true);
-    const [year, month] = currentMonth.split('-');
-    
-    const { data, error } = await supabase
-      .from('expenses')
-      .select('*')
-      .eq('year', parseInt(year))
-      .eq('month', parseInt(month))
-      .order('date', { ascending: false });
+    try {
+      const [year, month] = currentMonth.split('-');
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
       
-    if (error) {
-      console.error('Erro ao buscar saídas:', error);
-      alert('Erro ao carregar despesas.');
-    } else {
-      setSaidas(data || []);
+      const resp = await fetch(
+        `${SUPA_URL}/rest/v1/expenses?select=*&year=eq.${year}&month=eq.${month}&order=date.desc`,
+        {
+          headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+        }
+      );
+      
+      if (!resp.ok) {
+        console.error('Erro ao buscar saídas via fetch:', resp.status);
+      } else {
+        const data = await resp.json();
+        setSaidas(data || []);
+      }
+    } catch (e) {
+      console.error('Exceção ao buscar saídas:', e);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
+
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
