@@ -137,20 +137,20 @@ export default function Resumo() {
       // -- Saídas e Despesas --
       const totalSaidasPorCategoria = { materiais: 0, contas: 0, manutencao: 0, diversos: 0 };
       saidas.forEach(s => {
-        const sMonthStr = `${s.year}-${String(s.month).padStart(2, '0')}`;
+        // Agora extraímos o mês da coluna 'date' (YYYY-MM-DD)
+        if (!s.date) return;
+        const sMonthStr = s.date.substring(0, 7); // Pega 'YYYY-MM'
+
         if (sMonthStr === monthStr) {
           totalSaidasPorCategoria[s.category] = (totalSaidasPorCategoria[s.category] || 0) + Number(s.amount || 0);
-        } else if (s.category && !totalSaidasPorCategoria[s.category]) {
-          // Dynamic category from legacy systems just in case, but keep base 0
+          
+          // Se for uma categoria fora do padrão, garante que seja somada se já não foi
+          if (s.category && !['materiais', 'contas', 'manutencao', 'diversos'].includes(s.category)) {
+             totalSaidasPorCategoria[s.category] = (totalSaidasPorCategoria[s.category] || 0) + Number(s.amount || 0);
+          }
         }
       });
-      // Handle dynamic categories dynamically!
-      saidas.forEach(s => {
-         const sMonthStr = `${s.year}-${String(s.month).padStart(2, '0')}`;
-         if (sMonthStr === monthStr && s.category && !['materiais', 'contas', 'manutencao', 'diversos'].includes(s.category)) {
-            totalSaidasPorCategoria[s.category] = (totalSaidasPorCategoria[s.category] || 0) + Number(s.amount || 0);
-         }
-      });
+
       
       const totalSaidasGeral = Object.values(totalSaidasPorCategoria).reduce((a, b) => a + b, 0);
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Trash2, TrendingDown, Calendar, Search, Loader } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+
 import './Saidas.css'; // Módulo de CSS independente (se precisarmos logo)
 
 const CATEGORIAS = [
@@ -35,28 +35,31 @@ export default function Saidas() {
     setLoading(true);
     try {
       const [year, month] = currentMonth.split('-');
+      // Filtro por data gte e lte para pegar o mês selecionado
+      const firstDay = `${year}-${month}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      const endDay = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
       
-      const resp = await fetch(
-        `${SUPA_URL}/rest/v1/expenses?select=*&year=eq.${year}&month=eq.${month}&order=date.desc`,
-        {
-          headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
-        }
-      );
+      const query = `select=*&date=gte.${firstDay}&date=lte.${endDay}&order=date.desc`;
+      const resp = await fetch(`${SUPA_URL}/rest/v1/expenses?${query}`, {
+        headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+      });
       
       if (!resp.ok) {
-        console.error('Erro ao buscar saídas via fetch:', resp.status);
-      } else {
-        const data = await resp.json();
-        setSaidas(data || []);
+        throw new Error(`Erro ao buscar: ${resp.status}`);
       }
+      const data = await resp.json();
+      setSaidas(data || []);
     } catch (e) {
-      console.error('Exceção ao buscar saídas:', e);
+      console.error('Erro ao buscar saídas:', e);
     } finally {
       setLoading(false);
     }
   };
+
 
 
   const handleInputChange = (e) => {
@@ -74,57 +77,69 @@ export default function Saidas() {
       return alert("Preencha a descrição e o valor monetário corretamente.");
     }
 
-    const [yearStr, monthStr] = formData.data.split('-');
-    const year = parseInt(yearStr);
-    const month = parseInt(monthStr);
+    const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+    // Removemos id, year e month pois a tabela usa id auto-increment e extraímos o mês da data
     const novaSaida = {
-      id: `S-${Date.now()}`,
-      year,
-      month,
       date: formData.data,
       description: formData.descricao,
       category: formData.categoria,
-      amount: Number(formData.valor),
-      type: 'expense'
+      amount: Number(formData.valor)
     };
 
-    const { error } = await supabase
-      .from('expenses')
-      .insert([novaSaida]);
+    try {
+      const resp = await fetch(`${SUPA_URL}/rest/v1/expenses`, {
+        method: 'POST',
+        headers: { 
+          'apikey': SUPA_KEY, 
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(novaSaida)
+      });
 
-    if (error) {
-      console.error('Erro ao salvar saída:', error);
-      alert('Erro ao salvar no banco de dados.');
-      return;
+      if (!resp.ok) {
+        const err = await resp.text();
+        throw new Error(err);
+      }
+
+      const inserted = await resp.json();
+      const record = inserted[0];
+
+      // Atualiza lista local se for o mês atual
+      const itemMonth = record.date.substring(0, 7);
+      if (itemMonth === currentMonth) {
+        setSaidas(prev => [record, ...prev].sort((a,b) => b.date.localeCompare(a.date)));
+      }
+
+      setFormData(prev => ({ ...prev, descricao: '', valor: '' }));
+      alert('Lançamento registrado com sucesso!');
+    } catch (e) {
+      console.error('Erro ao salvar:', e);
+      alert('Erro ao salvar no banco: ' + e.message);
     }
-
-    if (`${year}-${String(month).padStart(2, '0')}` === currentMonth) {
-      setSaidas(prev => [novaSaida, ...prev].sort((a,b) => b.date.localeCompare(a.date)));
-    }
-
-    setFormData(prev => ({
-      ...prev,
-      descricao: '',
-      valor: ''
-    }));
   };
+
 
   const handleDelete = async (id) => {
     if (window.confirm("Apagar definitivamente este lançamento?")) {
-      const { error } = await supabase
-        .from('expenses')
-        .delete()
-        .eq('id', id);
-
-      if (error) {
-        console.error('Erro ao deletar:', error);
-        alert('Erro ao deletar registro.');
-      } else {
+      try {
+        const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+        const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const resp = await fetch(`${SUPA_URL}/rest/v1/expenses?id=eq.${id}`, {
+          method: 'DELETE',
+          headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+        });
+        if (!resp.ok) throw new Error('Falha ao excluir');
         setSaidas(saidas.filter(s => s.id !== id));
+      } catch (e) {
+        alert('Erro ao deletar: ' + e.message);
       }
     }
   };
+
 
   const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
