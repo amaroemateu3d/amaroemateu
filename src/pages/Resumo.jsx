@@ -124,7 +124,8 @@ export default function Resumo() {
       // -- Pedidos e Consignados --
       let totalPedidosPago = 0;
       let totalPedidosPendente = 0;
-      let totalConsignados = 0;
+      let totalConsignadosPago = 0;
+      let totalConsignadosPendente = 0;
       pedidos.forEach(p => {
         const pDate = new Date(p.created_at);
         const pMonthStr = `${pDate.getFullYear()}-${String(pDate.getMonth() + 1).padStart(2, '0')}`;
@@ -135,10 +136,12 @@ export default function Resumo() {
              if (p.status === 'paid') totalPedidosPago += amount;
              else totalPedidosPendente += amount;
           } else if (pTipo === 'consignado') {
-             totalConsignados += amount;
+             if (p.status === 'paid') totalConsignadosPago += amount;
+             else totalConsignadosPendente += amount;
           }
         }
       });
+
 
 
       // -- Saídas e Despesas --
@@ -168,9 +171,12 @@ export default function Resumo() {
         pedidosPago: totalPedidosPago,
         pedidosPendente: totalPedidosPendente,
         pedidosVenda: totalPedidosPago + totalPedidosPendente,
-        consignados: totalConsignados,
+        consignadosPago: totalConsignadosPago,
+        consignadosPendente: totalConsignadosPendente,
+        consignados: totalConsignadosPago + totalConsignadosPendente,
         saidasPorCategoria: totalSaidasPorCategoria,
         totalSaidasGeral
+
 
       });
     }
@@ -240,10 +246,19 @@ export default function Resumo() {
               <span style={{color: 'var(--warning)'}}>{formatCurrency(data.pedidosPendente)}</span>
             </div>
 
-            <div className="row" style={{marginTop: '0.4rem', color: 'var(--accent-secondary)'}}>
+            <div className="row subtotal" style={{marginTop: '0.4rem', color: 'var(--accent-secondary)'}}>
               <span>Consignados Gerados</span>
-              <span>{formatCurrency(data.consignados)}</span>
+              <span style={{fontWeight: 'bold'}}>{formatCurrency(data.consignados)}</span>
             </div>
+            <div className="row" style={{fontSize: '0.8rem', paddingLeft: '0.5rem', color: 'var(--text-secondary)'}}>
+              <span>└ Recebido (Pago)</span>
+              <span style={{color: 'var(--success)'}}>{formatCurrency(data.consignadosPago)}</span>
+            </div>
+            <div className="row" style={{fontSize: '0.8rem', paddingLeft: '0.5rem', color: 'var(--text-secondary)'}}>
+              <span>└ Pendente</span>
+              <span style={{color: 'var(--warning)'}}>{formatCurrency(data.consignadosPendente)}</span>
+            </div>
+
           </section>
 
           <div className="divider" />
