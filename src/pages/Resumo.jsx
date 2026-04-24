@@ -130,10 +130,11 @@ export default function Resumo() {
         const pMonthStr = `${pDate.getFullYear()}-${String(pDate.getMonth() + 1).padStart(2, '0')}`;
         if (pMonthStr === monthStr) {
           const amount = Number(p.total || 0);
-          if (p.tipo === 'pedido') {
+          const pTipo = p.client_data?.tipo || 'pedido';
+          if (pTipo === 'pedido') {
              if (p.status === 'paid') totalPedidosPago += amount;
              else totalPedidosPendente += amount;
-          } else if (p.tipo === 'consignado') {
+          } else if (pTipo === 'consignado') {
              totalConsignados += amount;
           }
         }

@@ -632,8 +632,11 @@ export default function Pedidos() {
           cliente: p.client_data || {},
           itens: p.items || [],
           total: p.total || 0,
+          status: p.status || 'pending',
+          payment_date: p.payment_date,
           createdAt: p.created_at
         }));
+
         setPedidos(mapped);
 
       } else {
