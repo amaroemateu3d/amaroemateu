@@ -58,11 +58,23 @@ export default function FichasTecnicas() {
     setSemDados(false);
     
     try {
-      // Usamos um Promise.race para evitar o hang infinito caso o Supabase trave no cliente
-      const fetchPromise = supabase.from('fichas_tecnicas').select('*').order('id', { ascending: true });
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na consulta do Supabase')), 10000));
-      
-      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+      // Fetch DIRETO via REST API - bypassa completamente qualquer deadlock do cliente Supabase
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!SUPA_URL || !SUPA_KEY) { setSemDados(true); return; }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      let rawResp;
+      try {
+        rawResp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=*&order=id.asc`, {
+          signal: controller.signal,
+          headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' }
+        });
+      } finally { clearTimeout(timeout); }
+
+      const data = rawResp.ok ? await rawResp.json() : [];
+      const error = rawResp.ok ? null : { message: `HTTP ${rawResp.status}` };
       
       if (error) {
          console.error("Erro ao buscar FTs:", error);
@@ -70,7 +82,7 @@ export default function FichasTecnicas() {
       }
 
       const safeData = data || [];
-      console.log(`[FichasTecnicas] Banco retornou ${safeData.length} registros.`);
+      console.log(`[FichasTecnicas] Banco retornou ${safeData.length} registros via fetch direto.`);
 
       // Estratégia de Migração Automática!
       if (safeData.length === 0) {
@@ -104,8 +116,8 @@ export default function FichasTecnicas() {
         setInputs(prev => ({ ...prev, indiceFt: getNextFtId(safeData.map(r => r.data)) }));
       }
     } catch (e) {
-      console.error("Exceção não tratada ao buscar FTs:", e);
-      alert("Aviso: Falha de comunicação com o banco de dados. Se a tela continuar vazia, limpe o cache do seu navegador ou recarregue a página.");
+      console.error("[FichasTecnicas] Exceção ao buscar FTs:", e);
+      setSemDados(true);
     } finally {
       setLoadingDb(false);
     }
