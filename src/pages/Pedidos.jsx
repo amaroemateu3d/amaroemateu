@@ -318,7 +318,14 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
 
 
 
+  const applyMarkup = () => {
+    const m = parseN(markup);
+    if (m <= 0) return;
+    setItens(prev => prev.map(it => ({ ...it, precoUnit: (parseN(it.custoBase) * m).toFixed(2) })));
+  };
+
   const handleClienteChange = (e) => setCliente(p => ({ ...p, [e.target.name]: e.target.value }));
+
 
   const updateItem = (idx, field, value) =>
     setItens(prev => {
@@ -604,7 +611,10 @@ export default function Pedidos() {
       ]);
 
       const ftsData = ftsResp.status === 'fulfilled' && ftsResp.value.ok ? await ftsResp.value.json() : [];
-      setFts(ftsData.map(r => r.data));
+      // Mapeia garantindo que pegamos o objeto da FT (seja da coluna 'data' ou do root)
+      const cleanFts = ftsData.map(r => r.data || r).filter(f => f && f.indiceFt);
+      setFts(cleanFts);
+
 
       if (ordersResp.status === 'fulfilled' && ordersResp.value.ok) {
         const data = await ordersResp.value.json();
