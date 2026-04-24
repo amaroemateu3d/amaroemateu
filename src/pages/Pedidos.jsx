@@ -138,6 +138,14 @@ const openPrintWindow = (pedido) => {
     .section-label::after { content: ''; flex: 1; height: 1px; background: #E2E8F0; }
 
     /* ─ Client card ─ */
+    .tipo-tag.pedido    { background: #EDE9FE; color: #7C3AED; }
+    .tipo-tag.consignado { background: #D1FAE5; color: #059669; }
+
+    .status-badge { transition: all 0.2s; }
+    .status-badge.paid    { background: #D1FAE5; color: #059669; }
+    .status-badge.pending { background: #FEF3C7; color: #D97706; }
+    .status-badge:hover   { filter: brightness(0.95); transform: scale(1.02); }
+
     .client-card {
       background: #F8FAFC; border-radius: 10px; border: 1px solid #E2E8F0;
       padding: 14px 18px; display: grid; grid-template-columns: 1fr 1fr;
@@ -646,8 +654,10 @@ export default function Pedidos() {
       const dbRecord = {
         client_data: cliente,
         items: itens,
-        total: total
+        total: total,
+        status: initialData?.status || 'pending'
       };
+
 
 
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -692,6 +702,29 @@ export default function Pedidos() {
     }
   }, []);
 
+
+  const togglePaymentStatus = async (id, currentStatus) => {
+    const newStatus = currentStatus === 'paid' ? 'pending' : 'paid';
+    try {
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const resp = await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${id}`, {
+        method: 'PATCH',
+        headers: { 
+          'apikey': SUPA_KEY, 
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (!resp.ok) throw new Error('Falha ao atualizar status');
+      
+      // Atualiza localmente
+      setPedidos(prev => prev.map(p => p.id === id ? { ...p, status: newStatus } : p));
+    } catch (e) {
+      alert('Erro ao atualizar pagamento: ' + e.message);
+    }
+  };
 
   const handleDelete = async (id) => {
     if (window.confirm(`Excluir o documento?`)) {
@@ -749,7 +782,9 @@ export default function Pedidos() {
                     <th>Nº</th>
                     <th>Tipo</th>
                     <th>Cliente</th>
+                    <th>Pagamento</th>
                     <th>Qtd. Itens</th>
+
                     <th>Total</th>
                     <th>Data</th>
                     <th style={{ textAlign: 'right' }}>Ações</th>
@@ -765,7 +800,17 @@ export default function Pedidos() {
                         </span>
                       </td>
                       <td className="cliente-cell">{p.cliente.nome}</td>
+                      <td>
+                        <span 
+                          className={`badge status-badge ${p.status || 'pending'}`}
+                          onClick={() => togglePaymentStatus(p.id, p.status)}
+                          style={{ cursor: 'pointer', fontSize: '0.75rem' }}
+                        >
+                          {(p.status === 'paid') ? '✅ Pago' : '⏳ Pendente'}
+                        </span>
+                      </td>
                       <td>{p.itens.length} {p.itens.length === 1 ? 'item' : 'itens'}</td>
+
                       <td className="total-cell">R$ {fmt(totalPedido(p))}</td>
                       <td className="date-cell">{new Date(p.createdAt).toLocaleDateString('pt-BR')}</td>
                       <td>

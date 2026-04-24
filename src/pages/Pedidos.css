@@ -72,6 +72,11 @@
 .tipo-tag.pedido    { background: #EDE9FE; color: #7C3AED; }
 .tipo-tag.consignado { background: #D1FAE5; color: #059669; }
 
+.status-badge { transition: all 0.2s; padding: 0.2rem 0.6rem; border-radius: 20px; font-weight: 700; }
+.status-badge.paid    { background: #D1FAE5; color: #059669; }
+.status-badge.pending { background: #FEF3C7; color: #D97706; }
+.status-badge:hover   { filter: brightness(0.95); transform: scale(1.02); }
+
 .cliente-cell { font-weight: 600; }
 .total-cell   { font-weight: 700; color: var(--accent-primary); }
 .date-cell    { color: var(--text-secondary); font-size: 0.85rem; }

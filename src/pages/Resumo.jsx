@@ -122,17 +122,23 @@ export default function Resumo() {
       });
 
       // -- Pedidos e Consignados --
-      let totalPedidosVenda = 0;
+      let totalPedidosPago = 0;
+      let totalPedidosPendente = 0;
       let totalConsignados = 0;
       pedidos.forEach(p => {
         const pDate = new Date(p.created_at);
         const pMonthStr = `${pDate.getFullYear()}-${String(pDate.getMonth() + 1).padStart(2, '0')}`;
         if (pMonthStr === monthStr) {
-          const itemsTotal = (p.items || []).reduce((acc, curr) => acc + (Number(curr.precoUnit || 0) * Number(curr.qtd || 0)), 0);
-          if (p.tipo === 'pedido') totalPedidosVenda += itemsTotal;
-          else if (p.tipo === 'consignado') totalConsignados += itemsTotal;
+          const amount = Number(p.total || 0);
+          if (p.tipo === 'pedido') {
+             if (p.status === 'paid') totalPedidosPago += amount;
+             else totalPedidosPendente += amount;
+          } else if (p.tipo === 'consignado') {
+             totalConsignados += amount;
+          }
         }
       });
+
 
       // -- Saídas e Despesas --
       const totalSaidasPorCategoria = { materiais: 0, contas: 0, manutencao: 0, diversos: 0 };
@@ -158,10 +164,13 @@ export default function Resumo() {
         monthName: MONTH_NAMES[m],
         monthStr,
         vendasEcommerce: totalVendasEcommerce,
-        pedidosVenda: totalPedidosVenda,
+        pedidosPago: totalPedidosPago,
+        pedidosPendente: totalPedidosPendente,
+        pedidosVenda: totalPedidosPago + totalPedidosPendente,
         consignados: totalConsignados,
         saidasPorCategoria: totalSaidasPorCategoria,
         totalSaidasGeral
+
       });
     }
 
@@ -221,6 +230,15 @@ export default function Resumo() {
               <span>Total em Vendas</span>
               <span style={{color: 'var(--success)', fontWeight: 'bold'}}>{formatCurrency(data.vendasEcommerce + data.pedidosVenda)}</span>
             </div>
+            <div className="row" style={{fontSize: '0.8rem', paddingLeft: '0.5rem', color: 'var(--text-secondary)'}}>
+              <span>└ Recebido (Pago)</span>
+              <span style={{color: 'var(--success)'}}>{formatCurrency(data.pedidosPago)}</span>
+            </div>
+            <div className="row" style={{fontSize: '0.8rem', paddingLeft: '0.5rem', color: 'var(--text-secondary)'}}>
+              <span>└ Pendente</span>
+              <span style={{color: 'var(--warning)'}}>{formatCurrency(data.pedidosPendente)}</span>
+            </div>
+
             <div className="row" style={{marginTop: '0.4rem', color: 'var(--accent-secondary)'}}>
               <span>Consignados Gerados</span>
               <span>{formatCurrency(data.consignados)}</span>
