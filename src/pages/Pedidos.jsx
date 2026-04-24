@@ -476,13 +476,15 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                     {itens
                       .filter(it => 
                         it.nomePeca.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                        it.indiceFt.toLowerCase().includes(searchTerm.toLowerCase())
+                        String(it.indiceFt).toLowerCase().includes(searchTerm.toLowerCase())
                       )
+
                       .sort((a, b) => {
                         const qA = parseN(a.qtd) > 0 ? 1 : 0;
                         const qB = parseN(b.qtd) > 0 ? 1 : 0;
                         if (qA !== qB) return qB - qA;
-                        return a.indiceFt.localeCompare(b.indiceFt);
+                        return String(a.indiceFt).localeCompare(String(b.indiceFt));
+
                       })
                       .map((it) => {
                         const originalIdx = itens.findIndex(original => original.indiceFt === it.indiceFt);
