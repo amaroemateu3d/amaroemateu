@@ -6,7 +6,14 @@ import './Pedidos.css';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = (n) => Number(n || 0).toFixed(2);
-const parseN = (v) => { const n = Number(String(v || 0).replace(',', '.')); return isNaN(n) ? 0 : n; };
+const parseN = (v) => {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return v;
+  const clean = String(v).replace(/\s/g, '').replace(',', '.');
+  const n = parseFloat(clean);
+  return isNaN(n) ? 0 : n;
+};
+
 
 const BLANK_CLIENTE = {
   tipo: 'pedido',
@@ -291,7 +298,9 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
   const [cliente, setCliente] = useState(initialData ? initialData.cliente : BLANK_CLIENTE);
   const [markup, setMarkup] = useState('3');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [itens, setItens] = useState(() => {
+
     // Se estiver editando, preenche com os itens salvos
     if (initialData?.itens) return initialData.itens;
     return [];
@@ -330,8 +339,8 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
       return next;
     });
 
-  const totalVenda = itens.reduce((s, it) => s + parseN(it.precoUnit) * parseN(it.qtd), 0);
-  const totalCusto = itens.reduce((s, it) => s + it.custoBase * parseN(it.qtd), 0);
+  const totalVenda = itens.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
+  const totalCusto = itens.reduce((s, it) => s + (parseN(it.custoBase) * parseN(it.qtd)), 0);
   const totalLucro = totalVenda - totalCusto;
   const margemPerc = totalVenda > 0 ? (totalLucro / totalVenda) * 100 : 0;
 
@@ -340,6 +349,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
     if (!baseFt) return acc;
     return acc + (getUnitProductionTime(baseFt) * parseN(it.qtd));
   }, 0);
+
 
   const handleSave = () => {
     if (!cliente.nome.trim()) { alert('Informe o nome do cliente.'); return; }
@@ -429,16 +439,18 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                   type="text" 
                   placeholder="🔍 Digite o nome ou ID da peça..." 
                   value={searchTerm}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
                   onChange={e => setSearchTerm(e.target.value)}
                 />
-                {searchTerm.length > 0 && (
+                {(isSearchFocused || searchTerm.length > 0) && (
                   <div className="search-results-dropdown">
                     {availableFts
                       .filter(ft => 
                         ft.nomePeca.toLowerCase().includes(searchTerm.toLowerCase()) || 
                         ft.indiceFt.toLowerCase().includes(searchTerm.toLowerCase())
                       )
-                      .slice(0, 5)
+                      .slice(0, 10)
                       .map(ft => (
                         <div key={ft.indiceFt} className="search-result-item" onClick={() => addItem(ft)}>
                           <span className="sr-id">{ft.indiceFt}</span>
@@ -446,8 +458,10 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                           <button className="btn-add-item">+ Adicionar</button>
                         </div>
                       ))}
+                    {availableFts.length === 0 && <div className="search-result-item">Nenhuma FT cadastrada.</div>}
                   </div>
                 )}
+
               </div>
             </div>
           </section>
