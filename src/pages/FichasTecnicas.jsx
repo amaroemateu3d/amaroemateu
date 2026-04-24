@@ -58,7 +58,11 @@ export default function FichasTecnicas() {
     setSemDados(false);
     
     try {
-      const { data, error } = await supabase.from('fichas_tecnicas').select('*').order('id', { ascending: true });
+      // Usamos um Promise.race para evitar o hang infinito caso o Supabase trave no cliente
+      const fetchPromise = supabase.from('fichas_tecnicas').select('*').order('id', { ascending: true });
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout na consulta do Supabase')), 10000));
+      
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
       
       if (error) {
          console.error("Erro ao buscar FTs:", error);
@@ -101,6 +105,7 @@ export default function FichasTecnicas() {
       }
     } catch (e) {
       console.error("Exceção não tratada ao buscar FTs:", e);
+      alert("Aviso: Falha de comunicação com o banco de dados. Se a tela continuar vazia, limpe o cache do seu navegador ou recarregue a página.");
     } finally {
       setLoadingDb(false);
     }

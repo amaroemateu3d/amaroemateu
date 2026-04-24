@@ -40,7 +40,7 @@ function AppContent() {
   const { session, loading } = useAuth();
 
   // Aguarda o AuthContext resolver a sessão
-  if (loading) return null;
+  if (loading) return <SplashScreen onDone={() => {}} />;
 
   // Sem sessão = tela de login
   if (!session) return <Login />;

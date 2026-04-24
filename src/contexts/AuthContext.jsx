@@ -39,6 +39,12 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
+    // Fallback de segurança MÁXIMA: se o Supabase travar 100%, libera a tela após 6s
+    const fallback = setTimeout(() => {
+      console.warn("Supabase onAuthStateChange timeout - Forçando liberação do app (6s)");
+      if (mounted) setLoading(false);
+    }, 6000);
+
     // onAuthStateChange dispara o evento 'INITIAL_SESSION' assim que é registrado
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
@@ -58,6 +64,9 @@ export function AuthProvider({ children }) {
         setPermissions({});
       }
       
+      // Limpa o timer de fallback já que o Supabase respondeu
+      clearTimeout(fallback);
+
       // Libera a tela de loading após o evento inicial ou após login/logout
       setLoading(false);
     });
