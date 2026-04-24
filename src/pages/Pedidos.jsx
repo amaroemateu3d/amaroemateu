@@ -583,29 +583,40 @@ export default function Pedidos() {
 
   const fetchData = async () => {
     setLoading(true);
-    const { data: ftsData } = await supabase.from('fichas_tecnicas').select('*');
-    setFts((ftsData || []).map(r => r.data));
+    try {
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const headers = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
 
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .not('client_data', 'is', null) // Ignora pedidos antigos do sistema anterior
-      .order('created_at', { ascending: false });
+      // Busca FTs e Pedidos via fetch direto para evitar deadlock do cliente Supabase
+      const [ftsResp, ordersResp] = await Promise.allSettled([
+        fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=*&order=id.asc`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/orders?select=*&client_data=not.is.null&order=created_at.desc`, { headers })
+      ]);
 
-    if (error) {
-      console.error('Erro ao buscar pedidos:', error);
-    } else {
-      const mapped = (data || []).map(p => ({
-        id: p.id,
-        tipo: p.tipo || 'pedido',
-        cliente: p.client_data || {},
-        itens: p.items || [],
-        createdAt: p.created_at
-      }));
-      setPedidos(mapped);
+      const ftsData = ftsResp.status === 'fulfilled' && ftsResp.value.ok ? await ftsResp.value.json() : [];
+      setFts(ftsData.map(r => r.data));
+
+      if (ordersResp.status === 'fulfilled' && ordersResp.value.ok) {
+        const data = await ordersResp.value.json();
+        const mapped = data.map(p => ({
+          id: p.id,
+          tipo: p.tipo || 'pedido',
+          cliente: p.client_data || {},
+          itens: p.items || [],
+          createdAt: p.created_at
+        }));
+        setPedidos(mapped);
+      } else {
+        console.error('Erro ao buscar pedidos via fetch');
+      }
+    } catch (e) {
+      console.error('Exceção ao buscar dados em Pedidos:', e);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
+
 
   const handleSave = useCallback(async ({ id, cliente, itens }) => {
     const total = itens.reduce((s, it) => s + parseN(it.precoUnit) * parseN(it.qtd), 0);
