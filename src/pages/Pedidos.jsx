@@ -303,7 +303,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
     // Inicializa todos os itens disponíveis (FTs)
     // Se estiver editando, preenche com os valores já salvos anteriormente
     return fts.map(ft => {
-      const savedItem = initialData?.itens.find(it => it.indiceFt === ft.indiceFt);
+      const savedItem = initialData?.itens?.find(it => it.indiceFt === ft.indiceFt);
       return {
         indiceFt: ft.indiceFt,
         nomePeca: ft.nomePeca,
@@ -312,6 +312,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
         qtd: savedItem ? savedItem.qtd : 0,
       };
     });
+
   });
 
 
@@ -496,7 +497,8 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                             <td><span className="badge-sm">{it.indiceFt}</span></td>
                             <td>{it.nomePeca}</td>
                             <td className="cost-cell">R$ {fmt(it.custoBase)}</td>
-                            <td className="cost-cell">{formatTime(getUnitProductionTime(fts.find(f => f.indiceFt === it.indiceFt)))}</td>
+                            <td className="cost-cell">{formatTime(fts.find(f => f.indiceFt === it.indiceFt) ? getUnitProductionTime(fts.find(f => f.indiceFt === it.indiceFt)) : 0)}</td>
+
                             <td>
                               <input
                                 type="number"
