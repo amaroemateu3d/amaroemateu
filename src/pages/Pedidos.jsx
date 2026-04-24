@@ -450,7 +450,6 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                         ft.nomePeca.toLowerCase().includes(searchTerm.toLowerCase()) || 
                         ft.indiceFt.toLowerCase().includes(searchTerm.toLowerCase())
                       )
-                      .slice(0, 10)
                       .map(ft => (
                         <div key={ft.indiceFt} className="search-result-item" onClick={() => addItem(ft)}>
                           <span className="sr-id">{ft.indiceFt}</span>
@@ -458,6 +457,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                           <button className="btn-add-item">+ Adicionar</button>
                         </div>
                       ))}
+
                     {availableFts.length === 0 && <div className="search-result-item">Nenhuma FT cadastrada.</div>}
                   </div>
                 )}
@@ -595,12 +595,14 @@ export default function Pedidos() {
         const data = await ordersResp.value.json();
         const mapped = data.map(p => ({
           id: p.id,
-          tipo: p.tipo || 'pedido',
+          tipo: p.client_data?.tipo || 'pedido',
           cliente: p.client_data || {},
           itens: p.items || [],
+          total: p.total || 0,
           createdAt: p.created_at
         }));
         setPedidos(mapped);
+
       } else {
         console.error('Erro ao buscar pedidos via fetch');
       }
@@ -615,14 +617,13 @@ export default function Pedidos() {
   const handleSave = useCallback(async ({ id, cliente, itens }) => {
     setLoading(true);
     try {
-      const total = itens.reduce((s, it) => s + parseN(it.precoUnit) * parseN(it.qtd), 0);
+      const total = itens.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
       const dbRecord = {
-        tipo: cliente.tipo,
         client_data: cliente,
-        client_name: cliente.nome,
         items: itens,
-        value: total
+        total: total
       };
+
 
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -685,7 +686,8 @@ export default function Pedidos() {
   };
 
 
-  const totalPedido = (p) => p.itens.reduce((s, it) => s + parseN(it.precoUnit) * parseN(it.qtd), 0);
+  const totalPedido = (p) => p.total || p.itens?.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0) || 0;
+
 
   return (
     <>
