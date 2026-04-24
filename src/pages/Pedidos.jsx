@@ -300,37 +300,23 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [itens, setItens] = useState(() => {
-
-    // Se estiver editando, preenche com os itens salvos
-    if (initialData?.itens) return initialData.itens;
-    return [];
+    // Inicializa todos os itens disponíveis (FTs)
+    // Se estiver editando, preenche com os valores já salvos anteriormente
+    return fts.map(ft => {
+      const savedItem = initialData?.itens.find(it => it.indiceFt === ft.indiceFt);
+      return {
+        indiceFt: ft.indiceFt,
+        nomePeca: ft.nomePeca,
+        custoBase: ft._custoFinal || 0,
+        precoUnit: savedItem ? savedItem.precoUnit : ((ft._custoFinal || 0) * 3).toFixed(2),
+        qtd: savedItem ? savedItem.qtd : 0,
+      };
+    });
   });
 
-  const [availableFts, setAvailableFts] = useState(fts);
 
 
   const handleClienteChange = (e) => setCliente(p => ({ ...p, [e.target.name]: e.target.value }));
-
-  const addItem = (ft) => {
-    if (itens.some(it => it.indiceFt === ft.indiceFt)) {
-      alert("Este item já está no pedido.");
-      return;
-    }
-    const m = parseN(markup) || 3;
-    const newItem = {
-      indiceFt: ft.indiceFt,
-      nomePeca: ft.nomePeca,
-      custoBase: ft._custoFinal || 0,
-      precoUnit: ((ft._custoFinal || 0) * m).toFixed(2),
-      qtd: 1
-    };
-    setItens(prev => [...prev, newItem]);
-    setSearchTerm('');
-  };
-
-  const removeItem = (idx) => {
-    setItens(prev => prev.filter((_, i) => i !== idx));
-  };
 
   const updateItem = (idx, field, value) =>
     setItens(prev => {
@@ -339,23 +325,25 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
       return next;
     });
 
-  const totalVenda = itens.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
-  const totalCusto = itens.reduce((s, it) => s + (parseN(it.custoBase) * parseN(it.qtd)), 0);
+  const itensSelected = itens.filter(it => parseN(it.qtd) > 0);
+
+  const totalVenda = itensSelected.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
+  const totalCusto = itensSelected.reduce((s, it) => s + (parseN(it.custoBase) * parseN(it.qtd)), 0);
   const totalLucro = totalVenda - totalCusto;
   const margemPerc = totalVenda > 0 ? (totalLucro / totalVenda) * 100 : 0;
 
-  const totalTime = itens.reduce((acc, it) => {
+  const totalTime = itensSelected.reduce((acc, it) => {
     const baseFt = fts.find(f => f.indiceFt === it.indiceFt);
     if (!baseFt) return acc;
     return acc + (getUnitProductionTime(baseFt) * parseN(it.qtd));
   }, 0);
 
-
   const handleSave = () => {
     if (!cliente.nome.trim()) { alert('Informe o nome do cliente.'); return; }
-    if (itens.length === 0) { alert('Adicione pelo menos 1 item ao pedido.'); return; }
-    onSave({ id: initialData?.id, cliente, itens });
+    if (itensSelected.length === 0) { alert('Adicione pelo menos 1 item com quantidade > 0.'); return; }
+    onSave({ id: initialData?.id, cliente, itens: itensSelected });
   };
+
 
 
   return (
@@ -423,57 +411,51 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
             </div>
           </section>
 
-          {/* ── Seção 2: Busca e Adição de Itens ── */}
+          {/* ── Seção 2: Markup Global ── */}
           <section className="modal-section card">
             <h3 className="section-heading">
-              <span className="section-num">2</span> Buscar e Adicionar Itens
+              <span className="section-num">2</span> Markup de Vendas
             </h3>
-            <div className="search-and-add">
-              <div className="form-group">
-                <label>Markup Inicial (para novos itens)</label>
-                <input type="number" step="0.1" value={markup} onChange={e => setMarkup(e.target.value)} />
-              </div>
-              <div className="form-group" style={{marginTop: '1rem', position: 'relative'}}>
-                <label>Pesquise a FT para adicionar</label>
-                <input 
-                  type="text" 
-                  placeholder="🔍 Digite o nome ou ID da peça..." 
-                  value={searchTerm}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-                  onChange={e => setSearchTerm(e.target.value)}
+            <div className="markup-bar">
+              <div className="form-group" style={{ flex: 1 }}>
+                <label htmlFor="markup">Multiplicador global (ex: 3 = custo × 3)</label>
+                <input
+                  id="markup"
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={markup}
+                  onChange={e => setMarkup(e.target.value)}
+                  placeholder="3"
                 />
-                {(isSearchFocused || searchTerm.length > 0) && (
-                  <div className="search-results-dropdown">
-                    {availableFts
-                      .filter(ft => 
-                        ft.nomePeca.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                        ft.indiceFt.toLowerCase().includes(searchTerm.toLowerCase())
-                      )
-                      .map(ft => (
-                        <div key={ft.indiceFt} className="search-result-item" onClick={() => addItem(ft)}>
-                          <span className="sr-id">{ft.indiceFt}</span>
-                          <span className="sr-name">{ft.nomePeca}</span>
-                          <button className="btn-add-item">+ Adicionar</button>
-                        </div>
-                      ))}
-
-                    {availableFts.length === 0 && <div className="search-result-item">Nenhuma FT cadastrada.</div>}
-                  </div>
-                )}
-
               </div>
+              <button className="btn-apply" onClick={applyMarkup}>
+                ⚡ Aplicar a todos
+              </button>
             </div>
+            <p className="markup-hint">O preço final pode ser sobrescrito individualmente na tabela abaixo.</p>
           </section>
 
-          {/* ── Seção 3: Lista de Itens do Pedido ── */}
+          {/* ── Seção 3: Tabela de Itens ── */}
           <section className="modal-section card span-full">
-            <h3 className="section-heading">
-              <span className="section-num">3</span> Itens Selecionados
-              {itens.length === 0 && <span className="no-fts-warn"> — Nenhum item adicionado.</span>}
-            </h3>
+            <div className="section-header-flex" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem'}}>
+              <h3 className="section-heading" style={{marginBottom: 0}}>
+                <span className="section-num">3</span> Itens do Pedido
+                {fts.length === 0 && <span className="no-fts-warn"> — Nenhuma FT cadastrada ainda.</span>}
+              </h3>
+              
+              <div className="search-box-wrap" style={{width: '300px'}}>
+                <input 
+                  type="text" 
+                  placeholder="🔍 Buscar produto por nome ou ID..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{width: '100%', padding: '0.6rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)'}}
+                />
+              </div>
+            </div>
 
-            {itens.length > 0 && (
+            {fts.length > 0 && (
               <div className="items-table-wrap">
                 <table className="items-table">
                   <thead>
@@ -481,50 +463,74 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                       <th>ID</th>
                       <th>Nome</th>
                       <th>Custo Prod.</th>
+                      <th>Tempo Unit.</th>
                       <th style={{ width: 120 }}>Preço Unit. (R$)</th>
                       <th style={{ width: 80, textAlign: 'center' }}>Qtd</th>
                       <th style={{ textAlign: 'right' }}>Subtotal</th>
-                      <th style={{ width: 60, textAlign: 'center' }}>Ação</th>
+                      <th style={{ textAlign: 'right', color: 'var(--success)' }}>Lucro Unit.</th>
+                      <th style={{ textAlign: 'right', color: 'var(--success)' }}>Lucro Total</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {itens.map((it, idx) => {
-                      const qty = parseN(it.qtd);
-                      const preco = parseN(it.precoUnit);
-                      const sub = preco * qty;
-                      return (
-                        <tr key={idx}>
-                          <td><span className="badge-sm">{it.indiceFt}</span></td>
-                          <td>{it.nomePeca}</td>
-                          <td className="cost-cell">R$ {fmt(it.custoBase)}</td>
-                          <td>
-                            <input
-                              type="number"
-                              className="cell-input"
-                              value={it.precoUnit}
-                              onChange={e => updateItem(idx, 'precoUnit', e.target.value)}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              className="cell-input cell-qty"
-                              value={it.qtd}
-                              onChange={e => updateItem(idx, 'qtd', e.target.value)}
-                            />
-                          </td>
-                          <td style={{ textAlign: 'right', fontWeight: 'bold' }}>R$ {fmt(sub)}</td>
-                          <td style={{ textAlign: 'center' }}>
-                            <button className="btn-icon danger" onClick={() => removeItem(idx)}>🗑️</button>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {itens
+                      .filter(it => 
+                        it.nomePeca.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                        it.indiceFt.toLowerCase().includes(searchTerm.toLowerCase())
+                      )
+                      .sort((a, b) => {
+                        const qA = parseN(a.qtd) > 0 ? 1 : 0;
+                        const qB = parseN(b.qtd) > 0 ? 1 : 0;
+                        if (qA !== qB) return qB - qA;
+                        return a.indiceFt.localeCompare(b.indiceFt);
+                      })
+                      .map((it) => {
+                        const originalIdx = itens.findIndex(original => original.indiceFt === it.indiceFt);
+                        const qty = parseN(it.qtd);
+                        const preco = parseN(it.precoUnit);
+                        const sub = preco * qty;
+                        const lucroUnit = preco - it.custoBase;
+                        const lucroTotal = lucroUnit * qty;
+                        const active = qty > 0;
+                        return (
+                          <tr key={it.indiceFt} className={active ? 'row-active' : ''}>
+                            <td><span className="badge-sm">{it.indiceFt}</span></td>
+                            <td>{it.nomePeca}</td>
+                            <td className="cost-cell">R$ {fmt(it.custoBase)}</td>
+                            <td className="cost-cell">{formatTime(getUnitProductionTime(fts.find(f => f.indiceFt === it.indiceFt)))}</td>
+                            <td>
+                              <input
+                                type="number"
+                                className="cell-input"
+                                value={it.precoUnit}
+                                onChange={e => updateItem(originalIdx, 'precoUnit', e.target.value)}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                className="cell-input cell-qty"
+                                value={it.qtd}
+                                onChange={e => updateItem(originalIdx, 'qtd', e.target.value)}
+                              />
+                            </td>
+                            <td style={{ textAlign: 'right' }} className={active ? 'subtotal-active' : ''}>
+                              {active ? `R$ ${fmt(sub)}` : '—'}
+                            </td>
+                            <td style={{ textAlign: 'right' }} className={lucroUnit >= 0 ? 'lucro-pos' : 'lucro-neg'}>
+                              R$ {fmt(lucroUnit)}
+                            </td>
+                            <td style={{ textAlign: 'right' }} className={active ? (lucroTotal >= 0 ? 'lucro-pos lucro-bold' : 'lucro-neg lucro-bold') : ''}>
+                              {active ? `R$ ${fmt(lucroTotal)}` : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
             )}
           </section>
+
 
 
         </div>
