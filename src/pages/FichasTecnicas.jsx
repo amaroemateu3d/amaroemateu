@@ -98,13 +98,26 @@ export default function FichasTecnicas() {
              data: ft
           }));
           
-          const { error: insertErr } = await supabase.from('fichas_tecnicas').insert(inserts);
-          if (insertErr) console.error("[FichasTecnicas] Erro na migração:", insertErr);
+          const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+          const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          const headers = { 
+            'apikey': SUPA_KEY, 
+            'Authorization': `Bearer ${SUPA_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          };
           
-          const res2 = await supabase.from('fichas_tecnicas').select('*').order('id', { ascending: true });
-          if (res2.data) {
-             setSavedFts(res2.data.map(r => r.data));
-             setInputs(prev => ({ ...prev, indiceFt: getNextFtId(res2.data.map(r => r.data)) }));
+          await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(inserts)
+          });
+          
+          const res2resp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=*&order=id.asc`, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
+          const res2data = res2resp.ok ? await res2resp.json() : [];
+          if (res2data) {
+             setSavedFts(res2data.map(r => r.data));
+             setInputs(prev => ({ ...prev, indiceFt: getNextFtId(res2data.map(r => r.data)) }));
           }
           setIsMigrating(false);
         } else {
@@ -142,8 +155,20 @@ export default function FichasTecnicas() {
           cost: ft._custoFinal || ft.cost || 0,
           data: ft.data || ft
         }));
-        const { error: insertErr } = await supabase.from('fichas_tecnicas').insert(inserts);
-        if (insertErr) { alert('Erro ao importar: ' + insertErr.message); setIsMigrating(false); return; }
+        const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+        const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const headers = { 
+          'apikey': SUPA_KEY, 
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        };
+        const resp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(inserts)
+        });
+        if (!resp.ok) { alert('Erro ao importar.'); setIsMigrating(false); return; }
         alert(`✅ ${inserts.length} Fichas Técnicas importadas com sucesso!`);
         await fetchFichas();
       } catch {
@@ -219,12 +244,23 @@ export default function FichasTecnicas() {
       return novaLista;
     });
 
-    // Salva no banco de dados na nuvem
-    await supabase.from('fichas_tecnicas').upsert({
-       id: ftData.indiceFt,
-       name: ftData.nomePeca,
-       cost: ftData._custoFinal,
-       data: ftData
+    const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const headers = { 
+      'apikey': SUPA_KEY, 
+      'Authorization': `Bearer ${SUPA_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates'
+    };
+    await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        id: ftData.indiceFt,
+        name: ftData.nomePeca,
+        cost: ftData._custoFinal,
+        data: ftData
+      })
     });
   };
 
@@ -242,7 +278,12 @@ export default function FichasTecnicas() {
         setInputs(c => ({...c, indiceFt: getNextFtId(nova)}));
         return nova;
       });
-      await supabase.from('fichas_tecnicas').delete().eq('id', id);
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${id}`, {
+        method: 'DELETE',
+        headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+      });
     }
   };
 

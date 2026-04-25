@@ -64,7 +64,11 @@ export default function Usuarios() {
       setUsers(data);
     }
 
-    const { data: profileData } = await supabase.from('user_profiles').select('*');
+    const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const profileResp = await fetch(`${SUPABASE_URL}/rest/v1/user_profiles?select=*`, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+    });
+    const profileData = profileResp.ok ? await profileResp.json() : [];
     if (profileData) {
       const map = {};
       profileData.forEach(p => { map[p.id] = p; });
@@ -79,10 +83,11 @@ export default function Usuarios() {
 
   async function selectUser(user) {
     setSelectedUser(user);
-    const { data } = await supabase
-      .from('user_permissions')
-      .select('*')
-      .eq('user_id', user.id);
+    const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const permResp = await fetch(`${SUPABASE_URL}/rest/v1/user_permissions?select=*&user_id=eq.${user.id}`, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+    });
+    const data = permResp.ok ? await permResp.json() : [];
 
     const perms = {};
     PAGES.forEach(p => {
@@ -99,15 +104,25 @@ export default function Usuarios() {
   async function savePermissions() {
     if (!selectedUser) return;
     setSaving(true);
+    const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
     for (const page of PAGES) {
       const perm = permissions[page.id];
-      await supabase.from('user_permissions').upsert({
-        user_id: selectedUser.id,
-        page: page.id,
-        can_view: perm.can_view,
-        can_edit: perm.can_edit,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id,page' });
+      await fetch(`${SUPABASE_URL}/rest/v1/user_permissions`, {
+        method: 'POST',
+        headers: { 
+          'apikey': SUPA_KEY, 
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify({
+          user_id: selectedUser.id,
+          page: page.id,
+          can_view: perm.can_view,
+          can_edit: perm.can_edit,
+          updated_at: new Date().toISOString(),
+        })
+      });
     }
     setSaving(false);
   }

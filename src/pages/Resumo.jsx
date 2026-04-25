@@ -68,13 +68,13 @@ export default function Resumo() {
     });
 
     const overrides = {};
-    (overRes.data || []).forEach(o => {
+    (overData || []).forEach(o => {
        if(!overrides[o.channel_id]) overrides[o.channel_id] = {};
        overrides[o.channel_id][o.ft_id] = o.settings;
     });
 
     const channelDefaults = {};
-    (defRes.data || []).forEach(d => {
+    (defData || []).forEach(d => {
        channelDefaults[d.channel_id] = d.settings;
     });
 
