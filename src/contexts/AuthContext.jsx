@@ -90,7 +90,14 @@ export function AuthProvider({ children }) {
   const isAdmin = profile?.is_admin === true;
 
   async function signOut() {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.error("Erro no signOut do Supabase:", e);
+    }
+    // Força a limpeza local e recarrega para garantir o logout em caso de deadlock
+    localStorage.clear();
+    window.location.href = '/';
   }
 
   return (
