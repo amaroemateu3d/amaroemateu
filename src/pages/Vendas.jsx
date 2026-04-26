@@ -458,7 +458,13 @@ export default function Vendas() {
                 </tr>
               </thead>
               <tbody>
-                {[...filteredFts].sort((a,b) => a.indiceFt.localeCompare(b.indiceFt)).map(baseFt => {
+                {[...filteredFts].sort((a, b) => {
+                  const qtyA = getChannelQty(a.indiceFt);
+                  const qtyB = getChannelQty(b.indiceFt);
+                  if (qtyA > 0 && qtyB === 0) return -1;
+                  if (qtyA === 0 && qtyB > 0) return 1;
+                  return a.indiceFt.localeCompare(b.indiceFt);
+                }).map(baseFt => {
                   const channelFt = getFtWithOverrides(baseFt);
                   const res = getResultados(channelFt);
                   const qty = getChannelQty(baseFt.indiceFt);
