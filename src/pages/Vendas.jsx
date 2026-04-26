@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getResultados, parseNumber, getCustoUnitario, getUnitProductionTime, formatTime } from '../utils/financeCalculators';
 import { Settings, Save, X, Printer, CheckCircle2, RefreshCw, Loader } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
 import './Vendas.css';
 
 const CHANNELS = [
@@ -14,6 +15,7 @@ const CHANNELS = [
 ];
 
 export default function Vendas() {
+  const { session } = useAuth();
   const [activeChannel, setActiveChannel] = useState('ml');
   const [currentMonth, setCurrentMonth] = useState(() => {
     const d = new Date();
@@ -100,23 +102,26 @@ export default function Vendas() {
     }
   };
 
-  const supaWrite = async (table, method, body, filters = {}) => {
+  const supaWrite = async (table, method, body, filters = {}, onConflict = null) => {
     try {
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const token = session?.access_token || SUPA_KEY;
       
       let url = `${SUPA_URL}/rest/v1/${table}`;
       const queryParams = [];
       Object.entries(filters).forEach(([key, val]) => {
         queryParams.push(`${key}=eq.${encodeURIComponent(val)}`);
       });
+      if (onConflict) queryParams.push(`on_conflict=${onConflict}`);
+      
       if (queryParams.length > 0) url += `?${queryParams.join('&')}`;
 
       const options = {
         method,
         headers: {
           'apikey': SUPA_KEY,
-          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
           'Prefer': method === 'POST' ? 'resolution=merge-duplicates' : 'return=minimal'
         }
@@ -150,7 +155,7 @@ export default function Vendas() {
         channel_id: activeChannel,
         ft_id: ftId,
         quantity: val
-      });
+      }, {}, 'month,channel_id,ft_id');
     } else {
       await supaWrite('ecommerce_monthly_sales', 'DELETE', null, {
         month: currentMonth,
@@ -240,11 +245,11 @@ export default function Vendas() {
        });
     } else {
        nov[activeChannel][ftId] = finalOps;
-       await supaWrite('ecommerce_overrides', 'POST', {
+        await supaWrite('ecommerce_overrides', 'POST', {
           channel_id: activeChannel,
           ft_id: ftId,
           settings: finalOps
-       });
+        }, {}, 'channel_id,ft_id');
     }
     setOverrides(nov);
   };
@@ -303,10 +308,10 @@ export default function Vendas() {
     } else {
        newOverrides[activeChannel][ftBase.indiceFt] = finalOps;
        await supaWrite('ecommerce_overrides', 'POST', {
-          channel_id: activeChannel,
-          ft_id: ftBase.indiceFt,
-          settings: finalOps
-       });
+      channel_id: activeChannel,
+      ft_id: ftBase.indiceFt,
+      settings: finalOps
+    }, {}, 'channel_id,ft_id');
     }
     
     setOverrides(newOverrides);
@@ -352,7 +357,7 @@ export default function Vendas() {
     await supaWrite('ecommerce_channel_defaults', 'POST', {
       channel_id: activeChannel,
       settings: globalFormData
-    });
+    }, {}, 'channel_id');
   };
 
   const handleShopeePreset = (e) => {

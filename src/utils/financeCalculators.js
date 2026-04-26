@@ -70,9 +70,15 @@ export const getResultados = (inp) => {
   const custoFisicoUnit = getCustoFisicoUnitario(inp);
   const custoExtrasUnit = getCustoExtrasUnitario(inp);
 
-  const precoManual = parseNumber(inp.precoVendaManual);
-  // O usuário DEVE digitar o preço. Se não, é 0.
-  const precoSugerido = parseNumber(inp.precoVendaManual) || 0;
+  const markup = parseNumber(inp.markup) || 3;
+  const custoBaseCalc = custoFisicoUnit + custoExtrasUnit;
+  
+  // Se não houver preço manual, sugerimos um baseado no markup
+  // Preço Sugerido = (Custo Base + Taxa Fixa) / (1 - Impostos% - Comissão% - Lucro Desejado%)
+  // Mas para simplificar e manter compatibilidade, usaremos o markup sobre o custo base + taxas fixas
+  const precoSugeridoMarkup = (custoBaseCalc + parseNumber(inp.taxaFixaVenda)) * markup;
+
+  const precoSugerido = parseNumber(inp.precoVendaManual) || precoSugeridoMarkup;
   
   // Impostos incidem sobre o preço de venda
   const percImposto = parseNumber(inp.impostosNF) / 100;
