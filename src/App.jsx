@@ -4,8 +4,6 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AppLayout from './layouts/AppLayout';
 import Dashboard from './pages/Dashboard';
 import FichasTecnicas from './pages/FichasTecnicas';
-import Orcamentos from './pages/Orcamentos';
-import Pecas from './pages/Pecas';
 import Vendas from './pages/Vendas';
 import Saidas from './pages/Saidas';
 import Pedidos from './pages/Pedidos';
@@ -52,8 +50,6 @@ function AppContent() {
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="fichas-tecnicas" element={<FichasTecnicas />} />
-          <Route path="orcamentos" element={<Orcamentos />} />
-          <Route path="pecas" element={<Pecas />} />
           <Route path="vendas" element={<Vendas />} />
           <Route path="pedidos" element={<Pedidos />} />
           <Route path="saidas" element={<Saidas />} />

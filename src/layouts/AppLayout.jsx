@@ -1,6 +1,6 @@
 import { Outlet, NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Calculator, FileText, Package2,
+  LayoutDashboard, Calculator,
   ShoppingCart, TrendingDown, ClipboardList, BarChart3,
   Download, LogOut, Users
 } from 'lucide-react';
@@ -81,20 +81,12 @@ export default function AppLayout() {
             <span>Cadastro de FTs</span>
           </NavLink>
 
-          <NavLink to="/orcamentos" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
-            <FileText size={20} />
-            <span>Orçamentos</span>
-          </NavLink>
-
-          <NavLink to="/pecas" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
-            <Package2 size={20} />
-            <span>Peças e Catálogo</span>
-          </NavLink>
-
           <NavLink to="/vendas" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
             <ShoppingCart size={20} />
             <span>Vendas Multi-Canal</span>
           </NavLink>
+
+
 
           <NavLink to="/pedidos" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
             <ClipboardList size={20} />
