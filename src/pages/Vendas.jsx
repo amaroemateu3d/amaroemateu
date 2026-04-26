@@ -450,11 +450,11 @@ export default function Vendas() {
                   <th style={{width: '70px'}}>Prod.</th>
                   <th style={{width: '70px'}}>Venda</th>
                   <th style={{width: '85px'}}>Custo Final</th>
-                  <th style={{color: 'var(--accent-primary)', width: '100px'}}>Preço</th>
+                  <th style={{color: 'var(--accent-primary)', width: '130px'}}>Preço</th>
                   <th style={{color: 'var(--success)', width: '70px'}}>% Marg.</th>
-                  <th style={{color: 'var(--success)', width: '85px'}}>Lucro</th>
-                  <th style={{width: '70px', textAlign: 'center'}}>Qtd.</th>
-                  <th style={{width: '80px', textAlign: 'right'}}>Ações</th>
+                  <th style={{color: 'var(--success)', width: '100px'}}>Lucro</th>
+                  <th style={{width: '90px', textAlign: 'center'}}>Qtd.</th>
+                  <th style={{width: '90px', textAlign: 'right'}}>Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -473,7 +473,7 @@ export default function Vendas() {
                       <td style={{color: 'var(--danger)'}}>R$ {res.despesasVenda.toFixed(2)}</td>
                       <td><strong>R$ {res.custoUnitario.toFixed(2)}</strong></td>
                       <td>
-                         <div className="input-wrapper" style={{maxWidth: '120px', margin: '0 auto'}}>
+                         <div className="input-wrapper" style={{maxWidth: '140px', margin: '0 auto'}}>
                             <span className="prefix" style={{color: 'var(--accent-primary)', fontWeight: 'bold'}}>R$</span>
                             <input type="number" min="0" step="any" className="has-prefix" style={{color: 'var(--accent-primary)', fontWeight: 'bold'}} value={channelFt.precoVendaManual !== undefined ? channelFt.precoVendaManual : ''} placeholder="0.00" onChange={(e) => handlePriceChange(baseFt.indiceFt, e.target.value)} />
                          </div>

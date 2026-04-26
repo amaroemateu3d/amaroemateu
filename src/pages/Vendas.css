@@ -504,8 +504,8 @@
 .vendas-page .fts-table td strong,
 .vendas-page .fts-table td span,
 .vendas-page .fts-table td input {
-  padding: 0.6rem 0.4rem !important;
-  font-size: 0.85rem !important; /* Tamanho uniforme para tudo */
+  padding: 0.6rem 0.8rem !important; /* Aumentado de 0.4rem para 0.8rem */
+  font-size: 0.85rem !important;
 }
 
 .vendas-page .badge {
@@ -525,11 +525,11 @@
 }
 
 .vendas-page .input-wrapper input.has-prefix {
-  padding-left: 32px !important; /* Espaço generoso para o R$ */
+  padding-left: 36px !important; /* Aumentado de 32px para 36px */
 }
 
 .vendas-page .qty-input {
-  width: 55px !important;
+  width: 70px !important; /* Aumentado de 55px para 70px */
   padding: 0.35rem !important;
   font-size: 0.85rem !important;
 }
