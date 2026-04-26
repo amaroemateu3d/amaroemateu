@@ -487,8 +487,10 @@
 }
 
 .vendas-page .fts-table {
-  border-collapse: separate; /* Necessário para sticky header com border-bottom */
+  border-collapse: separate;
   border-spacing: 0;
+  width: 100%;
+  min-width: 1100px; /* Garante que as colunas não se esmaguem */
 }
 
 .vendas-page .fts-table thead th {
@@ -537,5 +539,26 @@
 .vendas-page .btn-icon {
   padding: 4px 8px !important;
   font-size: 0.8rem !important;
+}
+
+/* Definições de Colunas */
+.col-id { width: 60px; min-width: 60px; }
+.col-product { min-width: 200px; }
+.col-time { width: 70px; min-width: 70px; white-space: nowrap; }
+.col-cost { width: 80px; min-width: 80px; white-space: nowrap; }
+.col-sell { width: 80px; min-width: 80px; white-space: nowrap; }
+.col-final { width: 100px; min-width: 100px; white-space: nowrap; }
+.col-price { width: 140px; min-width: 140px; }
+.col-marg { width: 80px; min-width: 80px; white-space: nowrap; }
+.col-profit { width: 100px; min-width: 100px; white-space: nowrap; }
+.col-qty { width: 90px; min-width: 90px; }
+.col-actions { width: 100px; min-width: 100px; }
+
+.vendas-page .input-wrapper {
+  max-width: 130px !important;
+}
+
+.vendas-page .qty-input {
+  width: 70px !important;
 }
 

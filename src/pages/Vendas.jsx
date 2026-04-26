@@ -443,18 +443,18 @@ export default function Vendas() {
             <table className="fts-table">
               <thead>
                 <tr>
-                  <th style={{width: '30px', textAlign: 'center'}}><input type="checkbox" onChange={toggleSelectAll} checked={selectedFts.length === savedFts.length && savedFts.length > 0} /></th>
-                  <th style={{width: '50px'}}>ID</th>
-                  <th>Produto</th>
-                  <th style={{width: '60px'}}>Tempo</th>
-                  <th style={{width: '70px'}}>Prod.</th>
-                  <th style={{width: '70px'}}>Venda</th>
-                  <th style={{width: '85px'}}>Custo Final</th>
-                  <th style={{color: 'var(--accent-primary)', width: '130px'}}>Preço</th>
-                  <th style={{color: 'var(--success)', width: '70px'}}>% Marg.</th>
-                  <th style={{color: 'var(--success)', width: '100px'}}>Lucro</th>
-                  <th style={{width: '90px', textAlign: 'center'}}>Qtd.</th>
-                  <th style={{width: '90px', textAlign: 'right'}}>Ações</th>
+                  <th style={{textAlign: 'center'}}><input type="checkbox" onChange={toggleSelectAll} checked={selectedFts.length === savedFts.length && savedFts.length > 0} /></th>
+                  <th className="col-id">ID</th>
+                  <th className="col-product">Produto</th>
+                  <th className="col-time">Tempo</th>
+                  <th className="col-cost">Prod.</th>
+                  <th className="col-sell">Venda</th>
+                  <th className="col-final">Custo Final</th>
+                  <th className="col-price" style={{color: 'var(--accent-primary)'}}>Preço</th>
+                  <th className="col-marg" style={{color: 'var(--success)'}}>% Marg.</th>
+                  <th className="col-profit" style={{color: 'var(--success)'}}>Lucro</th>
+                  <th className="col-qty" style={{textAlign: 'center'}}>Qtd.</th>
+                  <th className="col-actions" style={{textAlign: 'right'}}>Ações</th>
                 </tr>
               </thead>
               <tbody>
