@@ -70,37 +70,31 @@ export const getResultados = (inp) => {
   const custoFisicoUnit = getCustoFisicoUnitario(inp);
   const custoExtrasUnit = getCustoExtrasUnitario(inp);
 
-  const markup = parseNumber(inp.markup) || 3;
-  const custoBaseCalc = custoFisicoUnit + custoExtrasUnit;
+  // O Preço Praticado/Real é estritamente o valor manual
+  const precoPraticado = parseNumber(inp.precoVendaManual) || 0;
   
-  // Se não houver preço manual, sugerimos um baseado no markup
-  // Preço Sugerido = (Custo Base + Taxa Fixa) / (1 - Impostos% - Comissão% - Lucro Desejado%)
-  // Mas para simplificar e manter compatibilidade, usaremos o markup sobre o custo base + taxas fixas
-  const precoSugeridoMarkup = (custoBaseCalc + parseNumber(inp.taxaFixaVenda)) * markup;
-
-  const precoSugerido = parseNumber(inp.precoVendaManual) || precoSugeridoMarkup;
-  
-  // Impostos incidem sobre o preço de venda
+  // Impostos incidem sobre o preço de venda real
   const percImposto = parseNumber(inp.impostosNF) / 100;
   const percPlataforma = parseNumber(inp.taxaMLPerc) / 100;
   
-  const aliquotaImpostos = precoSugerido * percImposto;
-  const aliquotaMLPerc = precoSugerido * percPlataforma;
+  const aliquotaImpostos = precoPraticado * percImposto;
+  const aliquotaMLPerc = precoPraticado * percPlataforma;
   
   // Taxa Plataforma Fixa NUNCA divide por lote, ela é por venda unitária (SKU)
   const taxaPlataformaFixaUnit = parseNumber(inp.taxaFixaVenda);
   const aliquotaMarketplaceTotal = aliquotaMLPerc + taxaPlataformaFixaUnit;
 
   // Custo TOTAL do E-commerce por Peça Vendida:
-  // Custo Físico + Custo Repassado Seco (Embalagem, Frete, Extra) + Taxas Fixas e Variáveis da Venda
   const custoTotalVenda = custoFisicoUnit + custoExtrasUnit + taxaPlataformaFixaUnit + aliquotaImpostos + aliquotaMLPerc;
 
-  // Lucro Real daquela venda
-  const lucroLiquido = precoSugerido - custoTotalVenda;
+  // Lucro Real daquela venda (Apenas se o preço for maior que 0)
+  const lucroLiquido = precoPraticado > 0 ? precoPraticado - custoTotalVenda : 0;
+  
   // Margem Bruta na venda
-  const margemContribuicaoPerc = precoSugerido > 0 ? (lucroLiquido / precoSugerido) * 100 : 0;
+  const margemContribuicaoPerc = precoPraticado > 0 ? (lucroLiquido / precoPraticado) * 100 : 0;
+  
   // Apenas para efeito visual de conferência interna
-  const lucroBruto = precoSugerido - (custoFisicoUnit + custoExtrasUnit);
+  const lucroBruto = precoPraticado > 0 ? precoPraticado - (custoFisicoUnit + custoExtrasUnit) : 0;
 
   // DRE Breakdowns (A pedido do usuário)
   const despesasProducao = custoFisicoUnit + parseNumber(inp.custoEmbalagem) + parseNumber(inp.custoExtra);
@@ -114,7 +108,7 @@ export const getResultados = (inp) => {
     custoMaquinaUnit: custoMaquina / qtd, 
     custosExtras: custoExtrasUnit,
     custoUnitario: custoTotalVenda,
-    precoSugerido, 
+    precoPraticado, 
     lucroBruto, 
     lucroLiquido, 
     aliquotaImpostos,

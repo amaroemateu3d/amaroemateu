@@ -14,6 +14,73 @@ const CHANNELS = [
   { id: 'presencial', label: 'Presencial', icon: '🏪' }
 ];
 
+function PriceInput({ initialValue, onSave }) {
+  const [localValue, setLocalValue] = useState(initialValue !== undefined && initialValue !== null ? String(initialValue).replace('.', ',') : '');
+
+  useEffect(() => {
+    setLocalValue(initialValue !== undefined && initialValue !== null ? String(initialValue).replace('.', ',') : '');
+  }, [initialValue]);
+
+  const handleBlur = () => {
+    const cleanValue = localValue.trim();
+    const oldVal = initialValue !== undefined && initialValue !== null ? String(initialValue).replace('.', ',') : '';
+    if (cleanValue !== oldVal) {
+      onSave(cleanValue);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') e.target.blur();
+  };
+
+  return (
+    <div className="input-wrapper" style={{maxWidth: '140px', margin: '0 auto'}}>
+      <span className="prefix" style={{color: 'var(--accent-primary)', fontWeight: 'bold'}}>R$</span>
+      <input 
+        type="text" 
+        className="has-prefix" 
+        style={{color: 'var(--accent-primary)', fontWeight: 'bold'}} 
+        value={localValue} 
+        placeholder="0,00" 
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+      />
+    </div>
+  );
+}
+
+function QtyInput({ initialValue, onSave }) {
+  const [localValue, setLocalValue] = useState(initialValue || '');
+
+  useEffect(() => {
+    setLocalValue(initialValue || '');
+  }, [initialValue]);
+
+  const handleBlur = () => {
+    if (String(localValue) !== String(initialValue || '')) {
+      onSave(localValue);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') e.target.blur();
+  };
+
+  return (
+    <input 
+      type="number" 
+      min="0" 
+      className="qty-input" 
+      value={localValue} 
+      placeholder="0" 
+      onChange={(e) => setLocalValue(e.target.value)}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+    />
+  );
+}
+
 export default function Vendas() {
   const { session } = useAuth();
   const [activeChannel, setActiveChannel] = useState('ml');
@@ -258,7 +325,7 @@ export default function Vendas() {
     const physicalFT = { ...ftBase };
     const defaults = channelDefaults[activeChannel] || {
       custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0,
-      taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0, markup: 3
+      taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0
     };
     const channelOps = overrides[activeChannel]?.[ftBase.indiceFt] || {};
     return { ...physicalFT, ...defaults, ...channelOps }; 
@@ -282,11 +349,11 @@ export default function Vendas() {
 
   const saveOverrideModal = async () => {
     const { ftBase, customData } = editingOverride;
-    const keysToOverride = ['custoEmbalagem', 'custoExtra', 'custoEnvio', 'taxaFixaVenda', 'impostosNF', 'taxaMLPerc', 'markup', 'precoVendaManual'];
+    const keysToOverride = ['custoEmbalagem', 'custoExtra', 'custoEnvio', 'taxaFixaVenda', 'impostosNF', 'taxaMLPerc', 'precoVendaManual'];
     const finalOps = {};
     const defaults = channelDefaults[activeChannel] || {
       custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0,
-      taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0, markup: 3
+      taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0
     };
 
     keysToOverride.forEach(k => {
@@ -479,14 +546,19 @@ export default function Vendas() {
                       <td style={{color: 'var(--danger)'}}>R$ {res.despesasVenda.toFixed(2)}</td>
                       <td><strong>R$ {res.custoUnitario.toFixed(2)}</strong></td>
                       <td>
-                         <div className="input-wrapper" style={{maxWidth: '140px', margin: '0 auto'}}>
-                            <span className="prefix" style={{color: 'var(--accent-primary)', fontWeight: 'bold'}}>R$</span>
-                            <input type="number" min="0" step="any" className="has-prefix" style={{color: 'var(--accent-primary)', fontWeight: 'bold'}} value={channelFt.precoVendaManual !== undefined ? channelFt.precoVendaManual : ''} placeholder="0.00" onChange={(e) => handlePriceChange(baseFt.indiceFt, e.target.value)} />
-                         </div>
+                         <PriceInput 
+                            initialValue={channelFt.precoVendaManual} 
+                            onSave={(val) => handlePriceChange(baseFt.indiceFt, val)} 
+                         />
                       </td>
                       <td><strong style={{color: res.margemContribuicaoPerc > 0 ? 'var(--success)' : (res.margemContribuicaoPerc === 0 ? 'var(--text-secondary)' : 'var(--danger)')}}>{res.margemContribuicaoPerc.toFixed(1)}%</strong></td>
                       <td><strong style={{color: res.lucroLiquido >= 0 ? 'var(--success)' : 'var(--danger)'}}>R$ {res.lucroLiquido.toFixed(2)}</strong></td>
-                      <td style={{textAlign: 'center'}}><input type="number" min="0" className="qty-input" value={qty === 0 ? '' : qty} placeholder="0" onChange={(e) => handleQtyChange(baseFt.indiceFt, e.target.value)} /></td>
+                      <td style={{textAlign: 'center'}}>
+                         <QtyInput 
+                            initialValue={qty === 0 ? '' : qty} 
+                            onSave={(val) => handleQtyChange(baseFt.indiceFt, val)} 
+                         />
+                      </td>
                       <td style={{textAlign: 'right'}}><div style={{display: 'flex', gap: '8px', justifyContent: 'flex-end'}}><button className="btn-icon sync-btn" title="Sincronizar esta FT" onClick={() => handleSync(baseFt.indiceFt)}><RefreshCw size={14} /></button><button className="btn-icon adjust-btn" onClick={() => handleOpenOverride(baseFt)} title="Config. do Canal"><Settings size={16} /></button></div></td>
                     </tr>
                   )
@@ -540,14 +612,13 @@ export default function Vendas() {
                   <div className="modal-sales-settings">
                      <h4 style={{marginBottom: '1rem', color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase'}}>Configurações de Venda ({activeChannel})</h4>
                      <div className="override-grid">
-                        <div className="input-group"><label>Embalagem</label><div className="input-wrapper"><span className="prefix">R$</span><input type="number" step="any" name="custoEmbalagem" className="has-prefix" value={editingOverride.customData.custoEmbalagem ?? ''} onChange={handleOverrideChange} /></div></div>
-                        <div className="input-group"><label>Extras Venda</label><div className="input-wrapper"><span className="prefix">R$</span><input type="number" step="any" name="custoExtra" className="has-prefix" value={editingOverride.customData.custoExtra ?? ''} onChange={handleOverrideChange} /></div></div>
-                        <div className="input-group"><label>Envio/Frete</label><div className="input-wrapper"><span className="prefix">R$</span><input type="number" step="any" name="custoEnvio" className="has-prefix" value={editingOverride.customData.custoEnvio ?? ''} onChange={handleOverrideChange} /></div></div>
-                        <div className="input-group"><label>Taxa Fixa Venda</label><div className="input-wrapper"><span className="prefix">R$</span><input type="number" step="any" name="taxaFixaVenda" className="has-prefix" value={editingOverride.customData.taxaFixaVenda ?? ''} onChange={handleOverrideChange} /></div></div>
-                        <div className="input-group"><label>Nota Fiscal</label><div className="input-wrapper"><span className="suffix">%</span><input type="number" step="any" name="impostosNF" className="has-suffix" value={editingOverride.customData.impostosNF ?? ''} onChange={handleOverrideChange} /></div></div>
-                        <div className="input-group"><label>Taxa Plataforma</label><div className="input-wrapper"><span className="suffix">%</span><input type="number" step="any" name="taxaMLPerc" className="has-suffix" value={editingOverride.customData.taxaMLPerc ?? ''} onChange={handleOverrideChange} /></div></div>
-                        <div className="input-group override-highlight" style={{borderColor: 'var(--border-color)', opacity: 0.7}}><label>Markup Ativo</label><div className="input-wrapper"><span className="prefix">✖</span><input type="text" disabled className="has-prefix" value={getResultados(editingOverride.customData).precoSugerido > 0 ? (getResultados(editingOverride.customData).precoSugerido / getResultados(editingOverride.customData).custoUnitario).toFixed(2) : '0.00'} /></div></div>
-                        <div className="input-group override-highlight" style={{borderColor: 'var(--border-color)', opacity: 0.7}}><label>Preço Sugerido</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" disabled className="has-prefix" value={getResultados(editingOverride.customData).precoSugerido.toFixed(2)} /></div></div>
+                        <div className="input-group"><label>Embalagem</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="custoEmbalagem" className="has-prefix" value={String(editingOverride.customData.custoEmbalagem ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
+                        <div className="input-group"><label>Extras Venda</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="custoExtra" className="has-prefix" value={String(editingOverride.customData.custoExtra ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
+                        <div className="input-group"><label>Envio/Frete</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="custoEnvio" className="has-prefix" value={String(editingOverride.customData.custoEnvio ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
+                        <div className="input-group"><label>Taxa Fixa Venda</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="taxaFixaVenda" className="has-prefix" value={String(editingOverride.customData.taxaFixaVenda ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
+                        <div className="input-group"><label>Nota Fiscal</label><div className="input-wrapper"><span className="suffix">%</span><input type="text" name="impostosNF" className="has-suffix" value={String(editingOverride.customData.impostosNF ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
+                        <div className="input-group"><label>Taxa Plataforma</label><div className="input-wrapper"><span className="suffix">%</span><input type="text" name="taxaMLPerc" className="has-suffix" value={String(editingOverride.customData.taxaMLPerc ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
+                        <div className="input-group override-highlight" style={{borderColor: 'var(--accent-subtle)'}}><label>Preço de Venda Manual</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="precoVendaManual" className="has-prefix" value={String(editingOverride.customData.precoVendaManual ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
                      </div>
                   </div>
                </div>
@@ -566,12 +637,12 @@ export default function Vendas() {
                  <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '8px' }}><label style={{ display: 'block', fontWeight: 'bold', color: '#B91C1C', marginBottom: '0.5rem', fontSize: '0.9rem' }}>🛍️ Preenchimento Automático Shopee</label><select onChange={handleShopeePreset} defaultValue="" style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #FCA5A5', cursor: 'pointer' }}><option value="" disabled>Selecione a faixa de preço para preencher as taxas...</option><option value="20|4">Até R$ 79,99 (20% + R$ 4,00)</option><option value="14|16">R$ 80,00 até R$ 99,99 (14% + R$ 16,00)</option><option value="14|20">R$ 100,00 até R$ 199,99 (14% + R$ 20,00)</option><option value="14|26">R$ 200,00 até R$ 499,99 (14% + R$ 26,00)</option><option value="14|26">Acima de R$ 500,00 (14% + R$ 26,00)</option></select></div>
                )}
                <div className="override-grid">
-                  <div className="input-group"><label>Embalagem Padrão</label><div className="input-wrapper"><span className="prefix">R$</span><input type="number" step="any" name="custoEmbalagem" className="has-prefix" value={globalFormData.custoEmbalagem ?? ''} onChange={handleGlobalChange} /></div></div>
-                  <div className="input-group"><label>Extras Padrão</label><div className="input-wrapper"><span className="prefix">R$</span><input type="number" step="any" name="custoExtra" className="has-prefix" value={globalFormData.custoExtra ?? ''} onChange={handleGlobalChange} /></div></div>
-                  <div className="input-group"><label>Envio/Frete Fixo</label><div className="input-wrapper"><span className="prefix">R$</span><input type="number" step="any" name="custoEnvio" className="has-prefix" value={globalFormData.custoEnvio ?? ''} onChange={handleGlobalChange} /></div></div>
-                  <div className="input-group"><label>Taxa Fixa Venda</label><div className="input-wrapper"><span className="prefix">R$</span><input type="number" step="any" name="taxaFixaVenda" className="has-prefix" value={globalFormData.taxaFixaVenda ?? ''} onChange={handleGlobalChange} /></div></div>
-                  <div className="input-group"><label>Nota Fiscal</label><div className="input-wrapper"><span className="suffix">%</span><input type="number" step="any" name="impostosNF" className="has-suffix" value={globalFormData.impostosNF ?? ''} onChange={handleGlobalChange} /></div></div>
-                  <div className="input-group"><label>Taxa Master Plataforma</label><div className="input-wrapper"><span className="suffix">%</span><input type="number" step="any" name="taxaMLPerc" className="has-suffix" value={globalFormData.taxaMLPerc ?? ''} onChange={handleGlobalChange} /></div></div>
+                  <div className="input-group"><label>Embalagem Padrão</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="custoEmbalagem" className="has-prefix" value={String(globalFormData.custoEmbalagem ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
+                  <div className="input-group"><label>Extras Padrão</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="custoExtra" className="has-prefix" value={String(globalFormData.custoExtra ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
+                  <div className="input-group"><label>Envio/Frete Fixo</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="custoEnvio" className="has-prefix" value={String(globalFormData.custoEnvio ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
+                  <div className="input-group"><label>Taxa Fixa Venda</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="taxaFixaVenda" className="has-prefix" value={String(globalFormData.taxaFixaVenda ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
+                  <div className="input-group"><label>Nota Fiscal</label><div className="input-wrapper"><span className="suffix">%</span><input type="text" name="impostosNF" className="has-suffix" value={String(globalFormData.impostosNF ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
+                  <div className="input-group"><label>Taxa Master Plataforma</label><div className="input-wrapper"><span className="suffix">%</span><input type="text" name="taxaMLPerc" className="has-suffix" value={String(globalFormData.taxaMLPerc ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
                   <div className="input-group override-highlight" style={{gridColumn: 'span 2', textAlign: 'center'}}><p style={{color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '1rem'}}>* O modelo de Preço por Markup foi substituído pela entrada direta de Preço na Tabela Principal.</p></div>
                </div>
             </div>
@@ -590,7 +661,7 @@ function MonthlyReportOverlay({ month, vendasMensal, savedFts, overrides, channe
   const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
   const getFtWithOverridesForReport = (ftBase, channelId) => {
     const physicalFT = { indiceFt: ftBase.indiceFt, nomePeca: ftBase.nomePeca, quantidade: ftBase.quantidade, pesoGramas: ftBase.pesoGramas, tempoImpressao: ftBase.tempoImpressao, precoKgMaterial: ftBase.precoKgMaterial, custoKwh: ftBase.custoKwh, custoDepreciacao: ftBase.custoDepreciacao, extraValor1: ftBase.extraValor1, extraValor2: ftBase.extraValor2, extraValor3: ftBase.extraValor3 };
-    const defaults = channelDefaults[channelId] || { custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0, taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0, markup: 3 };
+    const defaults = channelDefaults[channelId] || { custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0, taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0 };
     const channelOps = overrides[channelId]?.[ftBase.indiceFt] || {};
     return { ...physicalFT, ...defaults, ...channelOps }; 
   };
@@ -609,9 +680,9 @@ function MonthlyReportOverlay({ month, vendasMensal, savedFts, overrides, channe
       if (!baseFt) return;
       const merged = getFtWithOverridesForReport(baseFt, channelId);
       const res = getResultados(merged);
-      const itemRevenue = res.precoSugerido * qty;
+      const itemRevenue = res.precoPraticado * qty;
       const itemProfit = res.lucroLiquido * qty;
-      channelItems.push({ id: ftId, nome: baseFt.nomePeca, qty, precoUnit: res.precoSugerido, lucroUnit: res.lucroLiquido, subtotal: itemRevenue, lucroTotal: itemProfit });
+      channelItems.push({ id: ftId, nome: baseFt.nomePeca, qty, precoUnit: res.precoPraticado, lucroUnit: res.lucroLiquido, subtotal: itemRevenue, lucroTotal: itemProfit });
       channelRevenue += itemRevenue;
       channelProfit += itemProfit;
       grandTotalItems += qty;

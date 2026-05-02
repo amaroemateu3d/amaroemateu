@@ -97,12 +97,12 @@ export default function Resumo() {
       };
       const defaults = channelDefaults[channelId] || {
         custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0,
-        taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0, markup: 3
+        taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0
       };
       const channelOps = overrides[channelId]?.[ft.indiceFt] || {};
       const merged = { ...physicalFT, ...defaults, ...channelOps };
       const res = getResultados(merged);
-      return res.precoSugerido;
+      return res.precoPraticado;
     };
 
     // 2. Aggregate by month
