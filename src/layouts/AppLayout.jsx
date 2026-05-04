@@ -2,7 +2,7 @@ import { Outlet, NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Calculator,
   ShoppingCart, TrendingDown, ClipboardList, BarChart3,
-  Download, LogOut, Users
+  Download, LogOut, Users, Package
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import './AppLayout.css';
@@ -81,12 +81,15 @@ export default function AppLayout() {
             <span>Cadastro de FTs</span>
           </NavLink>
 
+          <NavLink to="/estoque" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
+            <Package size={20} />
+            <span>Estoque</span>
+          </NavLink>
+
           <NavLink to="/vendas" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
             <ShoppingCart size={20} />
             <span>Vendas Multi-Canal</span>
           </NavLink>
-
-
 
           <NavLink to="/pedidos" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
             <ClipboardList size={20} />

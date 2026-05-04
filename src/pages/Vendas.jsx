@@ -10,8 +10,7 @@ const CHANNELS = [
   { id: 'amazon', label: 'Amazon', icon: '🅰️' },
   { id: 'shopee', label: 'Shopee', icon: '🛍️' },
   { id: 'tiktok', label: 'TikTok', icon: '🎵' },
-  { id: 'site', label: 'Site Próprio', icon: '🌐' },
-  { id: 'presencial', label: 'Presencial', icon: '🏪' }
+  { id: 'site', label: 'Site Próprio', icon: '🌐' }
 ];
 
 function PriceInput({ initialValue, onSave }) {
@@ -121,7 +120,7 @@ export default function Vendas() {
       let ftsData = [];
       try {
         const ftsResp = await fetch(
-          `${SUPA_URL}/rest/v1/fichas_tecnicas?select=*&order=id.asc`,
+          `${SUPA_URL}/rest/v1/fichas_tecnicas?select=*,id,estoque&order=id.asc`,
           { signal: ftsController.signal, headers }
         );
         if (ftsResp.ok) ftsData = await ftsResp.json();
@@ -142,7 +141,7 @@ export default function Vendas() {
       const overData = overResp.status === 'fulfilled' && overResp.value.ok ? await overResp.value.json() : [];
       const salesData = salesResp.status === 'fulfilled' && salesResp.value.ok ? await salesResp.value.json() : [];
 
-      setSavedFts(ftsData.map(r => r.data));
+      setSavedFts(ftsData.map(r => ({ ...r.data, estoque: r.estoque })));
 
       const newDefaults = {};
       defData.forEach(d => { newDefaults[d.channel_id] = d.settings; });
@@ -206,8 +205,42 @@ export default function Vendas() {
     }
   };
 
+  const updateFtStock = async (ftId, delta) => {
+    if (delta === 0) return;
+    try {
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const token = session?.access_token || SUPA_KEY;
+      
+      // Busca estoque atual
+      const getResp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${ftId}&select=estoque`, {
+        headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${token}` }
+      });
+      if (!getResp.ok) return;
+      const data = await getResp.json();
+      const currentStock = data[0]?.estoque || 0;
+      const newStock = currentStock - delta; // Vendeu = diminui estoque
+
+      await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${ftId}`, {
+        method: 'PATCH',
+        headers: { 
+          'apikey': SUPA_KEY, 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ estoque: newStock })
+      });
+    } catch (e) {
+      console.error('Erro ao abater estoque:', e);
+    }
+  };
+
   const handleQtyChange = async (ftId, stringVal) => {
     const val = parseInt(stringVal, 10) || 0;
+    
+    const currentVal = vendasMensal[currentMonth]?.[activeChannel]?.[ftId] || 0;
+    const delta = val - currentVal;
     
     const newVendas = { ...vendasMensal };
     if (!newVendas[currentMonth]) newVendas[currentMonth] = {};
@@ -215,6 +248,11 @@ export default function Vendas() {
     
     newVendas[currentMonth][activeChannel][ftId] = val;
     setVendasMensal(newVendas);
+
+    // Abater/adicionar no estoque baseado no delta
+    if (delta !== 0) {
+      updateFtStock(ftId, delta);
+    }
 
     if (val > 0) {
       await supaWrite('ecommerce_monthly_sales', 'POST', {

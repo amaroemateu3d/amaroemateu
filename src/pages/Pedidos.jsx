@@ -649,6 +649,34 @@ export default function Pedidos() {
     }
   };
 
+  const updateFtStock = async (ftId, delta) => {
+    if (delta === 0) return;
+    try {
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      const getResp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${ftId}&select=estoque`, {
+        headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+      });
+      if (!getResp.ok) return;
+      const data = await getResp.json();
+      const currentStock = data[0]?.estoque || 0;
+      const newStock = currentStock - delta;
+
+      await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${ftId}`, {
+        method: 'PATCH',
+        headers: { 
+          'apikey': SUPA_KEY, 
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ estoque: newStock })
+      });
+    } catch (e) {
+      console.error('Erro ao abater estoque:', e);
+    }
+  };
 
   const handleSave = useCallback(async ({ id, cliente, itens }) => {
     setLoading(true);
@@ -665,9 +693,6 @@ export default function Pedidos() {
         dbRecord.status = 'pending';
       }
 
-
-
-
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const headers = { 
@@ -676,6 +701,15 @@ export default function Pedidos() {
         'Content-Type': 'application/json',
         'Prefer': 'return=minimal'
       };
+
+      let oldItems = [];
+      if (id) {
+        const oldResp = await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${id}&select=items`, { headers });
+        if (oldResp.ok) {
+          const oldData = await oldResp.json();
+          oldItems = oldData[0]?.items || [];
+        }
+      }
 
       let resp;
       if (id) {
@@ -698,6 +732,20 @@ export default function Pedidos() {
         const errText = await resp.text();
         throw new Error(`Falha ao salvar: ${resp.status} ${errText}`);
       }
+      
+      // Calcular deltas de estoque
+      const deltas = {};
+      oldItems.forEach(oldIt => {
+        deltas[oldIt.indiceFt] = -(parseN(oldIt.qtd));
+      });
+      itens.forEach(newIt => {
+        deltas[newIt.indiceFt] = (deltas[newIt.indiceFt] || 0) + parseN(newIt.qtd);
+      });
+      
+      // Atualizar estoques assincronamente sem travar a interface
+      Object.entries(deltas).forEach(([ftId, delta]) => {
+        updateFtStock(ftId, delta);
+      });
       
       setShowModal(false);
       setEditingPedido(null);
@@ -764,11 +812,27 @@ export default function Pedidos() {
       try {
         const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
         const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const headers = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
+        
+        // Buscar o pedido para recuperar itens e retornar ao estoque
+        const oldResp = await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${id}&select=items`, { headers });
+        let oldItems = [];
+        if (oldResp.ok) {
+          const oldData = await oldResp.json();
+          oldItems = oldData[0]?.items || [];
+        }
+
         const resp = await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${id}`, {
           method: 'DELETE',
-          headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+          headers
         });
         if (!resp.ok) throw new Error('Falha ao excluir');
+        
+        // Devolver as quantidades ao estoque (delta negativo)
+        oldItems.forEach(it => {
+          updateFtStock(it.indiceFt, -(parseN(it.qtd)));
+        });
+
         setPedidos(prev => prev.filter(p => p.id !== id));
       } catch (e) {
         alert('Erro ao excluir: ' + e.message);

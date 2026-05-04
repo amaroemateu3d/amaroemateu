@@ -9,6 +9,7 @@ import Saidas from './pages/Saidas';
 import Pedidos from './pages/Pedidos';
 import Resumo from './pages/Resumo';
 import Usuarios from './pages/Usuarios';
+import Estoque from './pages/Estoque';
 import Login from './pages/Login';
 import './splash.css';
 
@@ -50,6 +51,7 @@ function AppContent() {
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="fichas-tecnicas" element={<FichasTecnicas />} />
+          <Route path="estoque" element={<Estoque />} />
           <Route path="vendas" element={<Vendas />} />
           <Route path="pedidos" element={<Pedidos />} />
           <Route path="saidas" element={<Saidas />} />
