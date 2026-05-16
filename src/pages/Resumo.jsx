@@ -127,28 +127,32 @@ export default function Resumo() {
       let totalPedidosPago = 0;
       let totalPedidosPendente = 0;
       let totalConsignadosPago = 0;
-      let totalConsignadosPendente = 0;
+      let totalConsignadosPendente = 0; // legado
+      let totalConsignadosGerado = 0;
 
       // Consignados (Nova Tabela)
       (consignadosData || []).forEach(acc => {
         (acc.batches || []).forEach(batch => {
           if (!batch.date) return;
-          // Consideramos UTC para garantir que reflete a data exata em que foi salva (T12:00:00Z)
           const bDate = new Date(batch.date);
           const bMonthStr = `${bDate.getUTCFullYear()}-${String(bDate.getUTCMonth() + 1).padStart(2, '0')}`;
           
           if (bMonthStr === monthStr) {
-            let bPago = 0;
-            let bPendente = 0;
+            let bTotal = 0;
             (batch.items || []).forEach(it => {
-              const qTotal = Number(it.qtd || 0);
-              const qPago = Number(it.qtdPago || 0);
-              const pUnit = Number(it.precoUnit || 0);
-              bPago += qPago * pUnit;
-              bPendente += (qTotal - qPago) * pUnit;
+              bTotal += Number(it.qtd || 0) * Number(it.precoUnit || 0);
             });
-            totalConsignadosPago += bPago;
-            totalConsignadosPendente += bPendente;
+            totalConsignadosGerado += bTotal;
+          }
+        });
+
+        (acc.payments || []).forEach(payment => {
+          if (!payment.date) return;
+          const pDate = new Date(payment.date);
+          const pMonthStr = `${pDate.getUTCFullYear()}-${String(pDate.getUTCMonth() + 1).padStart(2, '0')}`;
+          
+          if (pMonthStr === monthStr) {
+            totalConsignadosPago += Number(payment.amount || 0);
           }
         });
       });
@@ -165,6 +169,7 @@ export default function Resumo() {
           } else if (pTipo === 'consignado') {
              if (p.status === 'paid') totalConsignadosPago += amount;
              else totalConsignadosPendente += amount;
+             totalConsignadosGerado += amount;
           }
         }
       });
@@ -199,8 +204,8 @@ export default function Resumo() {
         pedidosPendente: totalPedidosPendente,
         pedidosVenda: totalPedidosPago + totalPedidosPendente,
         consignadosPago: totalConsignadosPago,
-        consignadosPendente: totalConsignadosPendente,
-        consignados: totalConsignadosPago + totalConsignadosPendente,
+        consignadosGerados: totalConsignadosGerado,
+        consignados: totalConsignadosGerado,
         saidasPorCategoria: totalSaidasPorCategoria,
         totalSaidasGeral
 
@@ -222,6 +227,10 @@ export default function Resumo() {
   // Calcula totais anuais
   const totalAnualVendas = summaryData.reduce((acc, curr) => acc + curr.vendasEcommerce + curr.pedidosVenda, 0);
   const totalAnualSaidas = summaryData.reduce((acc, curr) => acc + curr.totalSaidasGeral, 0);
+
+  const totalAnualConsignadoGerado = summaryData.reduce((acc, curr) => acc + curr.consignadosGerados, 0);
+  const totalAnualConsignadoPago = summaryData.reduce((acc, curr) => acc + curr.consignadosPago, 0);
+  const totalAnualConsignadoDevedor = totalAnualConsignadoGerado - totalAnualConsignadoPago;
 
   // Separa o mês atual para destaque
   const currentMonthData = summaryData.find(d => d.monthStr === currentMonthStr);
@@ -274,16 +283,16 @@ export default function Resumo() {
             </div>
 
             <div className="row subtotal" style={{marginTop: '0.4rem', color: 'var(--accent-secondary)'}}>
-              <span>Consignados Gerados</span>
-              <span style={{fontWeight: 'bold'}}>{formatCurrency(data.consignados)}</span>
+              <span>Consignados (Remessas do Mês)</span>
+              <span style={{fontWeight: 'bold'}}>{formatCurrency(data.consignadosGerados)}</span>
             </div>
             <div className="row" style={{fontSize: '0.8rem', paddingLeft: '0.5rem', color: 'var(--text-secondary)'}}>
-              <span>└ Recebido (Pago)</span>
+              <span>└ Recebido no Mês (Pago)</span>
               <span style={{color: 'var(--success)'}}>{formatCurrency(data.consignadosPago)}</span>
             </div>
             <div className="row" style={{fontSize: '0.8rem', paddingLeft: '0.5rem', color: 'var(--text-secondary)'}}>
-              <span>└ Pendente</span>
-              <span style={{color: 'var(--warning)'}}>{formatCurrency(data.consignadosPendente)}</span>
+              <span>└ Variação do Saldo</span>
+              <span style={{color: 'var(--warning)'}}>{formatCurrency(data.consignadosGerados - data.consignadosPago)}</span>
             </div>
 
           </section>
@@ -351,6 +360,27 @@ export default function Resumo() {
             <p className="stat-label">Total de Despesas ({selectedYear})</p>
             <h2 className="stat-value">{formatCurrency(totalAnualSaidas)}</h2>
             <small style={{color: 'var(--text-secondary)'}}>Insumos, Contas e Manutenção</small>
+          </div>
+        </div>
+
+        <div className="card stat-card total-consignados" style={{ background: 'linear-gradient(135deg, #1e293b, #0f172a)', color: '#fff', border: '1px solid #334155' }}>
+          <div className="stat-icon" style={{ background: 'rgba(255,255,255,0.1)' }}><ShoppingCart size={28} color="#60a5fa" /></div>
+          <div>
+            <p className="stat-label" style={{ color: '#94a3b8' }}>Consignados ({selectedYear})</p>
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+              <div>
+                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Gerado</span><br/>
+                <strong style={{ fontSize: '1.1rem' }}>{formatCurrency(totalAnualConsignadoGerado)}</strong>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Pago</span><br/>
+                <strong style={{ fontSize: '1.1rem', color: '#34d399' }}>{formatCurrency(totalAnualConsignadoPago)}</strong>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Saldo</span><br/>
+                <strong style={{ fontSize: '1.1rem', color: totalAnualConsignadoDevedor > 0 ? '#f87171' : '#fff' }}>{formatCurrency(totalAnualConsignadoDevedor)}</strong>
+              </div>
+            </div>
           </div>
         </div>
       </div>
