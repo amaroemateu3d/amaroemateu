@@ -232,13 +232,19 @@ export default function Resumo() {
   const totalAnualConsignadoPago = summaryData.reduce((acc, curr) => acc + curr.consignadosPago, 0);
   const totalAnualConsignadoDevedor = totalAnualConsignadoGerado - totalAnualConsignadoPago;
 
-  // Separa o mês atual para destaque
-  const currentMonthData = summaryData.find(d => d.monthStr === currentMonthStr);
-  const otherMonths = summaryData.filter(d => d.monthStr !== currentMonthStr);
+  // Separa o mês atual e o anterior para destaque
+  const prevMonthDate = new Date();
+  prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+  const prevMonthStr = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
 
-  const renderMonthCard = (data) => {
+  const currentMonthData = summaryData.find(d => d.monthStr === currentMonthStr);
+  const prevMonthData = summaryData.find(d => d.monthStr === prevMonthStr);
+  const otherMonths = summaryData.filter(d => d.monthStr !== currentMonthStr && d.monthStr !== prevMonthStr);
+
+  const renderMonthCard = (data, customBadge = null) => {
     const hasMovement = data.vendasEcommerce > 0 || data.pedidosVenda > 0 || data.consignados > 0 || data.totalSaidasGeral > 0;
     const isCurrent = data.monthStr === currentMonthStr;
+    const isPrev = data.monthStr === prevMonthStr;
 
     return (
       <div key={data.monthStr} className={`card month-card ${!hasMovement ? 'empty-month' : ''} ${isCurrent ? 'current-month' : ''}`}>
@@ -246,9 +252,11 @@ export default function Resumo() {
           <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
             <h3 style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
               {data.monthName} / {selectedYear}
-              {isCurrent && (
+              {customBadge ? (
+                <span className="current-badge" style={{ background: isPrev ? 'var(--text-muted)' : 'var(--accent-primary)' }}>{customBadge}</span>
+              ) : isCurrent ? (
                 <span className="current-badge">Mês Atual</span>
-              )}
+              ) : null}
             </h3>
           </div>
           {hasMovement && (
@@ -385,12 +393,13 @@ export default function Resumo() {
         </div>
       </div>
 
-      {/* SEÇÃO EM DESTAQUE (MÊS ATUAL) */}
-      {currentMonthData && selectedYear === now.getFullYear() && (
+      {/* SEÇÃO EM DESTAQUE (MÊS ATUAL E ANTERIOR) */}
+      {(currentMonthData || prevMonthData) && selectedYear === now.getFullYear() && (
         <div className="featured-month">
           <h2 className="section-subtitle">Mês em Destaque</h2>
-          <div className="featured-container">
-            {renderMonthCard(currentMonthData)}
+          <div className="featured-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem', maxWidth: '900px' }}>
+            {prevMonthData && renderMonthCard(prevMonthData, 'Mês Anterior')}
+            {currentMonthData && renderMonthCard(currentMonthData, 'Mês Atual')}
           </div>
           <div className="divider" style={{margin: '2.5rem 0'}} />
         </div>
