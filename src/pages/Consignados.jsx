@@ -331,6 +331,7 @@ export default function Consignados() {
   const [newClient, setNewClient] = useState({ nome: '', telefone: '', email: '', endereco: '', obs: '' });
   const [newBatchItems, setNewBatchItems] = useState([]);
   const [newBatchDate, setNewBatchDate] = useState('');
+  const [batchMarkup, setBatchMarkup] = useState('3');
   
   // Payment states
   const [itemsToPay, setItemsToPay] = useState([]);
@@ -445,7 +446,8 @@ export default function Consignados() {
     setNewBatchItems(fts.map(ft => ({
       indiceFt: ft.indiceFt,
       nomePeca: ft.nomePeca,
-      precoUnit: ft.isOrcamento ? (ft.precoSugerido || 0).toFixed(2) : ((ft._custoFinal || 0) * 3).toFixed(2),
+      custoBase: ft._custoFinal || 0,
+      precoUnit: ft.isOrcamento ? (ft.precoSugerido || 0).toFixed(2) : ((ft._custoFinal || 0) * parseN(batchMarkup)).toFixed(2),
       qtd: '', // Use empty string for better UX
       qtdPago: 0,
       isOrcamento: ft.isOrcamento
@@ -470,6 +472,15 @@ export default function Consignados() {
       }
       return next;
     });
+  };
+
+  const applyBatchMarkup = () => {
+    const m = parseN(batchMarkup);
+    if (m <= 0) return;
+    setNewBatchItems(prev => prev.map(it => {
+      if (it.isOrcamento) return it;
+      return { ...it, precoUnit: (it.custoBase * m).toFixed(2) };
+    }));
   };
 
   const handleSaveBatch = async () => {
@@ -959,7 +970,7 @@ export default function Consignados() {
             </div>
             <div className="modal-scroll-body" style={{ padding: '2rem' }}>
               
-              <div style={{ display: 'flex', gap: '2rem', marginBottom: '1.5rem', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '2rem', marginBottom: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 <div className="form-group" style={{ margin: 0, width: '200px' }}>
                   <label style={{ fontWeight: 'bold' }}>Data do Lançamento *</label>
                   <input 
@@ -969,9 +980,25 @@ export default function Consignados() {
                     style={{ width: '100%', padding: '0.6rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)'}}
                   />
                 </div>
+
+                <div className="markup-bar" style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', background: 'var(--bg-secondary)', padding: '0.6rem', borderRadius: '8px' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '0.85rem', display: 'block', marginBottom: '4px' }}>Markup Global</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={batchMarkup}
+                      onChange={e => setBatchMarkup(e.target.value)}
+                      style={{ width: '80px', padding: '0.4rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                    />
+                  </div>
+                  <button onClick={applyBatchMarkup} style={{ padding: '0.4rem 0.8rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    Aplicar
+                  </button>
+                </div>
                 
                 <div className="search-box-wrap" style={{ width: '100%', maxWidth: '400px', flex: 1 }}>
-                  <label style={{ visibility: 'hidden', display: 'block' }}>Buscar</label>
+                  <label style={{ visibility: 'hidden', display: 'block', marginBottom: '4px' }}>Buscar</label>
                   <input 
                     type="text" 
                     placeholder="🔍 Buscar produto por nome ou ID..." 
