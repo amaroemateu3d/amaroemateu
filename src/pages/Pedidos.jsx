@@ -16,7 +16,6 @@ const parseN = (v) => {
 
 
 const BLANK_CLIENTE = {
-  tipo: 'pedido',
   nome: '',
   telefone: '',
   email: '',
@@ -313,15 +312,22 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
     if (!Array.isArray(fts)) return [];
     return fts.map(ft => {
       const savedItem = initialData?.itens?.find(it => it.indiceFt === ft.indiceFt);
+      let defaultPreco;
+      if (ft.isOrcamento) {
+        defaultPreco = ft.precoSugerido ? ft.precoSugerido.toFixed(2) : "0.00";
+      } else {
+        defaultPreco = ((ft._custoFinal || 0) * 3).toFixed(2);
+      }
+
       return {
         indiceFt: ft.indiceFt,
         nomePeca: ft.nomePeca || 'Sem Nome',
         custoBase: ft._custoFinal || 0,
-        precoUnit: savedItem ? savedItem.precoUnit : ((ft._custoFinal || 0) * 3).toFixed(2),
+        precoUnit: savedItem ? savedItem.precoUnit : defaultPreco,
         qtd: savedItem ? savedItem.qtd : 0,
+        isOrcamento: ft.isOrcamento
       };
     });
-
   });
 
 
@@ -389,22 +395,6 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
               <span className="section-num">1</span> Dados do Cliente
             </h3>
             <div className="form-grid-2">
-              <div className="form-group span-2">
-                <label>Tipo de Documento</label>
-                <div className="tipo-toggle">
-                  <button
-                    className={cliente.tipo === 'pedido' ? 'tipo-btn active' : 'tipo-btn'}
-                    onClick={() => setCliente(p => ({ ...p, tipo: 'pedido' }))}>
-                    🧾 Pedido de Venda
-                  </button>
-                  <button
-                    className={cliente.tipo === 'consignado' ? 'tipo-btn active consignado' : 'tipo-btn'}
-                    onClick={() => setCliente(p => ({ ...p, tipo: 'consignado' }))}>
-                    🤝 Consignado
-                  </button>
-                </div>
-              </div>
-
               <div className="form-group">
                 <label htmlFor="nome">Nome / Razão Social *</label>
                 <input id="nome" name="nome" value={cliente.nome} onChange={handleClienteChange} placeholder="Nome completo ou empresa" />
@@ -458,7 +448,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
             <div className="section-header-flex" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem'}}>
               <h3 className="section-heading" style={{marginBottom: 0}}>
                 <span className="section-num">3</span> Itens do Pedido
-                {fts.length === 0 && <span className="no-fts-warn"> — Nenhuma FT cadastrada ainda.</span>}
+                {fts.length === 0 && <span className="no-fts-warn"> — Nenhum item cadastrado ainda.</span>}
               </h3>
               
               <div className="search-box-wrap" style={{width: '300px'}}>
@@ -516,7 +506,11 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
 
                         return (
                           <tr key={it.indiceFt || Math.random()} className={active ? 'row-active' : ''}>
-                            <td><span className="badge-sm">{it.indiceFt}</span></td>
+                            <td>
+                              <span className="badge-sm" style={it.isOrcamento ? { background: '#FEF3C7', color: '#D97706' } : {}}>
+                                {it.indiceFt}
+                              </span>
+                            </td>
                             <td>{it.nomePeca}</td>
                             <td className="cost-cell">R$ {fmt(custoBase)}</td>
                             <td className="cost-cell">{formatTime(tempoUnit)}</td>
@@ -613,15 +607,26 @@ export default function Pedidos() {
       const headers = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
 
       // Busca FTs e Pedidos via fetch direto para evitar deadlock do cliente Supabase
-      const [ftsResp, ordersResp] = await Promise.allSettled([
+      const [ftsResp, orcsResp, ordersResp] = await Promise.allSettled([
         fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=*&order=id.asc`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/orcamentos_rapidos?select=*&order=id.asc`, { headers }),
         fetch(`${SUPA_URL}/rest/v1/orders?select=*&client_data=not.is.null&order=created_at.desc`, { headers })
       ]);
 
       const ftsData = ftsResp.status === 'fulfilled' && ftsResp.value.ok ? await ftsResp.value.json() : [];
       // Mapeia garantindo que pegamos o objeto da FT (seja da coluna 'data' ou do root)
       const cleanFts = ftsData.map(r => r.data || r).filter(f => f && f.indiceFt);
-      setFts(cleanFts);
+      
+      const orcsData = orcsResp.status === 'fulfilled' && orcsResp.value.ok ? await orcsResp.value.json() : [];
+      const cleanOrcs = orcsData.map(r => ({
+        indiceFt: r.id,
+        nomePeca: r.name,
+        _custoFinal: 0,
+        isOrcamento: true,
+        precoSugerido: r.data?.price || 0
+      }));
+
+      setFts([...cleanFts, ...cleanOrcs]);
 
 
       if (ordersResp.status === 'fulfilled' && ordersResp.value.ok) {
@@ -651,6 +656,7 @@ export default function Pedidos() {
 
   const updateFtStock = async (ftId, delta) => {
     if (delta === 0) return;
+    if (String(ftId).startsWith('ORC-')) return;
     try {
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;

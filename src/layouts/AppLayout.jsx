@@ -81,6 +81,11 @@ export default function AppLayout() {
             <span>Cadastro de FTs</span>
           </NavLink>
 
+          <NavLink to="/orcamentos" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
+            <Calculator size={20} />
+            <span>Orçamentos Rápidos</span>
+          </NavLink>
+
           <NavLink to="/estoque" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
             <Package size={20} />
             <span>Estoque</span>
@@ -94,6 +99,11 @@ export default function AppLayout() {
           <NavLink to="/pedidos" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
             <ClipboardList size={20} />
             <span>Pedidos</span>
+          </NavLink>
+
+          <NavLink to="/consignados" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
+            <ClipboardList size={20} />
+            <span>Consignados</span>
           </NavLink>
 
           <NavLink to="/saidas" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>

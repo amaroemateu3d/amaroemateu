@@ -4,9 +4,11 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AppLayout from './layouts/AppLayout';
 import Dashboard from './pages/Dashboard';
 import FichasTecnicas from './pages/FichasTecnicas';
+import Orcamentos from './pages/Orcamentos';
 import Vendas from './pages/Vendas';
 import Saidas from './pages/Saidas';
 import Pedidos from './pages/Pedidos';
+import Consignados from './pages/Consignados';
 import Resumo from './pages/Resumo';
 import Usuarios from './pages/Usuarios';
 import Estoque from './pages/Estoque';
@@ -51,9 +53,11 @@ function AppContent() {
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="fichas-tecnicas" element={<FichasTecnicas />} />
+          <Route path="orcamentos" element={<Orcamentos />} />
           <Route path="estoque" element={<Estoque />} />
           <Route path="vendas" element={<Vendas />} />
           <Route path="pedidos" element={<Pedidos />} />
+          <Route path="consignados" element={<Consignados />} />
           <Route path="saidas" element={<Saidas />} />
           <Route path="resumo" element={<Resumo />} />
           <Route path="usuarios" element={<Usuarios />} />
