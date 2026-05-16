@@ -38,13 +38,14 @@ export default function Resumo() {
       const headers = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
 
       // Busca consolidada via fetch direto para evitar deadlock do cliente Supabase
-      const [ordersRes, expensesRes, ftsRes, salesRes, overRes, defRes] = await Promise.allSettled([
+      const [ordersRes, expensesRes, ftsRes, salesRes, overRes, defRes, consignadosRes] = await Promise.allSettled([
         fetch(`${SUPA_URL}/rest/v1/orders?select=*&client_data=not.is.null`, { headers }),
         fetch(`${SUPA_URL}/rest/v1/expenses?select=*`, { headers }),
         fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=*`, { headers }),
         fetch(`${SUPA_URL}/rest/v1/ecommerce_monthly_sales?select=*`, { headers }),
         fetch(`${SUPA_URL}/rest/v1/ecommerce_overrides?select=*`, { headers }),
-        fetch(`${SUPA_URL}/rest/v1/ecommerce_channel_defaults?select=*`, { headers })
+        fetch(`${SUPA_URL}/rest/v1/ecommerce_channel_defaults?select=*`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/consignados?select=*`, { headers })
       ]);
 
       const getD = async (res) => (res.status === 'fulfilled' && res.value.ok) ? await res.value.json() : [];
@@ -55,6 +56,7 @@ export default function Resumo() {
       const salesData = await getD(salesRes);
       const overData = await getD(overRes);
       const defData = await getD(defRes);
+      const consignadosData = await getD(consignadosRes);
 
       const savedFts = ftsDataRaw.map(r => r.data);
       const pedidos = ordersData || [];
@@ -126,6 +128,31 @@ export default function Resumo() {
       let totalPedidosPendente = 0;
       let totalConsignadosPago = 0;
       let totalConsignadosPendente = 0;
+
+      // Consignados (Nova Tabela)
+      (consignadosData || []).forEach(acc => {
+        (acc.batches || []).forEach(batch => {
+          if (!batch.date) return;
+          // Consideramos UTC para garantir que reflete a data exata em que foi salva (T12:00:00Z)
+          const bDate = new Date(batch.date);
+          const bMonthStr = `${bDate.getUTCFullYear()}-${String(bDate.getUTCMonth() + 1).padStart(2, '0')}`;
+          
+          if (bMonthStr === monthStr) {
+            let bPago = 0;
+            let bPendente = 0;
+            (batch.items || []).forEach(it => {
+              const qTotal = Number(it.qtd || 0);
+              const qPago = Number(it.qtdPago || 0);
+              const pUnit = Number(it.precoUnit || 0);
+              bPago += qPago * pUnit;
+              bPendente += (qTotal - qPago) * pUnit;
+            });
+            totalConsignadosPago += bPago;
+            totalConsignadosPendente += bPendente;
+          }
+        });
+      });
+
       pedidos.forEach(p => {
         const pDate = new Date(p.created_at);
         const pMonthStr = `${pDate.getFullYear()}-${String(pDate.getMonth() + 1).padStart(2, '0')}`;
