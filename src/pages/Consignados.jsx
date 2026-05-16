@@ -225,7 +225,8 @@ const openPrintBatchWindow = (batch, cliente) => {
   const accentColor = '#475569';
   const accentBg = '#F1F5F9';
 
-  const itemsHtml = batch.items.map((it, i) => `
+  const sortedItems = [...batch.items].sort((a, b) => String(a.indiceFt || '').localeCompare(String(b.indiceFt || '')));
+  const itemsHtml = sortedItems.map((it, i) => `
     <tr class="${i % 2 === 0 ? 'row-even' : ''}">
       <td class="cell-center text-muted">${i + 1}</td>
       <td class="cell-id">${it.indiceFt}</td>
@@ -278,6 +279,7 @@ const openPrintBatchWindow = (batch, cliente) => {
 
 const openPrintBalanceWindow = (aggregatedItems, cliente, stats) => {
   const openItems = Object.values(aggregatedItems).filter(it => (it.totalQtd - it.totalPago) > 0);
+  openItems.sort((a, b) => String(a.indiceFt || '').localeCompare(String(b.indiceFt || '')));
   
   const accentColor = '#059669';
   const accentBg = '#D1FAE5';
@@ -300,10 +302,6 @@ const openPrintBalanceWindow = (aggregatedItems, cliente, stats) => {
   }).join('');
 
   const totalsHtml = `
-    <div class="total-box" style="background: #F1F5F9; color: #475569;">
-      <div class="total-label" style="color: #475569;">Total Enviado</div>
-      <div class="total-value" style="color: #475569;">R$ ${fmt(stats.totalSent)}</div>
-    </div>
     <div class="total-box">
       <div class="total-label">Saldo Devedor</div>
       <div class="total-value">R$ ${fmt(stats.balance)}</div>
@@ -1008,6 +1006,25 @@ export default function Consignados() {
                   />
                 </div>
               </div>
+
+              {(() => {
+                const sendingItems = newBatchItems.filter(it => parseN(it.qtd) > 0);
+                const totalQtd = sendingItems.reduce((acc, it) => acc + parseN(it.qtd), 0);
+                const totalVal = sendingItems.reduce((acc, it) => acc + (parseN(it.qtd) * parseN(it.precoUnit)), 0);
+                if (totalQtd === 0) return null;
+                return (
+                  <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'rgba(52, 211, 153, 0.1)', borderRadius: '8px', border: '1px solid rgba(52, 211, 153, 0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: '1.1rem' }}>
+                      <strong style={{ color: 'var(--success)' }}>Total de Itens: </strong>
+                      <span style={{ fontWeight: 'bold' }}>{totalQtd}</span>
+                    </div>
+                    <div style={{ fontSize: '1.1rem' }}>
+                      <strong style={{ color: 'var(--success)' }}>Valor Total: </strong>
+                      <span style={{ fontWeight: 'bold' }}>R$ {fmt(totalVal)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
