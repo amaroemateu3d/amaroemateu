@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AppLayout from './layouts/AppLayout';
+import PesquisaEcommerce from './pages/PesquisaEcommerce';
 import Dashboard from './pages/Dashboard';
 import FichasTecnicas from './pages/FichasTecnicas';
 import Orcamentos from './pages/Orcamentos';
@@ -51,7 +52,8 @@ function AppContent() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<AppLayout />}>
-          <Route index element={<Dashboard />} />
+          <Route index element={<PesquisaEcommerce />} />
+          <Route path="pesquisa-ecommerce" element={<PesquisaEcommerce />} />
           <Route path="fichas-tecnicas" element={<FichasTecnicas />} />
           <Route path="orcamentos" element={<Orcamentos />} />
           <Route path="estoque" element={<Estoque />} />

@@ -2,7 +2,7 @@ import { Outlet, NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Calculator,
   ShoppingCart, TrendingDown, ClipboardList, BarChart3,
-  Download, LogOut, Users, Package
+  Download, LogOut, Users, Package, Search
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import './AppLayout.css';
@@ -66,9 +66,9 @@ export default function AppLayout() {
         </div>
 
         <nav className="sidebar-nav" style={{ flex: 1 }}>
-          <NavLink to="/" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"} end>
-            <LayoutDashboard size={20} />
-            <span>Dashboard</span>
+          <NavLink to="/pesquisa-ecommerce" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
+            <Search size={20} />
+            <span>Pesquisa E-commerce</span>
           </NavLink>
 
           <NavLink to="/resumo" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
