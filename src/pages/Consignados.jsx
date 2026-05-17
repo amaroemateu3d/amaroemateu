@@ -24,7 +24,7 @@ const fmt = (n) => {
 };
 
 // ─── Geração de impressão via nova janela ─────────────────────────────────────
-const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientData, itemsHtml, totalsHtml, assinaturaHtml = '', obsHtml = '') => `
+const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientData, itemsHtml, totalsHtml, assinaturaHtml = '', obsHtml = '', headersHtml = '') => `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -194,14 +194,16 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
     <div class="section-label">Itens</div>
     <table>
       <thead>
-        <tr>
-          <th style="width:30px">#</th>
-          <th style="width:60px">ID</th>
-          <th>Descrição</th>
-          <th style="width:90px;text-align:right">Preço Unit.</th>
-          <th style="width:70px;text-align:center">Qtd</th>
-          <th style="width:105px;text-align:right">Subtotal</th>
-        </tr>
+        ${headersHtml || `
+          <tr>
+            <th style="width:30px">#</th>
+            <th style="width:60px">ID</th>
+            <th>Descrição</th>
+            <th style="width:90px;text-align:right">Preço Unit.</th>
+            <th style="width:70px;text-align:center">Qtd</th>
+            <th style="width:105px;text-align:right">Subtotal</th>
+          </tr>
+        `}
       </thead>
       <tbody>${itemsHtml}</tbody>
     </table>
@@ -286,7 +288,7 @@ const openPrintBalanceWindow = (aggregatedItems, cliente, stats) => {
   const dateStr = new Date().toLocaleDateString('pt-BR');
 
   const itemsHtml = openItems.length === 0 ? `
-    <tr><td colspan="6" class="cell-center text-muted" style="padding: 2rem;">Não há peças em aberto no momento. 🎉</td></tr>
+    <tr><td colspan="8" class="cell-center text-muted" style="padding: 2rem;">Não há peças em aberto no momento. 🎉</td></tr>
   ` : openItems.map((it, i) => {
     const emAberto = it.totalQtd - it.totalPago;
     return `
@@ -295,11 +297,26 @@ const openPrintBalanceWindow = (aggregatedItems, cliente, stats) => {
         <td class="cell-id">${it.indiceFt}</td>
         <td class="cell-name">${it.nomePeca}</td>
         <td class="cell-right text-muted">R$ ${fmt(parseN(it.precoUnit))}</td>
+        <td class="cell-center cell-bold">${it.totalQtd}</td>
+        <td class="cell-center" style="color: #059669; font-weight: bold;">${it.totalPago}</td>
         <td class="cell-center text-danger">${emAberto}</td>
         <td class="cell-right cell-bold">R$ ${fmt(parseN(it.precoUnit) * emAberto)}</td>
       </tr>
     `;
   }).join('');
+
+  const headersHtml = `
+    <tr>
+      <th style="width:30px">#</th>
+      <th style="width:60px">ID</th>
+      <th>Descrição</th>
+      <th style="width:90px;text-align:right">Preço Unit.</th>
+      <th style="width:70px;text-align:center">Enviados</th>
+      <th style="width:70px;text-align:center">Pagos</th>
+      <th style="width:70px;text-align:center">Aberto</th>
+      <th style="width:105px;text-align:right">Subtotal</th>
+    </tr>
+  `;
 
   const totalsHtml = `
     <div class="total-box">
@@ -308,7 +325,7 @@ const openPrintBalanceWindow = (aggregatedItems, cliente, stats) => {
     </div>
   `;
 
-  const html = getPrintTemplate('EXTRATO DE SALDO EM ABERTO', 'CONSIGNADO', dateStr, accentColor, accentBg, cliente, itemsHtml, totalsHtml);
+  const html = getPrintTemplate('EXTRATO DE SALDO EM ABERTO', 'CONSIGNADO', dateStr, accentColor, accentBg, cliente, itemsHtml, totalsHtml, '', '', headersHtml);
   const win = window.open('', '_blank', 'width=960,height=780');
   win.document.write(html);
   win.document.close();
