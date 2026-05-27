@@ -15,9 +15,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storageKey: 'am3d-auth-token-v2', 
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     // Desativa o sistema de locks que costuma travar em ambientes de rede/sincronização (ex: GDrive)
-    lock: {
-      acquire: () => Promise.resolve(null),
-      release: () => Promise.resolve(),
+    lock: async (name, acquireTimeout, fn) => {
+      return await fn();
     }
   }
 });
