@@ -6,6 +6,7 @@ import './Login.css';
 const USER_MAP = {
   daniel: 'daniel@am3d.app',
   cintia: 'cintia@am3d.app',
+  vendas: 'vendas@am3d.app',
 };
 
 export default function Login() {
@@ -19,7 +20,16 @@ export default function Login() {
     setErro('');
     setLoading(true);
 
-    const email = USER_MAP[usuario.toLowerCase().trim()];
+    const cleanUser = usuario.toLowerCase().trim();
+    let email = USER_MAP[cleanUser];
+
+    if (!email) {
+      if (cleanUser.includes('@')) {
+        email = cleanUser;
+      } else if (cleanUser.length > 0) {
+        email = `${cleanUser}@am3d.app`;
+      }
+    }
 
     if (!email) {
       setErro('Usuário não encontrado.');
