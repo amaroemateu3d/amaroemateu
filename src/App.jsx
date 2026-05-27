@@ -40,7 +40,9 @@ function SplashScreen({ onDone }) {
 
 // AppContent usa o AuthContext como ÚNICA fonte de verdade
 function AppContent() {
-  const { session, loading, isAcertos } = useAuth();
+  const { session, loading, isAcertos, profile } = useAuth();
+
+  console.log("AppContent Render:", { loading, hasSession: !!session, isAcertos, profile });
 
   // Aguarda o AuthContext resolver a sessão
   if (loading) return <SplashScreen onDone={() => {}} />;

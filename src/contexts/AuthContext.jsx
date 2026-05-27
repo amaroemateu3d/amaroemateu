@@ -10,12 +10,19 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   async function loadProfile(userId) {
-    const { data } = await supabase
+    console.log("AuthContext: Carregando perfil para o ID:", userId);
+    const { data, error } = await supabase
       .from('user_profiles')
       .select('*')
       .eq('id', userId)
       .single();
-    setProfile(data);
+    
+    if (error) {
+      console.error("AuthContext: Erro ao carregar perfil:", error);
+    } else {
+      console.log("AuthContext: Perfil carregado com sucesso:", data);
+    }
+    setProfile(data || null);
   }
 
   async function loadPermissions(userId) {
