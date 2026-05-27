@@ -49,7 +49,7 @@ export default function Usuarios() {
   const [permissions, setPermissions] = useState({});
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [newUser, setNewUser] = useState({ nome: '', email: '', password: '', is_admin: false });
+  const [newUser, setNewUser] = useState({ nome: '', email: '', password: '', is_admin: false, is_acertos: false });
   const [adding, setAdding] = useState(false);
   const [erro, setErro] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -125,6 +125,34 @@ export default function Usuarios() {
     setSaving(false);
   }
 
+  async function handleToggleAcertos(userId, currentValue) {
+    const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const newValue = !currentValue;
+    try {
+      const resp = await fetch(`${SUPABASE_URL}/rest/v1/user_profiles?id=eq.${userId}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPA_KEY,
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ is_acertos: newValue })
+      });
+      if (!resp.ok) throw new Error("Erro ao atualizar o perfil.");
+      
+      // Atualizar estado local
+      setProfiles(prev => {
+        const next = { ...prev };
+        if (next[userId]) {
+          next[userId] = { ...next[userId], is_acertos: newValue };
+        }
+        return next;
+      });
+    } catch (err) {
+      alert("Erro ao alterar acesso a acertos: " + err.message);
+    }
+  }
+
   function togglePerm(pageId, type) {
     setPermissions(prev => ({
       ...prev,
@@ -141,14 +169,32 @@ export default function Usuarios() {
     setAdding(true);
     const result = await adminFetch('', {
       method: 'POST',
-      body: JSON.stringify(newUser),
+      body: JSON.stringify({
+        nome: newUser.nome,
+        email: newUser.email,
+        password: newUser.password,
+        is_admin: newUser.is_admin
+      }),
     }, session);
 
     if (result.error) {
       setErro(result.error);
     } else {
+      // Se criou com sucesso e is_acertos é true, atualizar o perfil
+      if (newUser.is_acertos && result.id) {
+        const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        await fetch(`${SUPABASE_URL}/rest/v1/user_profiles?id=eq.${result.id}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPA_KEY,
+            'Authorization': `Bearer ${SUPA_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ is_acertos: true })
+        });
+      }
       setShowModal(false);
-      setNewUser({ nome: '', email: '', password: '', is_admin: false });
+      setNewUser({ nome: '', email: '', password: '', is_admin: false, is_acertos: false });
       await loadUsers();
     }
     setAdding(false);
@@ -244,9 +290,21 @@ export default function Usuarios() {
             </div>
           ) : (
             <>
-              <h3>
-                Permissões — {profiles[selectedUser.id]?.nome || selectedUser.email.split('@')[0]}
-              </h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h3 style={{ margin: 0 }}>
+                  Permissões — {profiles[selectedUser.id]?.nome || selectedUser.email.split('@')[0]}
+                </h3>
+                {!profiles[selectedUser.id]?.is_admin && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', background: 'var(--bg-secondary)', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '0.9rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={profiles[selectedUser.id]?.is_acertos || false}
+                      onChange={() => handleToggleAcertos(selectedUser.id, profiles[selectedUser.id]?.is_acertos)}
+                    />
+                    <strong style={{ color: 'var(--accent-primary)' }}>Acesso Restrito a Acertos</strong>
+                  </label>
+                )}
+              </div>
               <table className="permissions-table">
                 <thead>
                   <tr>
@@ -362,6 +420,17 @@ export default function Usuarios() {
                 <span style={{ fontWeight: 600 }}>Administrador</span>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: 'auto' }}>
                   Acesso total ao sistema
+                </span>
+              </label>
+              <label className="admin-toggle" style={{ marginTop: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={newUser.is_acertos}
+                  onChange={e => setNewUser(p => ({ ...p, is_acertos: e.target.checked }))}
+                />
+                <span style={{ fontWeight: 600 }}>Acesso a Acertos</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: 'auto' }}>
+                  Apenas tela de acertos
                 </span>
               </label>
               {erro && (

@@ -88,6 +88,7 @@ export function AuthProvider({ children }) {
   }
 
   const isAdmin = profile?.is_admin === true;
+  const isAcertos = profile?.is_acertos === true;
 
   async function signOut() {
     try {
@@ -101,7 +102,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, profile, permissions, isAdmin, canView, canEdit, signOut, loading }}>
+    <AuthContext.Provider value={{ session, profile, permissions, isAdmin, isAcertos, canView, canEdit, signOut, loading }}>
       {children}
     </AuthContext.Provider>
   );

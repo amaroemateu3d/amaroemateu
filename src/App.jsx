@@ -14,6 +14,7 @@ import Resumo from './pages/Resumo';
 import Usuarios from './pages/Usuarios';
 import Estoque from './pages/Estoque';
 import Login from './pages/Login';
+import Acertos from './pages/Acertos';
 import './splash.css';
 
 function SplashScreen({ onDone }) {
@@ -39,13 +40,25 @@ function SplashScreen({ onDone }) {
 
 // AppContent usa o AuthContext como ÚNICA fonte de verdade
 function AppContent() {
-  const { session, loading } = useAuth();
+  const { session, loading, isAcertos } = useAuth();
 
   // Aguarda o AuthContext resolver a sessão
   if (loading) return <SplashScreen onDone={() => {}} />;
 
   // Sem sessão = tela de login
   if (!session) return <Login />;
+
+  // Se o usuário possui acesso restrito de acertos, renderiza apenas a tela de acertos
+  if (isAcertos) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Acertos />} />
+          <Route path="*" element={<Acertos />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
 
   // Logado = app completo
   return (

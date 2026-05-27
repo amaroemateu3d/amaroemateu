@@ -346,13 +346,15 @@ export default function Consignados() {
   const [newClient, setNewClient] = useState({ nome: '', telefone: '', email: '', endereco: '', obs: '' });
   const [newBatchItems, setNewBatchItems] = useState([]);
   const [newBatchDate, setNewBatchDate] = useState('');
-  const [batchMarkup, setBatchMarkup] = useState('3');
+  const [batchMarkup, setBatchMarkup] = useState('1');
   
   // Payment states
   const [itemsToPay, setItemsToPay] = useState([]);
   const [paymentObs, setPaymentObs] = useState('');
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [modalSortField, setModalSortField] = useState('id');
+  const [modalSortAsc, setModalSortAsc] = useState(true);
 
   useEffect(() => {
     fetchData();
@@ -457,6 +459,65 @@ export default function Consignados() {
     }
   };
 
+  const handleDeleteAccount = async (account, e) => {
+    if (e) e.stopPropagation();
+    
+    if (!window.confirm(`⚠️ EXCLUIR CLIENTE PERMANENTEMENTE?\n\nTem certeza que deseja excluir o cliente "${account.cliente?.nome}"?\n\nTodos os registros de remessas e pagamentos deste cliente serão apagados para sempre. Esta ação NÃO pode ser desfeita.`)) {
+      return;
+    }
+
+    const devolverEstoque = window.confirm("Deseja devolver as peças das remessas em aberto deste cliente de volta ao estoque físico antes de excluí-lo?\n\n• Clique em [OK] para DEVOLVER os itens ao estoque.\n• Clique em [Cancelar] para APAGAR o cliente sem alterar o estoque atual.");
+
+    setLoading(true);
+    try {
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      if (devolverEstoque && account.batches && account.batches.length > 0) {
+        // Devolver itens de todas as remessas
+        for (const batch of account.batches) {
+          for (const it of (batch.items || [])) {
+            const openQty = parseN(it.qtd) - parseN(it.qtdPago);
+            if (openQty > 0) {
+              await updateFtStock(it.indiceFt, -openQty); // Negativo devolve pro estoque
+            }
+          }
+        }
+      }
+
+      const resp = await fetch(`${SUPA_URL}/rest/v1/consignados?id=eq.${account.id}`, {
+        method: 'DELETE',
+        headers: { 
+          'apikey': SUPA_KEY, 
+          'Authorization': `Bearer ${SUPA_KEY}`
+        }
+      });
+
+      if (!resp.ok) throw new Error("Erro ao excluir conta do cliente.");
+
+      alert("Cliente excluído com sucesso!");
+      setSelectedAccount(null);
+      fetchData();
+    } catch (err) {
+      alert(err.message);
+      setLoading(false);
+    }
+  };
+
+  const handleSortClick = (field) => {
+    if (modalSortField === field) {
+      setModalSortAsc(prev => !prev);
+    } else {
+      setModalSortField(field);
+      setModalSortAsc(true);
+    }
+  };
+
+  const renderSortIndicator = (field) => {
+    if (modalSortField !== field) return '';
+    return modalSortAsc ? ' ▲' : ' ▼';
+  };
+
   const openBatchModal = () => {
     setNewBatchItems(fts.map(ft => ({
       indiceFt: ft.indiceFt,
@@ -468,6 +529,8 @@ export default function Consignados() {
       isOrcamento: ft.isOrcamento
     })));
     setSearchTerm('');
+    setModalSortField('id');
+    setModalSortAsc(true);
     // Formato YYYY-MM-DD para input date
     const today = new Date();
     // Compensar timezone para garantir que pegamos a data local correta
@@ -809,9 +872,14 @@ export default function Consignados() {
 
     return (
       <div className="page-wrapper" translate="no">
-        <button className="btn-outline btn-sm" onClick={() => setSelectedAccount(null)} style={{ marginBottom: '1rem' }}>
-          ← Voltar para Contas
-        </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <button className="btn-outline btn-sm" onClick={() => setSelectedAccount(null)}>
+            ← Voltar para Contas
+          </button>
+          <button className="btn-outline btn-sm" onClick={(e) => handleDeleteAccount(selectedAccount, e)} style={{ borderColor: 'var(--danger)', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Trash2 size={16} /> Excluir Cliente
+          </button>
+        </div>
 
         <div className="card" style={{ marginBottom: '1.5rem', background: 'linear-gradient(135deg, #1e293b, #0f172a)' }}>
           <h2 style={{ color: '#fff', margin: '0 0 1rem 0' }}>Conta Consignado: {selectedAccount.cliente?.nome}</h2>
@@ -1046,20 +1114,62 @@ export default function Consignados() {
               <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', background: 'var(--bg-secondary)' }}>
-                    <th style={{ padding: '0.75rem' }}>ID</th>
-                    <th style={{ padding: '0.75rem' }}>Nome</th>
-                    <th style={{ padding: '0.75rem', width: '150px' }}>Preço de Venda</th>
-                    <th style={{ padding: '0.75rem', width: '120px' }}>Qtd a Enviar</th>
+                    <th 
+                      style={{ padding: '0.75rem', cursor: 'pointer', userSelect: 'none' }} 
+                      onClick={() => handleSortClick('id')}
+                    >
+                      ID{renderSortIndicator('id')}
+                    </th>
+                    <th 
+                      style={{ padding: '0.75rem', cursor: 'pointer', userSelect: 'none' }} 
+                      onClick={() => handleSortClick('nome')}
+                    >
+                      Nome{renderSortIndicator('nome')}
+                    </th>
+                    <th 
+                      style={{ padding: '0.75rem', cursor: 'pointer', userSelect: 'none' }} 
+                      onClick={() => handleSortClick('custo')}
+                    >
+                      Preço de Custo{renderSortIndicator('custo')}
+                    </th>
+                    <th 
+                      style={{ padding: '0.75rem', width: '150px', cursor: 'pointer', userSelect: 'none' }} 
+                      onClick={() => handleSortClick('venda')}
+                    >
+                      Preço de Venda (R$){renderSortIndicator('venda')}
+                    </th>
+                    <th style={{ padding: '0.75rem', width: '120px', userSelect: 'none' }}>
+                      Qtd a Enviar
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {newBatchItems
                     .filter(it => (it.nomePeca || '').toLowerCase().includes(searchTerm.toLowerCase()) || (it.indiceFt || '').toLowerCase().includes(searchTerm.toLowerCase()))
-                    .sort((a,b) => {
+                    .sort((a, b) => {
                       const qA = parseN(a.qtd) > 0 ? 1 : 0;
                       const qB = parseN(b.qtd) > 0 ? 1 : 0;
-                      if (qA !== qB) return qB - qA;
-                      return a.indiceFt.localeCompare(b.indiceFt);
+                      if (qA !== qB) return qB - qA; // Selected items always at the top
+                      
+                      let valA, valB;
+                      if (modalSortField === 'id') {
+                        valA = a.indiceFt || '';
+                        valB = b.indiceFt || '';
+                        return modalSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                      } else if (modalSortField === 'nome') {
+                        valA = a.nomePeca || '';
+                        valB = b.nomePeca || '';
+                        return modalSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                      } else if (modalSortField === 'custo') {
+                        valA = parseN(a.custoBase);
+                        valB = parseN(b.custoBase);
+                        return modalSortAsc ? valA - valB : valB - valA;
+                      } else if (modalSortField === 'venda') {
+                        valA = parseN(a.precoUnit);
+                        valB = parseN(b.precoUnit);
+                        return modalSortAsc ? valA - valB : valB - valA;
+                      }
+                      return 0;
                     })
                     .map((it) => {
                       const active = parseN(it.qtd) > 0;
@@ -1068,6 +1178,7 @@ export default function Consignados() {
                         <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: active ? 'rgba(124, 58, 237, 0.05)' : 'transparent' }}>
                           <td style={{ padding: '0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
                           <td style={{ padding: '0.5rem', fontWeight: active ? 'bold' : 'normal' }}>{it.nomePeca}</td>
+                          <td style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>R$ {fmt(it.custoBase)}</td>
                           <td style={{ padding: '0.5rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                               <span>R$</span>
@@ -1079,7 +1190,7 @@ export default function Consignados() {
                           </td>
                         </tr>
                       );
-                  })}
+                    })}
                 </tbody>
               </table>
             </div>
@@ -1212,7 +1323,17 @@ export default function Consignados() {
             const stats = calculateAccountStats(acc);
             return (
               <div key={acc.id} className="card" style={{ cursor: 'pointer', border: '2px solid transparent' }} onClick={() => setSelectedAccount(acc)} onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent-primary)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
-                <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-primary)' }}>{acc.cliente?.nome}</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', margin: '0 0 0.5rem 0' }}>
+                  <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>{acc.cliente?.nome}</h3>
+                  <button 
+                    className="btn-icon" 
+                    onClick={(e) => handleDeleteAccount(acc, e)} 
+                    title="Excluir Cliente"
+                    style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                  >
+                    <Trash2 size={18} color="var(--danger)" />
+                  </button>
+                </div>
                 <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{acc.cliente?.telefone || 'Sem telefone'}</p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Saldo Devedor:</span>
