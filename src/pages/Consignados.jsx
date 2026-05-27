@@ -343,7 +343,7 @@ export default function Consignados() {
   const [showNewPaymentModal, setShowNewPaymentModal] = useState(false);
 
   // Form states
-  const [newClient, setNewClient] = useState({ nome: '', telefone: '', email: '', endereco: '', obs: '' });
+  const [newClient, setNewClient] = useState({ nome: '', telefone: '', email: '', endereco: '', obs: '', tipoAcerto: 'integral', comissaoPct: '0' });
   const [newBatchItems, setNewBatchItems] = useState([]);
   const [newBatchDate, setNewBatchDate] = useState('');
   const [batchMarkup, setBatchMarkup] = useState('1');
@@ -840,8 +840,12 @@ export default function Consignados() {
       return sum + (batch.items || []).reduce((bsum, it) => bsum + (parseN(it.qtd) * parseN(it.precoUnit)), 0);
     }, 0);
     
+    const comissao = acc.cliente?.tipoAcerto === 'comissionado' ? parseN(acc.cliente?.comissaoPct) : 0;
+    const repasseRate = (100 - comissao) / 100;
+    const totalExpected = totalSent * repasseRate;
+
     const totalPaid = (acc.payments || []).reduce((sum, p) => sum + parseN(p.amount), 0);
-    const balance = totalSent - totalPaid;
+    const balance = totalExpected - totalPaid;
 
     return { totalSent, totalPaid, balance };
   };
@@ -882,17 +886,34 @@ export default function Consignados() {
         </div>
 
         <div className="card" style={{ marginBottom: '1.5rem', background: 'linear-gradient(135deg, #1e293b, #0f172a)' }}>
-          <h2 style={{ color: '#fff', margin: '0 0 1rem 0' }}>Conta Consignado: {selectedAccount.cliente?.nome}</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+            <h2 style={{ color: '#fff', margin: 0 }}>Conta Consignado: {selectedAccount.cliente?.nome}</h2>
+            {selectedAccount.cliente?.tipoAcerto === 'comissionado' ? (
+              <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.4)', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                Comissionado ({selectedAccount.cliente?.comissaoPct}%)
+              </span>
+            ) : (
+              <span className="badge" style={{ background: 'rgba(52, 211, 153, 0.2)', color: 'var(--success)', border: '1px solid rgba(52, 211, 153, 0.4)', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                Valor Integral (100% Repasse)
+              </span>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
-            <div style={{ background: 'rgba(255,255,255,0.1)', padding: '1rem', borderRadius: '8px', minWidth: '200px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.1)', padding: '1rem', borderRadius: '8px', minWidth: '180px' }}>
               <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 0.5rem 0' }}>Total Enviado</p>
               <h3 style={{ color: '#fff', margin: 0 }}>R$ {fmt(stats.totalSent)}</h3>
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.1)', padding: '1rem', borderRadius: '8px', minWidth: '200px' }}>
+            {selectedAccount.cliente?.tipoAcerto === 'comissionado' && (
+              <div style={{ background: 'rgba(255,255,255,0.1)', padding: '1rem', borderRadius: '8px', minWidth: '180px' }}>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 0.5rem 0' }}>Repasse Esperado ({100 - parseN(selectedAccount.cliente?.comissaoPct)}%)</p>
+                <h3 style={{ color: 'var(--accent-primary)', margin: 0 }}>R$ {fmt(stats.totalSent * ((100 - parseN(selectedAccount.cliente?.comissaoPct)) / 100))}</h3>
+              </div>
+            )}
+            <div style={{ background: 'rgba(255,255,255,0.1)', padding: '1rem', borderRadius: '8px', minWidth: '180px' }}>
               <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 0.5rem 0' }}>Total Pago</p>
               <h3 style={{ color: '#34d399', margin: 0 }}>R$ {fmt(stats.totalPaid)}</h3>
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.1)', padding: '1rem', borderRadius: '8px', minWidth: '200px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.1)', padding: '1rem', borderRadius: '8px', minWidth: '180px' }}>
               <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 0.5rem 0' }}>Saldo Devedor</p>
               <h3 style={{ color: stats.balance > 0 ? '#f87171' : '#fff', margin: 0 }}>R$ {fmt(stats.balance)}</h3>
             </div>
@@ -1334,6 +1355,15 @@ export default function Consignados() {
                     <Trash2 size={18} color="var(--danger)" />
                   </button>
                 </div>
+                {acc.cliente?.tipoAcerto === 'comissionado' ? (
+                  <span className="badge-sm" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.2)', marginBottom: '8px', display: 'inline-block' }}>
+                    Comissionado ({acc.cliente?.comissaoPct}%)
+                  </span>
+                ) : (
+                  <span className="badge-sm" style={{ background: 'rgba(52, 211, 153, 0.1)', color: 'var(--success)', border: '1px solid rgba(52, 211, 153, 0.2)', marginBottom: '8px', display: 'inline-block' }}>
+                    Valor Integral
+                  </span>
+                )}
                 <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{acc.cliente?.telefone || 'Sem telefone'}</p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Saldo Devedor:</span>
@@ -1362,6 +1392,31 @@ export default function Consignados() {
               <label>Endereço</label>
               <input type="text" value={newClient.endereco} onChange={e => setNewClient({...newClient, endereco: e.target.value})} />
             </div>
+            <div className="form-group" style={{ marginBottom: '1rem' }}>
+              <label>Tipo de Acerto Consignado</label>
+              <select 
+                value={newClient.tipoAcerto || 'integral'} 
+                onChange={e => setNewClient({...newClient, tipoAcerto: e.target.value, comissaoPct: e.target.value === 'integral' ? '0' : newClient.comissaoPct})}
+                style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', outline: 'none' }}
+              >
+                <option value="integral">Valor Integral (100% Repasse)</option>
+                <option value="comissionado">Comissionado (% de Comissão do Cliente)</option>
+              </select>
+            </div>
+            {newClient.tipoAcerto === 'comissionado' && (
+              <div className="form-group" style={{ marginBottom: '1rem' }}>
+                <label>Comissão do Cliente (%) *</label>
+                <input 
+                  type="number" 
+                  min="0" 
+                  max="100" 
+                  value={newClient.comissaoPct || ''} 
+                  onChange={e => setNewClient({...newClient, comissaoPct: e.target.value})} 
+                  placeholder="Ex: 30"
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', outline: 'none' }}
+                />
+              </div>
+            )}
             <div className="form-group" style={{ marginBottom: '1.5rem' }}>
               <label>Observações</label>
               <textarea rows={2} value={newClient.obs} onChange={e => setNewClient({...newClient, obs: e.target.value})} />

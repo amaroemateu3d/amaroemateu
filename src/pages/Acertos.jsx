@@ -57,8 +57,12 @@ export default function Acertos() {
       return sum + (batch.items || []).reduce((bsum, it) => bsum + (parseN(it.qtd) * parseN(it.precoUnit)), 0);
     }, 0);
     
+    const comissao = acc.cliente?.tipoAcerto === 'comissionado' ? parseN(acc.cliente?.comissaoPct) : 0;
+    const repasseRate = (100 - comissao) / 100;
+    const totalExpected = totalSent * repasseRate;
+
     const totalPaid = (acc.payments || []).reduce((sum, p) => sum + parseN(p.amount), 0);
-    const balance = totalSent - totalPaid;
+    const balance = totalExpected - totalPaid;
 
     return { totalSent, totalPaid, balance };
   };
@@ -111,10 +115,13 @@ export default function Acertos() {
   const openItems = selectedAccount ? getOpenItems(selectedAccount) : [];
 
   // Calculate total amount to receive in this quick settlement
+  const comissaoPct = selectedAccount?.cliente?.tipoAcerto === 'comissionado' ? parseN(selectedAccount?.cliente?.comissaoPct) : 0;
+  const repasseRate = (100 - comissaoPct) / 100;
+
   const currentTotalReceipt = openItems.reduce((sum, it) => {
     const qty = salesToRegister[it.indiceFt] || 0;
     return sum + (qty * parseN(it.precoUnit));
-  }, 0);
+  }, 0) * repasseRate;
 
   const handleSaveAcerto = async () => {
     const selectedVendas = Object.entries(salesToRegister).filter(([_, qty]) => qty > 0);
@@ -288,6 +295,11 @@ export default function Acertos() {
                       <div className="client-details">
                         <h3>{acc.cliente?.nome}</h3>
                         <p>{acc.cliente?.telefone || 'Sem telefone'}</p>
+                        {acc.cliente?.tipoAcerto === 'comissionado' && (
+                          <span style={{ fontSize: '0.7rem', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(245,158,11,0.2)', display: 'inline-block', marginTop: '4px' }}>
+                            Comissionado ({acc.cliente?.comissaoPct}%)
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="card-bottom">
@@ -314,8 +326,19 @@ export default function Acertos() {
             return (
               <div className="selected-client-hero">
                 <div className="hero-info">
-                  <h2>{selectedAccount.cliente?.nome}</h2>
-                  <p>📞 {selectedAccount.cliente?.telefone || 'Sem telefone'}</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <h2 style={{ margin: 0 }}>{selectedAccount.cliente?.nome}</h2>
+                    {selectedAccount.cliente?.tipoAcerto === 'comissionado' ? (
+                      <span style={{ fontSize: '0.75rem', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.15)', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(245,158,11,0.3)', fontWeight: 'bold' }}>
+                        Comissionado ({selectedAccount.cliente?.comissaoPct}%)
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--acerto-success)', background: 'rgba(16, 185, 129, 0.15)', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.3)', fontWeight: 'bold' }}>
+                        Valor Integral
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ marginTop: '4px' }}>📞 {selectedAccount.cliente?.telefone || 'Sem telefone'}</p>
                   {selectedAccount.cliente?.obs && (
                     <div className="client-obs-badge">
                       <strong>Obs:</strong> {selectedAccount.cliente.obs}
@@ -402,14 +425,22 @@ export default function Acertos() {
 
           {/* BARRA DE AÇÃO FLUTUANTE / RODAPÉ */}
           {currentTotalReceipt > 0 && (
-            <div className="acerto-checkout-bar">
-              <div className="checkout-info">
-                <span>Total a Receber</span>
-                <h3>R$ {fmt(currentTotalReceipt)}</h3>
+            <div className="acerto-checkout-bar" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.6rem' }}>
+              {selectedAccount.cliente?.tipoAcerto === 'comissionado' && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.4rem', color: 'var(--acerto-text-muted)' }}>
+                  <span>Venda Bruta: R$ {fmt(openItems.reduce((sum, it) => sum + ((salesToRegister[it.indiceFt] || 0) * parseN(it.precoUnit)), 0))}</span>
+                  <span>Comissão ({comissaoPct}%): - R$ {fmt(openItems.reduce((sum, it) => sum + ((salesToRegister[it.indiceFt] || 0) * parseN(it.precoUnit)), 0) * (comissaoPct / 100))}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <div className="checkout-info">
+                  <span>{selectedAccount.cliente?.tipoAcerto === 'comissionado' ? 'Valor com Desconto de Comissão' : 'Total a Receber'}</span>
+                  <h3>R$ {fmt(currentTotalReceipt)}</h3>
+                </div>
+                <button className="confirm-acerto-btn" onClick={handleSaveAcerto} disabled={saving}>
+                  {saving ? 'Registrando...' : '💰 Confirmar Acerto'}
+                </button>
               </div>
-              <button className="confirm-acerto-btn" onClick={handleSaveAcerto} disabled={saving}>
-                {saving ? 'Registrando...' : '💰 Confirmar Acerto'}
-              </button>
             </div>
           )}
         </main>
