@@ -1160,63 +1160,6 @@ export default function Consignados() {
                 </div>
               </div>
 
-              {(() => {
-                const sendingItems = newBatchItems.filter(it => parseN(it.qtd) > 0);
-                const totalQtd = sendingItems.reduce((acc, it) => acc + parseN(it.qtd), 0);
-                const totalVal = sendingItems.reduce((acc, it) => acc + (parseN(it.qtd) * parseN(it.precoUnit)), 0);
-                if (totalQtd === 0) return null;
-
-                const isComissionado = selectedAccount.cliente?.tipoAcerto === 'comissionado';
-                const comissaoPct = isComissionado ? parseN(selectedAccount.cliente?.comissaoPct) : 0;
-                
-                const totalComissao = sendingItems.reduce((acc, it) => {
-                  const qty = parseN(it.qtd);
-                  const pVenda = parseN(it.precoUnit);
-                  return acc + (pVenda * (comissaoPct / 100) * qty);
-                }, 0);
-                
-                const totalLucro = sendingItems.reduce((acc, it) => {
-                  const qty = parseN(it.qtd);
-                  const pVenda = parseN(it.precoUnit);
-                  const vLucro = isComissionado
-                    ? (pVenda * (100 - comissaoPct) / 100) - parseN(it.custoBase)
-                    : pVenda - parseN(it.custoBase);
-                  return acc + (vLucro * qty);
-                }, 0);
-
-                return (
-                  <div style={{ 
-                    marginBottom: '1.5rem', 
-                    padding: '1.25rem', 
-                    background: 'var(--bg-secondary)', 
-                    borderRadius: '12px', 
-                    border: '1px solid var(--border-color)', 
-                    display: 'grid', 
-                    gridTemplateColumns: isComissionado ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', 
-                    gap: '1.5rem' 
-                  }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Total de Itens</span>
-                      <span style={{ fontSize: '1.3rem', fontWeight: '800', color: 'var(--text-primary)' }}>{totalQtd}</span>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Valor Total</span>
-                      <span style={{ fontSize: '1.3rem', fontWeight: '800', color: 'var(--text-primary)' }}>R$ {fmt(totalVal)}</span>
-                    </div>
-                    {isComissionado && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span style={{ fontSize: '0.85rem', color: '#fbbf24', fontWeight: 'bold', textTransform: 'uppercase' }}>Total Comissão</span>
-                        <span style={{ fontSize: '1.3rem', fontWeight: '800', color: '#fbbf24' }}>R$ {fmt(totalComissao)}</span>
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <span style={{ fontSize: '0.85rem', color: totalLucro >= 0 ? '#34d399' : '#f87171', fontWeight: 'bold', textTransform: 'uppercase' }}>Lucro Total</span>
-                      <span style={{ fontSize: '1.3rem', fontWeight: '800', color: totalLucro >= 0 ? '#34d399' : '#f87171' }}>R$ {fmt(totalLucro)}</span>
-                    </div>
-                  </div>
-                );
-              })()}
-
               <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', background: 'var(--bg-secondary)' }}>
@@ -1261,6 +1204,58 @@ export default function Consignados() {
                   </tr>
                 </thead>
                 <tbody>
+                  {(() => {
+                    const sendingItems = newBatchItems.filter(it => parseN(it.qtd) > 0);
+                    const totalQtd = sendingItems.reduce((acc, it) => acc + parseN(it.qtd), 0);
+                    const totalVal = sendingItems.reduce((acc, it) => acc + (parseN(it.qtd) * parseN(it.precoUnit)), 0);
+                    
+                    const isComissionado = selectedAccount.cliente?.tipoAcerto === 'comissionado';
+                    const comissaoPct = isComissionado ? parseN(selectedAccount.cliente?.comissaoPct) : 0;
+                    
+                    const totalComissao = sendingItems.reduce((acc, it) => {
+                      return acc + (parseN(it.precoUnit) * (comissaoPct / 100) * parseN(it.qtd));
+                    }, 0);
+                    
+                    const totalLucro = sendingItems.reduce((acc, it) => {
+                      const qty = parseN(it.qtd);
+                      const pVenda = parseN(it.precoUnit);
+                      const vLucro = isComissionado
+                        ? (pVenda * (100 - comissaoPct) / 100) - parseN(it.custoBase)
+                        : pVenda - parseN(it.custoBase);
+                      return acc + (vLucro * qty);
+                    }, 0);
+
+                    return (
+                      <tr style={{ 
+                        background: 'var(--bg-secondary)', 
+                        borderBottom: '2.5px solid var(--border-color)', 
+                        fontWeight: '800',
+                        fontSize: '0.9rem',
+                        color: 'var(--text-primary)'
+                      }}>
+                        <td style={{ padding: '0.75rem 0.5rem', color: 'var(--accent-primary)', fontSize: '0.8rem', letterSpacing: '0.5px' }} colSpan="3">
+                          📊 TOTAIS DA REMESSA
+                        </td>
+                        <td style={{ padding: '0.75rem 0.5rem' }}>
+                          {/* Preço de Venda column empty */}
+                        </td>
+                        {isComissionado && (
+                          <td style={{ padding: '0.75rem 0.5rem', color: '#fbbf24' }}>
+                            R$ {fmt(totalComissao)}
+                          </td>
+                        )}
+                        <td style={{ padding: '0.75rem 0.5rem', color: totalLucro >= 0 ? '#34d399' : '#f87171' }}>
+                          R$ {fmt(totalLucro)}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.5rem', fontWeight: '900' }}>
+                          R$ {fmt(totalVal)}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.5rem', fontWeight: '900', color: 'var(--accent-primary)' }}>
+                          {totalQtd}
+                        </td>
+                      </tr>
+                    );
+                  })()}
                   {newBatchItems
                     .filter(it => (it.nomePeca || '').toLowerCase().includes(searchTerm.toLowerCase()) || (it.indiceFt || '').toLowerCase().includes(searchTerm.toLowerCase()))
                     .sort((a, b) => {
