@@ -50,9 +50,9 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
 
     /* ─ Header ─ */
     .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-    .logo-area { display: flex; align-items: center; gap: 14px; }
-    .logo-img  { max-height: 66px; max-width: 190px; object-fit: contain; }
-    .logo-fallback { display: none; align-items: center; gap: 12px; }
+    .logo-area { display: flex; align-items: center; gap: 16px; }
+    .logo-img  { max-height: 72px; max-width: 150px; object-fit: contain; }
+    .logo-fallback { display: none; align-items: center; }
     .logo-box {
       width: 52px; height: 52px;
       background: linear-gradient(135deg,#60A5FA,#8B5CF6,#34D399);
@@ -60,8 +60,41 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
       color: #fff; font-family: 'Outfit',sans-serif; font-size: 15pt; font-weight: 900;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
-    .company-name { font-family: 'Outfit',sans-serif; font-size: 20pt; font-weight: 900; color: #1E293B; line-height: 1; }
-    .company-sub  { font-size: 8pt; color: #94A3B8; margin-top: 3px; }
+    .company-info-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 8pt;
+      color: #475569;
+      line-height: 1.3;
+      text-align: left;
+    }
+    .company-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 14pt;
+      font-weight: 900;
+      color: #1e293b;
+      line-height: 1.1;
+    }
+    .company-subtitle {
+      font-weight: 700;
+      color: #64748b;
+      font-size: 8.5pt;
+    }
+    .company-slogan {
+      font-style: italic;
+      color: #94a3b8;
+      font-size: 7.5pt;
+      margin-bottom: 2px;
+    }
+    .company-details-row, .company-contacts-row {
+      font-size: 7.5pt;
+      color: #64748b;
+    }
+    .company-details-row span, .company-contacts-row span {
+      font-weight: 600;
+      color: #334155;
+    }
 
     .doc-badge-wrap { text-align: right; }
     .doc-badge {
@@ -172,7 +205,17 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
           onerror="this.style.display='none'; document.getElementById('lf').style.display='flex';"/>
         <div id="lf" class="logo-fallback">
           <div class="logo-box">3D</div>
-          <div><div class="company-name">AM3D</div><div class="company-sub">Impressão 3D Profissional</div></div>
+        </div>
+        <div class="company-info-text" translate="no">
+          <div class="company-title">Amaro & Mateu 3D</div>
+          <div class="company-subtitle">Produtos em Impressão 3D</div>
+          <div class="company-slogan">Funcionais, criativos e prontos para você!</div>
+          <div class="company-details-row">
+            📸 Instagram: <span>@aem3d_</span> | ✉️ E-mail: <span>amaroemateu3d@gmail.com</span>
+          </div>
+          <div class="company-contacts-row">
+            📞 Cíntia: <span>19 9 8143-2080</span> | 📞 Daniel: <span>19 9 9672-5045</span>
+          </div>
         </div>
       </div>
       <div class="doc-badge-wrap">

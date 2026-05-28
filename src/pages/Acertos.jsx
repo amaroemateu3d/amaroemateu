@@ -117,10 +117,14 @@ export default function Acertos() {
         .top-stripe { height: 6px; background: linear-gradient(90deg, #10B981, #60A5FA, #8B5CF6); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
         .page { padding: 1.4cm 2cm 1.4cm 2cm; min-height: calc(297mm - 6px); display: flex; flex-direction: column; gap: 0; }
         .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-        .logo-area { display: flex; align-items: center; gap: 14px; }
+        .logo-area { display: flex; align-items: center; gap: 16px; }
         .logo-box { width: 52px; height: 52px; background: linear-gradient(135deg,#10B981,#60A5FA,#8B5CF6); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; font-family: 'Outfit',sans-serif; font-size: 15pt; font-weight: 900; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-        .company-name { font-family: 'Outfit',sans-serif; font-size: 20pt; font-weight: 900; color: #1E293B; line-height: 1; }
-        .company-sub  { font-size: 8pt; color: #94A3B8; margin-top: 3px; }
+        .company-info-text { display: flex; flex-direction: column; gap: 2px; font-size: 8pt; color: #475569; line-height: 1.3; text-align: left; }
+        .company-title { font-family: 'Outfit', sans-serif; font-size: 14pt; font-weight: 900; color: #1e293b; line-height: 1.1; }
+        .company-subtitle { font-weight: 700; color: #64748b; font-size: 8.5pt; }
+        .company-slogan { font-style: italic; color: #94a3b8; font-size: 7.5pt; margin-bottom: 2px; }
+        .company-details-row, .company-contacts-row { font-size: 7.5pt; color: #64748b; }
+        .company-details-row span, .company-contacts-row span { font-weight: 600; color: #334155; }
         .doc-badge-wrap { text-align: right; }
         .doc-badge { display: inline-block; padding: 5px 14px; background: ${accentBg}; color: ${accentColor}; font-size: 8pt; font-weight: 800; letter-spacing: 1.5px; border-radius: 20px; margin-bottom: 6px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
         .doc-num  { font-family: 'Outfit',sans-serif; font-size: 18pt; font-weight: 900; color: #1E293B; line-height: 1.1; }
@@ -148,7 +152,17 @@ export default function Acertos() {
         <div class="header">
           <div class="logo-area">
             <div class="logo-box">3D</div>
-            <div><div class="company-name">AM3D</div><div class="company-sub">Impressão 3D Profissional</div></div>
+            <div class="company-info-text" translate="no">
+              <div class="company-title">Amaro & Mateu 3D</div>
+              <div class="company-subtitle">Produtos em Impressão 3D</div>
+              <div class="company-slogan">Funcionais, criativos e prontos para você!</div>
+              <div class="company-details-row">
+                📸 Instagram: <span>@aem3d_</span> | ✉️ E-mail: <span>amaroemateu3d@gmail.com</span>
+              </div>
+              <div class="company-contacts-row">
+                📞 Cíntia: <span>19 9 8143-2080</span> | 📞 Daniel: <span>19 9 9672-5045</span>
+              </div>
+            </div>
           </div>
           <div class="doc-badge-wrap">
             <div class="doc-badge">COMPROVANTE DE ACERTO</div>
