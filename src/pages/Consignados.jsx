@@ -177,7 +177,7 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
       </div>
       <div class="doc-badge-wrap">
         <div class="doc-badge">${title}</div>
-        <div class="doc-num">${docNum}</div>
+        ${docNum ? `<div class="doc-num">${docNum}</div>` : ''}
         <div class="doc-date">📅 ${dateStr}</div>
       </div>
     </div>
@@ -273,7 +273,7 @@ const openPrintBatchWindow = (batch, cliente) => {
     <div class="obs-box">${cliente.obs}</div>
   ` : '';
 
-  const html = getPrintTemplate('REMESSA CONSIGNADO', batch.id, dateStr, accentColor, accentBg, cliente, itemsHtml, totalsHtml, assinaturaHtml, obsHtml);
+  const html = getPrintTemplate('REMESSA CONSIGNADO', '', dateStr, accentColor, accentBg, cliente, itemsHtml, totalsHtml, assinaturaHtml, obsHtml);
   const win = window.open('', '_blank', 'width=960,height=780');
   win.document.write(html);
   win.document.close();
