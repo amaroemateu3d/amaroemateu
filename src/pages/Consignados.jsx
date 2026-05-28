@@ -51,13 +51,13 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
     /* ─ Header ─ */
     .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
     .logo-area { display: flex; align-items: center; gap: 16px; }
-    .logo-img  { max-height: 72px; max-width: 150px; object-fit: contain; }
+    .logo-img  { height: 68px; max-width: 150px; object-fit: contain; }
     .logo-fallback { display: none; align-items: center; }
     .logo-box {
-      width: 52px; height: 52px;
+      width: 68px; height: 68px;
       background: linear-gradient(135deg,#60A5FA,#8B5CF6,#34D399);
       border-radius: 10px; display: flex; align-items: center; justify-content: center;
-      color: #fff; font-family: 'Outfit',sans-serif; font-size: 15pt; font-weight: 900;
+      color: #fff; font-family: 'Outfit',sans-serif; font-size: 18pt; font-weight: 900;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
     .company-info-text {
