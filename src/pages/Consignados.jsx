@@ -210,11 +210,11 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
           <div class="company-title">Amaro & Mateu 3D</div>
           <div class="company-subtitle">Produtos em Impressão 3D</div>
           <div class="company-slogan">Funcionais, criativos e prontos para você!</div>
-          <div class="company-details-row">
+          <div class="company-details-row" style="white-space: nowrap;">
             📸 Instagram: <span>@aem3d_</span> | ✉️ E-mail: <span>amaroemateu3d@gmail.com</span>
           </div>
-          <div class="company-contacts-row">
-            📞 Cíntia: <span>19 9 8143-2080</span> | 📞 Daniel: <span>19 9 9672-5045</span>
+          <div class="company-contacts-row" style="white-space: nowrap;">
+            💬 Cíntia: <span>19 9 8143-2080</span> | 💬 Daniel: <span>19 9 9672-5045</span>
           </div>
         </div>
       </div>
