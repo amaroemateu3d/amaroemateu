@@ -117,8 +117,8 @@ export default function Acertos() {
         .top-stripe { height: 6px; background: linear-gradient(90deg, #10B981, #60A5FA, #8B5CF6); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
         .page { padding: 1.4cm 2cm 1.4cm 2cm; min-height: calc(297mm - 6px); display: flex; flex-direction: column; gap: 0; }
         .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-        .logo-area { display: flex; align-items: center; gap: 16px; }
-        .logo-box { width: 68px; height: 68px; background: linear-gradient(135deg,#10B981,#60A5FA,#8B5CF6); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; font-family: 'Outfit',sans-serif; font-size: 18pt; font-weight: 900; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .logo-area { display: flex; align-items: center; gap: 20px; }
+        .logo-box { width: 80px; height: 80px; background: linear-gradient(135deg,#10B981,#60A5FA,#8B5CF6); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #fff; font-family: 'Outfit',sans-serif; font-size: 22pt; font-weight: 900; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
         .company-info-text { display: flex; flex-direction: column; gap: 2px; font-size: 8pt; color: #475569; line-height: 1.3; text-align: left; }
         .company-title { font-family: 'Outfit', sans-serif; font-size: 14pt; font-weight: 900; color: #1e293b; line-height: 1.1; }
         .company-subtitle { font-weight: 700; color: #64748b; font-size: 8.5pt; }
@@ -160,7 +160,7 @@ export default function Acertos() {
                 📸 Instagram: <span>@aem3d_</span> | ✉️ E-mail: <span>amaroemateu3d@gmail.com</span>
               </div>
               <div class="company-contacts-row" style="white-space: nowrap;">
-                💬 Cíntia: <span>19 9 8143-2080</span> | 💬 Daniel: <span>19 9 9672-5045</span>
+                <svg viewBox="0 0 24 24" width="11" height="11" style="fill: #25D366; vertical-align: middle; margin-right: 3px; display: inline-block;"><path d="M12.004 0C5.378 0 .004 5.374.004 12.004c0 2.115.548 4.183 1.588 6.006L.004 24l6.17-1.619c1.767.964 3.765 1.47 5.83 1.474h.005c6.626 0 12-5.374 12-12.004C24.009 5.374 18.63 0 12.004 0zm6.815 17.382c-.296.83-1.72 1.572-2.393 1.674-.46.069-.912.127-2.955-.674-2.613-1.023-4.298-3.687-4.43-3.86-.13-.173-1.077-1.43-1.077-2.729 0-1.3.676-1.939.917-2.204.24-.266.526-.333.7-.333h.498c.12 0 .28-.046.439.34.16.386.548 1.343.598 1.445.05.102.083.22.016.353-.067.133-.1.22-.2.339-.1.119-.21.266-.3.353-.1.102-.204.213-.087.414.117.2.52 1.83.82 2.102.302.27.564.385.803.486.24.1.385.053.53-.119.146-.173.628-.73 1.077-1.42.067-.102.133-.12.23-.083.1.037.628.297.747.353.12.057.2.087.23.137.03.05.03.287-.07.618z"/></svg> Cíntia: <span>19 9 8143-2080</span> | <svg viewBox="0 0 24 24" width="11" height="11" style="fill: #25D366; vertical-align: middle; margin-right: 3px; display: inline-block;"><path d="M12.004 0C5.378 0 .004 5.374.004 12.004c0 2.115.548 4.183 1.588 6.006L.004 24l6.17-1.619c1.767.964 3.765 1.47 5.83 1.474h.005c6.626 0 12-5.374 12-12.004C24.009 5.374 18.63 0 12.004 0zm6.815 17.382c-.296.83-1.72 1.572-2.393 1.674-.46.069-.912.127-2.955-.674-2.613-1.023-4.298-3.687-4.43-3.86-.13-.173-1.077-1.43-1.077-2.729 0-1.3.676-1.939.917-2.204.24-.266.526-.333.7-.333h.498c.12 0 .28-.046.439.34.16.386.548 1.343.598 1.445.05.102.083.22.016.353-.067.133-.1.22-.2.339-.1.119-.21.266-.3.353-.1.102-.204.213-.087.414.117.2.52 1.83.82 2.102.302.27.564.385.803.486.24.1.385.053.53-.119.146-.173.628-.73 1.077-1.42.067-.102.133-.12.23-.083.1.037.628.297.747.353.12.057.2.087.23.137.03.05.03.287-.07.618z"/></svg> Daniel: <span>19 9 9672-5045</span>
               </div>
             </div>
           </div>
