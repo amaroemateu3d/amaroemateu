@@ -1165,15 +1165,53 @@ export default function Consignados() {
                 const totalQtd = sendingItems.reduce((acc, it) => acc + parseN(it.qtd), 0);
                 const totalVal = sendingItems.reduce((acc, it) => acc + (parseN(it.qtd) * parseN(it.precoUnit)), 0);
                 if (totalQtd === 0) return null;
+
+                const isComissionado = selectedAccount.cliente?.tipoAcerto === 'comissionado';
+                const comissaoPct = isComissionado ? parseN(selectedAccount.cliente?.comissaoPct) : 0;
+                
+                const totalComissao = sendingItems.reduce((acc, it) => {
+                  const qty = parseN(it.qtd);
+                  const pVenda = parseN(it.precoUnit);
+                  return acc + (pVenda * (comissaoPct / 100) * qty);
+                }, 0);
+                
+                const totalLucro = sendingItems.reduce((acc, it) => {
+                  const qty = parseN(it.qtd);
+                  const pVenda = parseN(it.precoUnit);
+                  const vLucro = isComissionado
+                    ? (pVenda * (100 - comissaoPct) / 100) - parseN(it.custoBase)
+                    : pVenda - parseN(it.custoBase);
+                  return acc + (vLucro * qty);
+                }, 0);
+
                 return (
-                  <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'rgba(52, 211, 153, 0.1)', borderRadius: '8px', border: '1px solid rgba(52, 211, 153, 0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontSize: '1.1rem' }}>
-                      <strong style={{ color: 'var(--success)' }}>Total de Itens: </strong>
-                      <span style={{ fontWeight: 'bold' }}>{totalQtd}</span>
+                  <div style={{ 
+                    marginBottom: '1.5rem', 
+                    padding: '1.25rem', 
+                    background: 'var(--bg-secondary)', 
+                    borderRadius: '12px', 
+                    border: '1px solid var(--border-color)', 
+                    display: 'grid', 
+                    gridTemplateColumns: isComissionado ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', 
+                    gap: '1.5rem' 
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Total de Itens</span>
+                      <span style={{ fontSize: '1.3rem', fontWeight: '800', color: 'var(--text-primary)' }}>{totalQtd}</span>
                     </div>
-                    <div style={{ fontSize: '1.1rem' }}>
-                      <strong style={{ color: 'var(--success)' }}>Valor Total: </strong>
-                      <span style={{ fontWeight: 'bold' }}>R$ {fmt(totalVal)}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Valor Total</span>
+                      <span style={{ fontSize: '1.3rem', fontWeight: '800', color: 'var(--text-primary)' }}>R$ {fmt(totalVal)}</span>
+                    </div>
+                    {isComissionado && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '0.85rem', color: '#fbbf24', fontWeight: 'bold', textTransform: 'uppercase' }}>Total Comissão</span>
+                        <span style={{ fontSize: '1.3rem', fontWeight: '800', color: '#fbbf24' }}>R$ {fmt(totalComissao)}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.85rem', color: totalLucro >= 0 ? '#34d399' : '#f87171', fontWeight: 'bold', textTransform: 'uppercase' }}>Lucro Total</span>
+                      <span style={{ fontSize: '1.3rem', fontWeight: '800', color: totalLucro >= 0 ? '#34d399' : '#f87171' }}>R$ {fmt(totalLucro)}</span>
                     </div>
                   </div>
                 );
@@ -1213,6 +1251,9 @@ export default function Consignados() {
                     )}
                     <th style={{ padding: '0.75rem', width: '130px', userSelect: 'none' }}>
                       Lucro
+                    </th>
+                    <th style={{ padding: '0.75rem', width: '130px', userSelect: 'none' }}>
+                      Valor Total
                     </th>
                     <th style={{ padding: '0.75rem', width: '120px', userSelect: 'none' }}>
                       Qtd a Enviar
@@ -1290,6 +1331,9 @@ export default function Consignados() {
                                 Total: R$ {fmt(vLucro * parseN(it.qtd))}
                               </div>
                             )}
+                          </td>
+                          <td style={{ padding: '0.5rem', fontWeight: 'bold', color: active ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                            R$ {fmt(pVenda * parseN(it.qtd))}
                           </td>
                           <td style={{ padding: '0.5rem' }}>
                             <input type="number" className="cell-input cell-qty" value={it.qtd} onChange={e => updateBatchItem(originalIdx, 'qtd', e.target.value)} />
