@@ -1206,6 +1206,14 @@ export default function Consignados() {
                     >
                       Preço de Venda (R$){renderSortIndicator('venda')}
                     </th>
+                    {selectedAccount.cliente?.tipoAcerto === 'comissionado' && (
+                      <th style={{ padding: '0.75rem', width: '130px', userSelect: 'none' }}>
+                        Comissão ({selectedAccount.cliente?.comissaoPct}%)
+                      </th>
+                    )}
+                    <th style={{ padding: '0.75rem', width: '130px', userSelect: 'none' }}>
+                      Lucro
+                    </th>
                     <th style={{ padding: '0.75rem', width: '120px', userSelect: 'none' }}>
                       Qtd a Enviar
                     </th>
@@ -1242,6 +1250,16 @@ export default function Consignados() {
                     .map((it) => {
                       const active = parseN(it.qtd) > 0;
                       const originalIdx = newBatchItems.findIndex(oi => oi.indiceFt === it.indiceFt);
+                      
+                      const pVenda = parseN(it.precoUnit);
+                      const isComissionado = selectedAccount.cliente?.tipoAcerto === 'comissionado';
+                      const comissaoPct = isComissionado ? parseN(selectedAccount.cliente?.comissaoPct) : 0;
+                      
+                      const vComissao = pVenda * (comissaoPct / 100);
+                      const vLucro = isComissionado 
+                        ? (pVenda * (100 - comissaoPct) / 100) - parseN(it.custoBase)
+                        : pVenda - parseN(it.custoBase);
+
                       return (
                         <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: active ? 'rgba(124, 58, 237, 0.05)' : 'transparent' }}>
                           <td style={{ padding: '0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
@@ -1252,6 +1270,26 @@ export default function Consignados() {
                               <span>R$</span>
                               <input type="number" className="cell-input" value={it.precoUnit} onChange={e => updateBatchItem(originalIdx, 'precoUnit', e.target.value)} />
                             </div>
+                          </td>
+                          {isComissionado && (
+                            <td style={{ padding: '0.5rem' }}>
+                              <div style={{ color: '#fbbf24', fontWeight: '600' }}>R$ {fmt(vComissao)}</div>
+                              {parseN(it.qtd) > 1 && (
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                  Total: R$ {fmt(vComissao * parseN(it.qtd))}
+                                </div>
+                              )}
+                            </td>
+                          )}
+                          <td style={{ padding: '0.5rem' }}>
+                            <div style={{ fontWeight: 'bold', color: vLucro > 0 ? '#34d399' : vLucro < 0 ? '#f87171' : 'inherit' }}>
+                              R$ {fmt(vLucro)}
+                            </div>
+                            {parseN(it.qtd) > 1 && (
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                Total: R$ {fmt(vLucro * parseN(it.qtd))}
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: '0.5rem' }}>
                             <input type="number" className="cell-input cell-qty" value={it.qtd} onChange={e => updateBatchItem(originalIdx, 'qtd', e.target.value)} />
