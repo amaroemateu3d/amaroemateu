@@ -132,6 +132,9 @@ export default function Resumo() {
 
       // Consignados (Nova Tabela)
       (consignadosData || []).forEach(acc => {
+        const comissao = acc.cliente?.tipoAcerto === 'comissionado' ? Number(acc.cliente?.comissaoPct || 0) : 0;
+        const repasseRate = (100 - comissao) / 100;
+
         (acc.batches || []).forEach(batch => {
           if (!batch.date) return;
           const bDate = new Date(batch.date);
@@ -142,7 +145,7 @@ export default function Resumo() {
             (batch.items || []).forEach(it => {
               bTotal += Number(it.qtd || 0) * Number(it.precoUnit || 0);
             });
-            totalConsignadosGerado += bTotal;
+            totalConsignadosGerado += bTotal * repasseRate;
           }
         });
 

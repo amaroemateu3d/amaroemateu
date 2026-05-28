@@ -722,12 +722,16 @@ export default function Consignados() {
       const paymentItemsRecord = [];
       const updatedBatches = JSON.parse(JSON.stringify(selectedAccount.batches || []));
 
+      // Obter taxa de repasse com base na comissão do cliente
+      const comissaoPct = selectedAccount.cliente?.tipoAcerto === 'comissionado' ? parseN(selectedAccount.cliente?.comissaoPct) : 0;
+      const repasseRate = (100 - comissaoPct) / 100;
+
       selectedToPay.forEach(payIt => {
         const qty = parseN(payIt.payQtd);
         const preco = parseN(payIt.precoUnit);
         
-        // Garante precisão financeira
-        const itemSubtotal = qty * preco;
+        // Garante precisão financeira com base na taxa de repasse
+        const itemSubtotal = qty * (preco * repasseRate);
         totalAmount += itemSubtotal;
         
         paymentItemsRecord.push({
@@ -735,7 +739,7 @@ export default function Consignados() {
           indiceFt: payIt.indiceFt,
           nomePeca: payIt.nomePeca,
           qtd: qty,
-          precoUnit: preco
+          precoUnit: Number((preco * repasseRate).toFixed(2)) // Preço líquido
         });
 
         const targetBatch = updatedBatches.find(b => b.id === payIt.batchId);
@@ -1219,101 +1223,124 @@ export default function Consignados() {
         )}
 
         {/* MODAL PAGAMENTO (BAIXA DE ITENS) */}
-        {showNewPaymentModal && (
-          <div className="modal-fullscreen">
-            <div className="modal-topbar">
-              <div className="modal-topbar-left">
-                <button className="btn-outline btn-sm" onClick={() => setShowNewPaymentModal(false)}>✕ Cancelar</button>
-                <div>
-                  <h2 className="modal-title">Registrar Pagamento (Baixa de Itens)</h2>
-                  <p className="modal-sub">Selecione a quantidade que está sendo paga de cada remessa em aberto.</p>
-                </div>
-              </div>
-              <div className="modal-topbar-right">
-                <div style={{ marginRight: '1.5rem', textAlign: 'right' }}>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Total a Registrar:</span><br/>
-                  <span style={{ fontWeight: 'bold', fontSize: '1.2rem', color: 'var(--success)' }}>
-                    R$ {fmt(itemsToPay.reduce((sum, it) => sum + (parseN(it.payQtd) * parseN(it.precoUnit)), 0))}
-                  </span>
-                </div>
-                <button className="btn-primary" onClick={handleSavePayment} disabled={loading}>
-                  {loading ? 'Salvando...' : '💰 Salvar Pagamento'}
-                </button>
-              </div>
-            </div>
-            
-            <div className="modal-scroll-body" style={{ padding: '2rem' }}>
-              {itemsToPay.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '3rem' }}>
-                  <h3>Não há itens em aberto aguardando pagamento! 🎉</h3>
-                </div>
-              ) : (
-                <>
-                  <div style={{ marginBottom: '2rem', maxWidth: '600px' }}>
-                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>Observação do Pagamento (Opcional)</label>
-                    <input 
-                      type="text" 
-                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-                      placeholder="Ex: Pagamento PIX referente às vendas da Remessa 1..."
-                      value={paymentObs} 
-                      onChange={e => setPaymentObs(e.target.value)} 
-                    />
+        {showNewPaymentModal && (() => {
+          const comissaoPct = selectedAccount.cliente?.tipoAcerto === 'comissionado' ? parseN(selectedAccount.cliente?.comissaoPct) : 0;
+          const repasseRate = (100 - comissaoPct) / 100;
+          const grossTotal = itemsToPay.reduce((sum, it) => sum + (parseN(it.payQtd) * parseN(it.precoUnit)), 0);
+          const netTotal = grossTotal * repasseRate;
+          return (
+            <div className="modal-fullscreen">
+              <div className="modal-topbar">
+                <div className="modal-topbar-left">
+                  <button className="btn-outline btn-sm" onClick={() => setShowNewPaymentModal(false)}>✕ Cancelar</button>
+                  <div>
+                    <h2 className="modal-title">Registrar Pagamento (Baixa de Itens)</h2>
+                    <p className="modal-sub">Selecione a quantidade que está sendo paga de cada remessa em aberto.</p>
                   </div>
-                  
-                  {Object.entries(groupedItemsToPay).sort((a, b) => new Date(a[1].date) - new Date(b[1].date)).map(([batchId, batchData]) => (
-                    <div key={batchId} style={{ marginBottom: '2.5rem', border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
-                      <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <Calendar size={18} color="var(--primary)" />
-                        <h4 style={{ margin: 0 }}>Remessa de {new Date(batchData.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</h4>
-                      </div>
-                      <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
-                            <th style={{ padding: '0.75rem' }}>ID</th>
-                            <th style={{ padding: '0.75rem' }}>Nome do Item</th>
-                            <th style={{ padding: '0.75rem', textAlign: 'center' }}>Em Aberto</th>
-                            <th style={{ padding: '0.75rem', width: '120px' }}>Preço Unit.</th>
-                            <th style={{ padding: '0.75rem', width: '120px' }}>Qtd Pagando</th>
-                            <th style={{ padding: '0.75rem', textAlign: 'right', width: '150px' }}>Subtotal (R$)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {batchData.items.map((it) => {
-                            const active = parseN(it.payQtd) > 0;
-                            const preco = parseN(it.precoUnit);
-                            const sub = parseN(it.payQtd) * preco;
-                            return (
-                              <tr key={it.globalIndex} style={{ borderBottom: '1px solid var(--border-color)', background: active ? 'rgba(52, 211, 153, 0.05)' : 'transparent' }}>
-                                <td style={{ padding: '0.75rem 0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
-                                <td style={{ padding: '0.75rem 0.5rem', fontWeight: active ? 'bold' : 'normal' }}>{it.nomePeca}</td>
-                                <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>{it.maxQtd}</td>
-                                <td style={{ padding: '0.75rem 0.5rem' }}>R$ {fmt(preco)}</td>
-                                <td style={{ padding: '0.5rem' }}>
-                                  <input 
-                                    type="number" 
-                                    className="cell-input cell-qty" 
-                                    style={{ borderColor: active ? 'var(--success)' : 'var(--border-color)' }}
-                                    min="0" 
-                                    max={it.maxQtd} 
-                                    value={it.payQtd} 
-                                    onChange={e => updatePayItem(it.globalIndex, e.target.value)} 
-                                  />
-                                </td>
-                                <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', fontWeight: active ? 'bold' : 'normal', color: active ? 'var(--success)' : 'inherit' }}>
-                                  R$ {fmt(sub)}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                </div>
+                <div className="modal-topbar-right">
+                  {selectedAccount.cliente?.tipoAcerto === 'comissionado' && (
+                    <div style={{ marginRight: '1.5rem', textAlign: 'right', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      <span>Venda Bruta: R$ {fmt(grossTotal)}</span><br/>
+                      <span>Comissão (-{comissaoPct}%): - R$ {fmt(grossTotal * (comissaoPct / 100))}</span>
                     </div>
-                  ))}
-                </>
-              )}
+                  )}
+                  <div style={{ marginRight: '1.5rem', textAlign: 'right' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      {selectedAccount.cliente?.tipoAcerto === 'comissionado' ? 'Líquido a Receber:' : 'Total a Registrar:'}
+                    </span><br/>
+                    <span style={{ fontWeight: 'bold', fontSize: '1.2rem', color: 'var(--success)' }}>
+                      R$ {fmt(netTotal)}
+                    </span>
+                  </div>
+                  <button className="btn-primary" onClick={handleSavePayment} disabled={loading}>
+                    {loading ? 'Salvando...' : '💰 Salvar Pagamento'}
+                  </button>
+                </div>
+              </div>
+              
+              <div className="modal-scroll-body" style={{ padding: '2rem' }}>
+                {itemsToPay.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '3rem' }}>
+                    <h3>Não há itens em aberto aguardando pagamento! 🎉</h3>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ marginBottom: '2rem', maxWidth: '600px' }}>
+                      <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>Observação do Pagamento (Opcional)</label>
+                      <input 
+                        type="text" 
+                        style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                        placeholder="Ex: Pagamento PIX referente às vendas da Remessa 1..."
+                        value={paymentObs} 
+                        onChange={e => setPaymentObs(e.target.value)} 
+                      />
+                    </div>
+                    
+                    {Object.entries(groupedItemsToPay).sort((a, b) => new Date(a[1].date) - new Date(b[1].date)).map(([batchId, batchData]) => (
+                      <div key={batchId} style={{ marginBottom: '2.5rem', border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                        <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <Calendar size={18} color="var(--primary)" />
+                          <h4 style={{ margin: 0 }}>Remessa de {new Date(batchData.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</h4>
+                        </div>
+                        <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
+                              <th style={{ padding: '0.75rem' }}>ID</th>
+                              <th style={{ padding: '0.75rem' }}>Nome do Item</th>
+                              <th style={{ padding: '0.75rem', textAlign: 'center' }}>Em Aberto</th>
+                              <th style={{ padding: '0.75rem', width: '150px' }}>Preço Unit.</th>
+                              <th style={{ padding: '0.75rem', width: '120px' }}>Qtd Pagando</th>
+                              <th style={{ padding: '0.75rem', textAlign: 'right', width: '150px' }}>Subtotal (R$)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {batchData.items.map((it) => {
+                              const active = parseN(it.payQtd) > 0;
+                              const preco = parseN(it.precoUnit);
+                              const sub = parseN(it.payQtd) * preco * repasseRate;
+                              return (
+                                <tr key={it.globalIndex} style={{ borderBottom: '1px solid var(--border-color)', background: active ? 'rgba(52, 211, 153, 0.05)' : 'transparent' }}>
+                                  <td style={{ padding: '0.75rem 0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
+                                  <td style={{ padding: '0.75rem 0.5rem', fontWeight: active ? 'bold' : 'normal' }}>{it.nomePeca}</td>
+                                  <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>{it.maxQtd}</td>
+                                  <td style={{ padding: '0.75rem 0.5rem' }}>
+                                    {selectedAccount.cliente?.tipoAcerto === 'comissionado' ? (
+                                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        <span style={{ textDecoration: 'line-through', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Bruto: R$ {fmt(preco)}</span>
+                                        <span style={{ fontWeight: '600', color: 'var(--success)', fontSize: '0.9rem' }}>Líq: R$ {fmt(preco * repasseRate)}</span>
+                                      </div>
+                                    ) : (
+                                      <span>R$ {fmt(preco)}</span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '0.5rem' }}>
+                                    <input 
+                                      type="number" 
+                                      className="cell-input cell-qty" 
+                                      style={{ borderColor: active ? 'var(--success)' : 'var(--border-color)' }}
+                                      min="0" 
+                                      max={it.maxQtd} 
+                                      value={it.payQtd} 
+                                      onChange={e => updatePayItem(it.globalIndex, e.target.value)} 
+                                    />
+                                  </td>
+                                  <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', fontWeight: active ? 'bold' : 'normal', color: active ? 'var(--success)' : 'inherit' }}>
+                                    R$ {fmt(sub)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
       </div>
     );
@@ -1357,18 +1384,14 @@ export default function Consignados() {
                 </div>
                 {acc.cliente?.tipoAcerto === 'comissionado' ? (
                   <span className="badge-sm" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.2)', marginBottom: '8px', display: 'inline-block' }}>
-                    Comissionado ({acc.cliente?.comissaoPct}%)
+                    Comissionado
                   </span>
                 ) : (
                   <span className="badge-sm" style={{ background: 'rgba(52, 211, 153, 0.1)', color: 'var(--success)', border: '1px solid rgba(52, 211, 153, 0.2)', marginBottom: '8px', display: 'inline-block' }}>
                     Valor Integral
                   </span>
                 )}
-                <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{acc.cliente?.telefone || 'Sem telefone'}</p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Saldo Devedor:</span>
-                  <strong style={{ color: stats.balance > 0 ? 'var(--danger)' : 'var(--text-primary)' }}>R$ {fmt(stats.balance)}</strong>
-                </div>
+                <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{acc.cliente?.telefone || 'Sem telefone'}</p>
               </div>
             );
           })}

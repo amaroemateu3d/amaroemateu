@@ -622,3 +622,198 @@
     padding-top: 0.75rem;
   }
 }
+
+/* RECEIPT MODAL SYSTEM */
+.receipt-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(12px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.receipt-modal-card {
+  background: var(--acerto-bg-card);
+  border: 1px solid var(--acerto-border);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  max-height: 90vh;
+}
+
+.receipt-modal-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--acerto-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.5rem;
+}
+
+.receipt-success-badge {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--acerto-success);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.receipt-modal-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: white;
+}
+
+.receipt-modal-header p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--acerto-text-muted);
+}
+
+.receipt-modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.receipt-details-paper {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px dashed var(--acerto-border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.receipt-client-info {
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.receipt-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.receipt-item-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.88rem;
+  color: #fff;
+}
+
+.receipt-item-name {
+  color: var(--acerto-text-muted);
+}
+
+.receipt-financial-summary {
+  border-top: 1px solid rgba(255,255,255,0.05);
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.receipt-summary-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--acerto-text-muted);
+}
+
+.receipt-summary-line.bold {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--acerto-success);
+  margin-top: 0.25rem;
+}
+
+.receipt-modal-actions {
+  padding: 1.5rem;
+  border-top: 1px solid var(--acerto-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.action-btn-whatsapp {
+  background: #25D366;
+  color: white;
+  border: none;
+  font-weight: 700;
+  padding: 0.85rem;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+}
+
+.action-btn-whatsapp:hover {
+  background: #128C7E;
+  transform: translateY(-1px);
+}
+
+.action-btn-pdf {
+  background: var(--acerto-primary);
+  color: white;
+  border: none;
+  font-weight: 700;
+  padding: 0.85rem;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+}
+
+.action-btn-pdf:hover {
+  background: var(--acerto-primary-hover);
+  transform: translateY(-1px);
+}
+
+.action-btn-close {
+  background: transparent;
+  border: 1px solid var(--acerto-border);
+  color: #fff;
+  font-weight: 600;
+  padding: 0.85rem;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+}
+
+.action-btn-close:hover {
+  background: rgba(255,255,255,0.05);
+}

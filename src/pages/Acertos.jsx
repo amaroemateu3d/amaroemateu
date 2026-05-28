@@ -29,6 +29,157 @@ export default function Acertos() {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [salesToRegister, setSalesToRegister] = useState({}); // { [ftId]: quantity }
+  
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptData, setReceiptData] = useState(null);
+
+  const shareWhatsApp = (settlement) => {
+    if (!settlement) return;
+    const comissaoText = settlement.tipoAcerto === 'comissionado' 
+      ? `*Comissão (${settlement.comissaoPct}%):* - R$ ${fmt(settlement.grossTotal * (parseN(settlement.comissaoPct) / 100))}\n*Valor Líquido Recebido:* R$ ${fmt(settlement.netTotal)}`
+      : `*Valor Recebido:* R$ ${fmt(settlement.netTotal)}`;
+
+    const itemsText = settlement.items.map(it => `• ${it.qtd}x ${it.nomePeca} (R$ ${fmt(it.precoUnit)}/un)`).join('\n');
+
+    const message = `*AM3D - COMPROVANTE DE ACERTO CONSIGNADO*\n\n` +
+      `🤝 *Cliente:* ${settlement.cliente.nome}\n` +
+      `📅 *Data:* ${settlement.date}\n\n` +
+      `*Peças Acertadas:*\n${itemsText}\n\n` +
+      `*Resumo Financeiro:*\n` +
+      `*Venda Bruta:* R$ ${fmt(settlement.grossTotal)}\n` +
+      `${comissaoText}\n\n` +
+      `Obrigado pela parceria! 🚀`;
+
+    const encoded = encodeURIComponent(message);
+    const phone = settlement.cliente.telefone ? settlement.cliente.telefone.replace(/\D/g, '') : '';
+    const url = phone ? `https://api.whatsapp.com/send?phone=${phone}&text=${encoded}` : `https://api.whatsapp.com/send?text=${encoded}`;
+    window.open(url, '_blank');
+  };
+
+  const printLastSettlement = (settlement) => {
+    if (!settlement) return;
+    const dateStr = settlement.date;
+    const accentColor = '#10B981';
+    const accentBg = '#D1FAE5';
+
+    const itemsHtml = settlement.items.map((it, i) => `
+      <tr class="${i % 2 === 0 ? 'row-even' : ''}">
+        <td class="cell-center text-muted" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; text-align: center; color: #64748B;">${i + 1}</td>
+        <td class="cell-id" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; font-weight: 700; color: #1E293B;">${it.indiceFt}</td>
+        <td class="cell-name" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; font-weight: 500;">${it.nomePeca}</td>
+        <td class="cell-center cell-bold" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; font-weight: 700; text-align: center;">${it.qtd}</td>
+        <td class="cell-right text-muted" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; text-align: right; color: #64748B;">R$ ${fmt(it.precoUnit)}</td>
+        <td class="cell-right cell-bold" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; text-align: right; font-weight: 700;">R$ ${fmt(it.qtd * it.precoUnit)}</td>
+      </tr>
+    `).join('');
+
+    const totalsHtml = settlement.tipoAcerto === 'comissionado' ? `
+      <div style="background: ${accentBg}; border-radius: 10px; padding: 13px 22px; text-align: right; min-width: 240px; display: flex; flex-direction: column; gap: 4px; print-color-adjust: exact; -webkit-print-color-adjust: exact; margin-left: auto;">
+        <div style="font-size: 8pt; font-weight: 700; color: #047857; text-transform: uppercase; letter-spacing: 1px;">Venda Bruta: R$ ${fmt(settlement.grossTotal)}</div>
+        <div style="font-size: 8pt; font-weight: 700; color: #dc2626; text-transform: uppercase; letter-spacing: 1px;">Comissão (-${settlement.comissaoPct}%): - R$ ${fmt(settlement.grossTotal * (parseN(settlement.comissaoPct) / 100))}</div>
+        <div style="height: 1px; background: rgba(0,0,0,0.1); margin: 6px 0;"></div>
+        <div style="font-size: 8pt; font-weight: 700; color: ${accentColor}; text-transform: uppercase; letter-spacing: 1px;">Valor Líquido Recebido</div>
+        <div style="font-family: 'Outfit',sans-serif; font-size: 18pt; font-weight: 900; color: ${accentColor}; margin-top: 2px;">R$ ${fmt(settlement.netTotal)}</div>
+      </div>
+    ` : `
+      <div style="background: ${accentBg}; border-radius: 10px; padding: 13px 22px; text-align: right; min-width: 200px; print-color-adjust: exact; -webkit-print-color-adjust: exact; margin-left: auto;">
+        <div style="font-size: 7.5pt; font-weight: 700; color: ${accentColor}; text-transform: uppercase; letter-spacing: 1px;">Total Recebido</div>
+        <div style="font-family: 'Outfit',sans-serif; font-size: 18pt; font-weight: 900; color: ${accentColor}; margin-top: 2px;">R$ ${fmt(settlement.netTotal)}</div>
+      </div>
+    `;
+
+    const printHtml = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8"/>
+      <title>Comprovante de Acerto — AM3D</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@700;900&display=swap" rel="stylesheet">
+      <style>
+        @page { size: A4; margin: 0; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', Arial, sans-serif; font-size: 10pt; color: #1E293B; background: #fff; }
+        .top-stripe { height: 6px; background: linear-gradient(90deg, #10B981, #60A5FA, #8B5CF6); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .page { padding: 1.4cm 2cm 1.4cm 2cm; min-height: calc(297mm - 6px); display: flex; flex-direction: column; gap: 0; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+        .logo-area { display: flex; align-items: center; gap: 14px; }
+        .logo-box { width: 52px; height: 52px; background: linear-gradient(135deg,#10B981,#60A5FA,#8B5CF6); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; font-family: 'Outfit',sans-serif; font-size: 15pt; font-weight: 900; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .company-name { font-family: 'Outfit',sans-serif; font-size: 20pt; font-weight: 900; color: #1E293B; line-height: 1; }
+        .company-sub  { font-size: 8pt; color: #94A3B8; margin-top: 3px; }
+        .doc-badge-wrap { text-align: right; }
+        .doc-badge { display: inline-block; padding: 5px 14px; background: ${accentBg}; color: ${accentColor}; font-size: 8pt; font-weight: 800; letter-spacing: 1.5px; border-radius: 20px; margin-bottom: 6px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .doc-num  { font-family: 'Outfit',sans-serif; font-size: 18pt; font-weight: 900; color: #1E293B; line-height: 1.1; }
+        .doc-date { font-size: 8.5pt; color: #64748B; margin-top: 4px; }
+        .divider-accent { height: 2px; margin: 16px 0; background: linear-gradient(90deg, ${accentColor}66, transparent); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .section-label { font-size: 7pt; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: ${accentColor}; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .section-label::after { content: ''; flex: 1; height: 1px; background: #E2E8F0; }
+        .client-card { background: #F8FAFC; border-radius: 10px; border: 1px solid #E2E8F0; padding: 14px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; font-size: 9.5pt; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .client-field { display: flex; gap: 5px; }
+        .field-label  { font-weight: 700; color: #64748B; white-space: nowrap; }
+        .field-value  { color: #1E293B; }
+        .client-full  { grid-column: 1 / -1; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; margin-bottom: 24px; }
+        thead tr { background: #1E293B; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        thead th { padding: 9px 10px; color: #fff; font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; text-align: left; }
+        tbody tr.row-even { background: #F8FAFC; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .totals-wrap { display: flex; justify-content: flex-end; margin-top: 8px; }
+        .footer { margin-top: auto; padding-top: 16px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #E2E8F0; font-size: 7.5pt; color: #94A3B8; }
+        .footer-brand { font-weight: 700; color: #64748B; }
+      </style>
+    </head>
+    <body>
+      <div class="top-stripe"></div>
+      <div class="page">
+        <div class="header">
+          <div class="logo-area">
+            <div class="logo-box">3D</div>
+            <div><div class="company-name">AM3D</div><div class="company-sub">Impressão 3D Profissional</div></div>
+          </div>
+          <div class="doc-badge-wrap">
+            <div class="doc-badge">COMPROVANTE DE ACERTO</div>
+            <div class="doc-num">#${Date.now().toString().slice(-6)}</div>
+            <div class="doc-date">📅 ${dateStr}</div>
+          </div>
+        </div>
+        <div class="divider-accent"></div>
+        <div class="section-label">Dados do Cliente</div>
+        <div class="client-card">
+          <div class="client-field"><span class="field-label">Nome:</span><span class="field-value">${settlement.cliente.nome || '—'}</span></div>
+          <div class="client-field"><span class="field-label">Telefone:</span><span class="field-value">${settlement.cliente.telefone || '—'}</span></div>
+          <div class="client-field"><span class="field-label">E-mail:</span><span class="field-value">${settlement.cliente.email || '—'}</span></div>
+          <div class="client-field client-full"><span class="field-label">Endereço:</span><span class="field-value">${settlement.cliente.endereco || '—'}</span></div>
+        </div>
+        <table style="width:100%; border-collapse: collapse;">
+          <thead>
+            <tr>
+              <th style="width:30px; text-align: center;">#</th>
+              <th style="width:60px">ID</th>
+              <th>Descrição</th>
+              <th style="width:70px; text-align: center;">Qtd</th>
+              <th style="width:90px; text-align: right;">Preço Unit.</th>
+              <th style="width:105px; text-align: right;">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>${itemsHtml}</tbody>
+        </table>
+        <div class="totals-wrap">
+          ${totalsHtml}
+        </div>
+        <div class="footer">
+          <span class="footer-brand">AM3D — Impressão 3D Profissional</span>
+          <span>Gerado em ${new Date().toLocaleString('pt-BR')}</span>
+        </div>
+      </div>
+      <script>window.onload = () => { window.print(); }<\/script>
+    </body>
+    </html>
+    `;
+
+    const win = window.open('', '_blank', 'width=960,height=780');
+    win.document.write(printHtml);
+    win.document.close();
+  };
 
   useEffect(() => {
     fetchAccounts();
@@ -159,15 +310,17 @@ export default function Acertos() {
               item.qtdPago = qPago + toAllocate;
               remaining -= toAllocate;
 
+              const netPrecoUnit = Number((parseN(item.precoUnit) * repasseRate).toFixed(2));
+
               paymentItemsRecord.push({
                 batchId: batch.id,
                 indiceFt: item.indiceFt,
                 nomePeca: item.nomePeca,
                 qtd: toAllocate,
-                precoUnit: parseN(item.precoUnit)
+                precoUnit: netPrecoUnit
               });
 
-              totalAmount += toAllocate * parseN(item.precoUnit);
+              totalAmount += toAllocate * netPrecoUnit;
             }
           }
         }
@@ -203,7 +356,21 @@ export default function Acertos() {
 
       if (!resp.ok) throw new Error("Erro ao salvar dados no Supabase.");
 
-      alert(`Acerto registrado com sucesso!\n\nRecebido: R$ ${fmt(totalAmount)}`);
+      const rawGross = selectedVendas.reduce((sum, [ftId, qtyToSettle]) => {
+        const item = openItems.find(it => it.indiceFt === ftId);
+        return sum + (qtyToSettle * parseN(item?.precoUnit));
+      }, 0);
+
+      setReceiptData({
+        cliente: selectedAccount.cliente,
+        date: new Date().toLocaleDateString('pt-BR'),
+        tipoAcerto: selectedAccount.cliente?.tipoAcerto,
+        comissaoPct: selectedAccount.cliente?.comissaoPct,
+        grossTotal: rawGross,
+        netTotal: totalAmount,
+        items: paymentItemsRecord
+      });
+      setShowReceiptModal(true);
       
       // Reset local values
       setSalesToRegister({});
@@ -295,18 +462,16 @@ export default function Acertos() {
                       <div className="client-details">
                         <h3>{acc.cliente?.nome}</h3>
                         <p>{acc.cliente?.telefone || 'Sem telefone'}</p>
-                        {acc.cliente?.tipoAcerto === 'comissionado' && (
+                        {acc.cliente?.tipoAcerto === 'comissionado' ? (
                           <span style={{ fontSize: '0.7rem', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(245,158,11,0.2)', display: 'inline-block', marginTop: '4px' }}>
-                            Comissionado ({acc.cliente?.comissaoPct}%)
+                            Comissionado
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.7rem', color: '#34d399', background: 'rgba(52, 211, 153, 0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(52,211,153,0.2)', display: 'inline-block', marginTop: '4px' }}>
+                            Integral
                           </span>
                         )}
                       </div>
-                    </div>
-                    <div className="card-bottom">
-                      <span className="balance-label">Saldo em Aberto:</span>
-                      <span className={`balance-value ${stats.balance > 0 ? 'red' : 'green'}`}>
-                        R$ {fmt(stats.balance)}
-                      </span>
                     </div>
                   </div>
                 );
@@ -444,6 +609,65 @@ export default function Acertos() {
             </div>
           )}
         </main>
+      )}
+
+      {showReceiptModal && receiptData && (
+        <div className="receipt-modal-overlay">
+          <div className="receipt-modal-card" translate="no">
+            <div className="receipt-modal-header">
+              <div className="receipt-success-badge">✓</div>
+              <h2>Acerto Confirmado!</h2>
+              <p>Recebimento registrado com sucesso.</p>
+            </div>
+            <div className="receipt-modal-body">
+              <div className="receipt-details-paper">
+                <div className="receipt-client-info">
+                  <strong>Cliente:</strong> {receiptData.cliente?.nome}<br/>
+                  {receiptData.cliente?.telefone && <><strong>Tel:</strong> {receiptData.cliente.telefone}<br/></>}
+                  <strong>Data:</strong> {receiptData.date}
+                </div>
+                <div className="receipt-items-list">
+                  {receiptData.items.map((it, i) => (
+                    <div key={i} className="receipt-item-line">
+                      <span className="receipt-item-name">{it.qtd}x {it.nomePeca}</span>
+                      <span>R$ {fmt(it.qtd * it.precoUnit)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="receipt-financial-summary">
+                  <div className="receipt-summary-line">
+                    <span>Venda Bruta:</span>
+                    <span>R$ {fmt(receiptData.grossTotal)}</span>
+                  </div>
+                  {receiptData.tipoAcerto === 'comissionado' && (
+                    <div className="receipt-summary-line">
+                      <span>Comissão (-{receiptData.comissaoPct}%):</span>
+                      <span>- R$ {fmt(receiptData.grossTotal * (parseN(receiptData.comissaoPct) / 100))}</span>
+                    </div>
+                  )}
+                  <div className="receipt-summary-line bold">
+                    <span>{receiptData.tipoAcerto === 'comissionado' ? 'Valor Líquido:' : 'Valor Recebido:'}</span>
+                    <span>R$ {fmt(receiptData.netTotal)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="receipt-modal-actions">
+              <button className="action-btn-whatsapp" onClick={() => shareWhatsApp(receiptData)}>
+                💬 Enviar pelo WhatsApp
+              </button>
+              <button className="action-btn-pdf" onClick={() => printLastSettlement(receiptData)}>
+                📄 Imprimir / Salvar PDF
+              </button>
+              <button className="action-btn-close" onClick={() => {
+                setShowReceiptModal(false);
+                setReceiptData(null);
+              }}>
+                ✕ Fechar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
