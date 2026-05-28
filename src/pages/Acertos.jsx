@@ -33,7 +33,7 @@ export default function Acertos() {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
 
-  const shareWhatsApp = (settlement) => {
+  const shareWhatsApp = async (settlement) => {
     if (!settlement) return;
     const comissaoText = settlement.tipoAcerto === 'comissionado' 
       ? `*Comissão (${settlement.comissaoPct}%):* - R$ ${fmt(settlement.grossTotal * (parseN(settlement.comissaoPct) / 100))}\n*Valor Líquido Recebido:* R$ ${fmt(settlement.netTotal)}`
@@ -49,6 +49,20 @@ export default function Acertos() {
       `*Venda Bruta:* R$ ${fmt(settlement.grossTotal)}\n` +
       `${comissaoText}\n\n` +
       `Obrigado pela parceria! 🚀`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Comprovante AM3D',
+          text: message
+        });
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          return;
+        }
+      }
+    }
 
     const encoded = encodeURIComponent(message);
     const phone = settlement.cliente.telefone ? settlement.cliente.telefone.replace(/\D/g, '') : '';
@@ -654,7 +668,7 @@ export default function Acertos() {
             </div>
             <div className="receipt-modal-actions">
               <button className="action-btn-whatsapp" onClick={() => shareWhatsApp(receiptData)}>
-                💬 Enviar pelo WhatsApp
+                💬 Compartilhar Comprovante
               </button>
               <button className="action-btn-pdf" onClick={() => printLastSettlement(receiptData)}>
                 📄 Imprimir / Salvar PDF
