@@ -207,6 +207,38 @@ export default function FichasTecnicas() {
 
   const resultados = getResultados(inputs);
 
+  const recalculateKit = (kit, freshFts) => {
+    if (!kit.isKit || !kit.components || kit.components.length === 0) return kit;
+
+    const summary = kit.components.reduce((acc, item) => {
+      const ft = freshFts.find(f => f.indiceFt === item.ftId);
+      if (!ft) return acc;
+      
+      const unitTime = getUnitProductionTime(ft);
+      const unitWeight = parseNumber(ft.pesoGramas) / Math.max(1, parseNumber(ft.quantidade));
+      const extraCosts = parseNumber(ft.extraValor1 || 0) + parseNumber(ft.extraValor2 || 0) + parseNumber(ft.extraValor3 || 0);
+
+      acc.peso += unitWeight * (item.qty || 1);
+      acc.tempo += unitTime * (item.qty || 1);
+      acc.extra += extraCosts * (item.qty || 1);
+      return acc;
+    }, { peso: 0, tempo: 0, extra: 0 });
+
+    const updatedKitInputs = {
+      ...kit,
+      pesoGramas: summary.peso.toFixed(1),
+      tempoImpressao: formatTime(summary.tempo),
+      extraValor1: summary.extra.toFixed(2),
+    };
+
+    const freshResultados = getResultados(updatedKitInputs);
+
+    return {
+      ...updatedKitInputs,
+      _custoFinal: freshResultados.custoFisicoUnit
+    };
+  };
+
   const handleSaveFt = async () => {
     if (!inputs.indiceFt.trim()) return alert("O Índice da FT não pode estar vazio.");
     
@@ -215,15 +247,24 @@ export default function FichasTecnicas() {
       _custoFinal: resultados.custoFisicoUnit
     };
 
+    let novaLista = [];
     setSavedFts(prev => {
       const idx = prev.findIndex(item => item.indiceFt === inputs.indiceFt);
-      let novaLista = [...prev];
+      novaLista = [...prev];
 
       if (idx >= 0) {
         novaLista[idx] = ftData; // Atualiza se já existir (Edit)
       } else {
         novaLista.push(ftData); // Cria novo caso não exista
       }
+
+      // Recalcula kits na nova lista
+      novaLista = novaLista.map(item => {
+        if (item.isKit && item.components && item.components.some(c => c.ftId === ftData.indiceFt || novaLista.some(f => f.indiceFt === c.ftId))) {
+          return recalculateKit(item, novaLista);
+        }
+        return item;
+      });
 
       // Automotivamente puxa o próximo ID limpo pra tela E reseta os campos especificados
       setTimeout(() => {
@@ -239,6 +280,8 @@ export default function FichasTecnicas() {
           extraNome3: '', extraValor3: '',
           medidaSemCaixa: '', pesoSemCaixa: '',
           medidaComCaixa: '', pesoComCaixa: '',
+          isKit: false,
+          components: []
         }));
       }, 100);
       return novaLista;
@@ -252,6 +295,8 @@ export default function FichasTecnicas() {
       'Content-Type': 'application/json',
       'Prefer': 'resolution=merge-duplicates'
     };
+    
+    // Salva FT original no Supabase
     await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas`, {
       method: 'POST',
       headers,
@@ -262,6 +307,26 @@ export default function FichasTecnicas() {
         data: ftData
       })
     });
+
+    // Encontra os kits que foram alterados em relação à lista anterior e salva-os no Supabase
+    const updatedKits = novaLista.filter(item => {
+      if (!item.isKit) return false;
+      const oldKit = savedFts.find(k => k.indiceFt === item.indiceFt);
+      return !oldKit || oldKit._custoFinal !== item._custoFinal || oldKit.pesoGramas !== item.pesoGramas;
+    });
+
+    for (const kit of updatedKits) {
+      await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          id: kit.indiceFt,
+          name: kit.nomePeca,
+          cost: kit._custoFinal,
+          data: kit
+        })
+      });
+    }
   };
 
   const handleEdit = (ft) => {
@@ -273,17 +338,57 @@ export default function FichasTecnicas() {
 
   const handleDelete = async (id) => {
     if(window.confirm(`Tem certeza que deseja excluir ${id}?`)) {
+      let novaLista = [];
       setSavedFts(prev => {
-        const nova = prev.filter(f => f.indiceFt !== id);
-        setInputs(c => ({...c, indiceFt: getNextFtId(nova)}));
-        return nova;
+        const filtrada = prev.filter(f => f.indiceFt !== id);
+        
+        // Remove componente excluído de todos os kits correspondentes e recalcula
+        novaLista = filtrada.map(item => {
+          if (item.isKit && item.components && item.components.some(c => c.ftId === id)) {
+            const updatedComponents = item.components.filter(c => c.ftId !== id);
+            const updatedKit = { ...item, components: updatedComponents };
+            return recalculateKit(updatedKit, filtrada);
+          }
+          return item;
+        });
+
+        setInputs(c => ({...c, indiceFt: getNextFtId(novaLista)}));
+        return novaLista;
       });
+
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      // Deleta do Supabase
       await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${id}`, {
         method: 'DELETE',
         headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
       });
+
+      // Atualiza no Supabase os kits afetados pela deleção
+      const kitsParaAtualizar = novaLista.filter(item => {
+        if (!item.isKit) return false;
+        const oldKit = savedFts.find(k => k.indiceFt === item.indiceFt);
+        return oldKit && oldKit.components?.length !== item.components?.length;
+      });
+
+      for (const kit of kitsParaAtualizar) {
+        await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas`, {
+          method: 'POST',
+          headers: { 
+            'apikey': SUPA_KEY, 
+            'Authorization': `Bearer ${SUPA_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates'
+          },
+          body: JSON.stringify({
+            id: kit.indiceFt,
+            name: kit.nomePeca,
+            cost: kit._custoFinal,
+            data: kit
+          })
+        });
+      }
     }
   };
 
@@ -317,7 +422,7 @@ export default function FichasTecnicas() {
   const handleGenerateKitFt = () => {
     if (kitItems.length === 0) return alert("Selecione ao menos um item para o kit.");
     
-    // Preenche o formulário com os dados somados
+    // Preenche o formulário com os dados somados e os metadados do kit
     setInputs(prev => ({
       ...prev,
       nomePeca: `KIT: ${kitItems.map(item => {
@@ -333,6 +438,8 @@ export default function FichasTecnicas() {
       extraNome3: '', extraValor3: '',
       medidaSemCaixa: '', pesoSemCaixa: '',
       medidaComCaixa: '', pesoComCaixa: '',
+      isKit: true,
+      components: kitItems
     }));
     
     setActiveTab('single');
