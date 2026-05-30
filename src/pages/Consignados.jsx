@@ -561,16 +561,36 @@ export default function Consignados() {
     return modalSortAsc ? ' ▲' : ' ▼';
   };
 
+  const getLastPriceForAccount = (account, indiceFt) => {
+    if (!account || !account.batches || account.batches.length === 0) return null;
+    const sortedBatches = [...account.batches].sort((a, b) => new Date(b.date) - new Date(a.date));
+    for (const batch of sortedBatches) {
+      const item = batch.items?.find(it => it.indiceFt === indiceFt);
+      if (item && item.precoUnit !== undefined) {
+        return parseN(item.precoUnit);
+      }
+    }
+    return null;
+  };
+
   const openBatchModal = () => {
-    setNewBatchItems(fts.map(ft => ({
-      indiceFt: ft.indiceFt,
-      nomePeca: ft.nomePeca,
-      custoBase: ft._custoFinal || 0,
-      precoUnit: ft.isOrcamento ? (ft.precoSugerido || 0).toFixed(2) : ((ft._custoFinal || 0) * parseN(batchMarkup)).toFixed(2),
-      qtd: '', // Use empty string for better UX
-      qtdPago: 0,
-      isOrcamento: ft.isOrcamento
-    })));
+    setNewBatchItems(fts.map(ft => {
+      const lastPrice = getLastPriceForAccount(selectedAccount, ft.indiceFt);
+      return {
+        indiceFt: ft.indiceFt,
+        nomePeca: ft.nomePeca,
+        custoBase: ft._custoFinal || 0,
+        precoUnit: lastPrice !== null 
+          ? lastPrice.toFixed(2) 
+          : ft.isOrcamento 
+            ? (ft.precoSugerido || 0).toFixed(2) 
+            : ((ft._custoFinal || 0) * parseN(batchMarkup)).toFixed(2),
+        qtd: '', // Use empty string for better UX
+        tempQtd: '', // Quantidade temporária
+        qtdPago: 0,
+        isOrcamento: ft.isOrcamento
+      };
+    }));
     setSearchTerm('');
     setModalSortField('id');
     setModalSortAsc(true);
@@ -588,9 +608,34 @@ export default function Consignados() {
       next[idx] = { ...next[idx] }; // Clone profundo para garantir re-render do React
       if (field === 'qtd') {
         next[idx][field] = value === '' ? '' : parseN(value);
+      } else if (field === 'tempQtd') {
+        next[idx][field] = value === '' ? '' : parseN(value);
       } else {
         next[idx][field] = value;
       }
+      return next;
+    });
+  };
+
+  const handleAddItem = (originalIdx) => {
+    setNewBatchItems(prev => {
+      const next = [...prev];
+      const item = { ...next[originalIdx] };
+      const q = parseN(item.tempQtd);
+      item.qtd = q <= 0 ? 1 : q;
+      item.tempQtd = '';
+      next[originalIdx] = item;
+      return next;
+    });
+  };
+
+  const handleRemoveItem = (originalIdx) => {
+    setNewBatchItems(prev => {
+      const next = [...prev];
+      const item = { ...next[originalIdx] };
+      item.qtd = '';
+      item.tempQtd = '';
+      next[originalIdx] = item;
       return next;
     });
   };
@@ -1160,184 +1205,329 @@ export default function Consignados() {
                 </div>
               </div>
 
-              <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', background: 'var(--bg-secondary)' }}>
-                    <th 
-                      style={{ padding: '0.75rem', cursor: 'pointer', userSelect: 'none' }} 
-                      onClick={() => handleSortClick('id')}
-                    >
-                      ID{renderSortIndicator('id')}
-                    </th>
-                    <th 
-                      style={{ padding: '0.75rem', cursor: 'pointer', userSelect: 'none' }} 
-                      onClick={() => handleSortClick('nome')}
-                    >
-                      Nome{renderSortIndicator('nome')}
-                    </th>
-                    <th 
-                      style={{ padding: '0.75rem', cursor: 'pointer', userSelect: 'none' }} 
-                      onClick={() => handleSortClick('custo')}
-                    >
-                      Preço de Custo{renderSortIndicator('custo')}
-                    </th>
-                    <th 
-                      style={{ padding: '0.75rem', width: '150px', cursor: 'pointer', userSelect: 'none' }} 
-                      onClick={() => handleSortClick('venda')}
-                    >
-                      Preço de Venda (R$){renderSortIndicator('venda')}
-                    </th>
-                    {selectedAccount.cliente?.tipoAcerto === 'comissionado' && (
-                      <th style={{ padding: '0.75rem', width: '130px', userSelect: 'none' }}>
-                        Comissão ({selectedAccount.cliente?.comissaoPct}%)
-                      </th>
-                    )}
-                    <th style={{ padding: '0.75rem', width: '130px', userSelect: 'none' }}>
-                      Lucro
-                    </th>
-                    <th style={{ padding: '0.75rem', width: '130px', userSelect: 'none' }}>
-                      Valor Total
-                    </th>
-                    <th style={{ padding: '0.75rem', width: '120px', userSelect: 'none' }}>
-                      Qtd a Enviar
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const sendingItems = newBatchItems.filter(it => parseN(it.qtd) > 0);
-                    const totalQtd = sendingItems.reduce((acc, it) => acc + parseN(it.qtd), 0);
-                    const totalVal = sendingItems.reduce((acc, it) => acc + (parseN(it.qtd) * parseN(it.precoUnit)), 0);
-                    
-                    const isComissionado = selectedAccount.cliente?.tipoAcerto === 'comissionado';
-                    const comissaoPct = isComissionado ? parseN(selectedAccount.cliente?.comissaoPct) : 0;
-                    
-                    const totalComissao = sendingItems.reduce((acc, it) => {
-                      return acc + (parseN(it.precoUnit) * (comissaoPct / 100) * parseN(it.qtd));
-                    }, 0);
-                    
-                    const totalLucro = sendingItems.reduce((acc, it) => {
-                      const qty = parseN(it.qtd);
-                      const pVenda = parseN(it.precoUnit);
-                      const vLucro = isComissionado
-                        ? (pVenda * (100 - comissaoPct) / 100) - parseN(it.custoBase)
-                        : pVenda - parseN(it.custoBase);
-                      return acc + (vLucro * qty);
-                    }, 0);
+              {(() => {
+                const addedItems = newBatchItems.filter(it => parseN(it.qtd) > 0);
+                const availableItems = newBatchItems.filter(it => !parseN(it.qtd));
+                const totalQtd = addedItems.reduce((acc, it) => acc + parseN(it.qtd), 0);
+                const totalVal = addedItems.reduce((acc, it) => acc + (parseN(it.qtd) * parseN(it.precoUnit)), 0);
+                
+                const isComissionado = selectedAccount.cliente?.tipoAcerto === 'comissionado';
+                const comissaoPct = isComissionado ? parseN(selectedAccount.cliente?.comissaoPct) : 0;
+                
+                const totalComissao = addedItems.reduce((acc, it) => {
+                  return acc + (parseN(it.precoUnit) * (comissaoPct / 100) * parseN(it.qtd));
+                }, 0);
+                
+                const totalLucro = addedItems.reduce((acc, it) => {
+                  const qty = parseN(it.qtd);
+                  const pVenda = parseN(it.precoUnit);
+                  const vLucro = isComissionado
+                    ? (pVenda * (100 - comissaoPct) / 100) - parseN(it.custoBase)
+                    : pVenda - parseN(it.custoBase);
+                  return acc + (vLucro * qty);
+                }, 0);
 
-                    return (
-                      <tr style={{ 
-                        background: 'var(--bg-secondary)', 
-                        borderBottom: '2.5px solid var(--border-color)', 
-                        fontWeight: '800',
-                        fontSize: '0.9rem',
-                        color: 'var(--text-primary)'
-                      }}>
-                        <td style={{ padding: '0.75rem 0.5rem', color: 'var(--accent-primary)', fontSize: '0.8rem', letterSpacing: '0.5px' }} colSpan="3">
-                          📊 TOTAIS DA REMESSA
-                        </td>
-                        <td style={{ padding: '0.75rem 0.5rem' }}>
-                          {/* Preço de Venda column empty */}
-                        </td>
-                        {isComissionado && (
-                          <td style={{ padding: '0.75rem 0.5rem', color: '#fbbf24' }}>
-                            R$ {fmt(totalComissao)}
-                          </td>
-                        )}
-                        <td style={{ padding: '0.75rem 0.5rem', color: totalLucro >= 0 ? '#34d399' : '#f87171' }}>
-                          R$ {fmt(totalLucro)}
-                        </td>
-                        <td style={{ padding: '0.75rem 0.5rem', fontWeight: '900' }}>
-                          R$ {fmt(totalVal)}
-                        </td>
-                        <td style={{ padding: '0.75rem 0.5rem', fontWeight: '900', color: 'var(--accent-primary)' }}>
-                          {totalQtd}
-                        </td>
-                      </tr>
-                    );
-                  })()}
-                  {newBatchItems
-                    .filter(it => (it.nomePeca || '').toLowerCase().includes(searchTerm.toLowerCase()) || (it.indiceFt || '').toLowerCase().includes(searchTerm.toLowerCase()))
-                    .sort((a, b) => {
-                      const qA = parseN(a.qtd) > 0 ? 1 : 0;
-                      const qB = parseN(b.qtd) > 0 ? 1 : 0;
-                      if (qA !== qB) return qB - qA; // Selected items always at the top
-                      
-                      let valA, valB;
-                      if (modalSortField === 'id') {
-                        valA = a.indiceFt || '';
-                        valB = b.indiceFt || '';
-                        return modalSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-                      } else if (modalSortField === 'nome') {
-                        valA = a.nomePeca || '';
-                        valB = b.nomePeca || '';
-                        return modalSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-                      } else if (modalSortField === 'custo') {
-                        valA = parseN(a.custoBase);
-                        valB = parseN(b.custoBase);
-                        return modalSortAsc ? valA - valB : valB - valA;
-                      } else if (modalSortField === 'venda') {
-                        valA = parseN(a.precoUnit);
-                        valB = parseN(b.precoUnit);
-                        return modalSortAsc ? valA - valB : valB - valA;
-                      }
-                      return 0;
-                    })
-                    .map((it) => {
-                      const active = parseN(it.qtd) > 0;
-                      const originalIdx = newBatchItems.findIndex(oi => oi.indiceFt === it.indiceFt);
-                      
-                      const pVenda = parseN(it.precoUnit);
-                      const isComissionado = selectedAccount.cliente?.tipoAcerto === 'comissionado';
-                      const comissaoPct = isComissionado ? parseN(selectedAccount.cliente?.comissaoPct) : 0;
-                      
-                      const vComissao = pVenda * (comissaoPct / 100);
-                      const vLucro = isComissionado 
-                        ? (pVenda * (100 - comissaoPct) / 100) - parseN(it.custoBase)
-                        : pVenda - parseN(it.custoBase);
+                return (
+                  <>
+                    {/* Tabela 1: Itens Adicionados */}
+                    <div className="card" style={{ marginBottom: '2rem', padding: '1.5rem', background: 'var(--bg-secondary)', borderRadius: '12px' }}>
+                      <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className="badge" style={{ background: 'var(--accent-subtle)', color: 'var(--accent-primary)', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
+                          {addedItems.length}
+                        </span>
+                        Itens Adicionados ao Pedido
+                      </h3>
 
-                      return (
-                        <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: active ? 'rgba(124, 58, 237, 0.05)' : 'transparent' }}>
-                          <td style={{ padding: '0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
-                          <td style={{ padding: '0.5rem', fontWeight: active ? 'bold' : 'normal' }}>{it.nomePeca}</td>
-                          <td style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>R$ {fmt(it.custoBase)}</td>
-                          <td style={{ padding: '0.5rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                              <span>R$</span>
-                              <input type="number" className="cell-input" value={it.precoUnit} onChange={e => updateBatchItem(originalIdx, 'precoUnit', e.target.value)} />
-                            </div>
-                          </td>
-                          {isComissionado && (
-                            <td style={{ padding: '0.5rem' }}>
-                              <div style={{ color: '#fbbf24', fontWeight: '600' }}>R$ {fmt(vComissao)}</div>
-                              {parseN(it.qtd) > 1 && (
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                  Total: R$ {fmt(vComissao * parseN(it.qtd))}
-                                </div>
+                      {addedItems.length === 0 ? (
+                        <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', margin: 0, padding: '1rem 0' }}>
+                          Nenhum item adicionado ao pedido ainda. Use a lista de Produtos Disponíveis abaixo para buscar e adicionar itens.
+                        </p>
+                      ) : (
+                        <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ textAlign: 'left', background: 'var(--bg-primary)' }}>
+                              <th style={{ padding: '0.75rem' }}>ID</th>
+                              <th style={{ padding: '0.75rem' }}>Nome</th>
+                              <th style={{ padding: '0.75rem' }}>Preço de Custo</th>
+                              <th style={{ padding: '0.75rem', width: '150px' }}>Preço de Venda (R$)</th>
+                              {isComissionado && (
+                                <th style={{ padding: '0.75rem', width: '130px' }}>
+                                  Comissão ({comissaoPct}%)
+                                </th>
                               )}
-                            </td>
-                          )}
-                          <td style={{ padding: '0.5rem' }}>
-                            <div style={{ fontWeight: 'bold', color: vLucro > 0 ? '#34d399' : vLucro < 0 ? '#f87171' : 'inherit' }}>
-                              R$ {fmt(vLucro)}
-                            </div>
-                            {parseN(it.qtd) > 1 && (
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                Total: R$ {fmt(vLucro * parseN(it.qtd))}
-                              </div>
+                              <th style={{ padding: '0.75rem', width: '130px' }}>Lucro</th>
+                              <th style={{ padding: '0.75rem', width: '130px' }}>Valor Total</th>
+                              <th style={{ padding: '0.75rem', width: '120px' }}>Qtd no Pedido</th>
+                              <th style={{ padding: '0.75rem', width: '80px', textAlign: 'center' }}>Remover</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {addedItems.map((it) => {
+                              const originalIdx = newBatchItems.findIndex(oi => oi.indiceFt === it.indiceFt);
+                              const pVenda = parseN(it.precoUnit);
+                              const vComissao = pVenda * (comissaoPct / 100);
+                              const vLucro = isComissionado 
+                                ? (pVenda * (100 - comissaoPct) / 100) - parseN(it.custoBase)
+                                : pVenda - parseN(it.custoBase);
+
+                              return (
+                                <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: 'rgba(124, 58, 237, 0.03)' }}>
+                                  <td style={{ padding: '0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
+                                  <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{it.nomePeca}</td>
+                                  <td style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>R$ {fmt(it.custoBase)}</td>
+                                  <td style={{ padding: '0.5rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                      <span>R$</span>
+                                      <input 
+                                        type="number" 
+                                        className="cell-input" 
+                                        value={it.precoUnit} 
+                                        onChange={e => updateBatchItem(originalIdx, 'precoUnit', e.target.value)} 
+                                      />
+                                    </div>
+                                  </td>
+                                  {isComissionado && (
+                                    <td style={{ padding: '0.5rem' }}>
+                                      <div style={{ color: '#fbbf24', fontWeight: '600' }}>R$ {fmt(vComissao)}</div>
+                                      {parseN(it.qtd) > 1 && (
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                          Total: R$ {fmt(vComissao * parseN(it.qtd))}
+                                        </div>
+                                      )}
+                                    </td>
+                                  )}
+                                  <td style={{ padding: '0.5rem' }}>
+                                    <div style={{ fontWeight: 'bold', color: vLucro > 0 ? '#34d399' : vLucro < 0 ? '#f87171' : 'inherit' }}>
+                                      R$ {fmt(vLucro)}
+                                    </div>
+                                    {parseN(it.qtd) > 1 && (
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                        Total: R$ {fmt(vLucro * parseN(it.qtd))}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>
+                                    R$ {fmt(pVenda * parseN(it.qtd))}
+                                  </td>
+                                  <td style={{ padding: '0.5rem' }}>
+                                    <input 
+                                      type="number" 
+                                      className="cell-input cell-qty" 
+                                      value={it.qtd} 
+                                      onChange={e => updateBatchItem(originalIdx, 'qtd', e.target.value)} 
+                                    />
+                                  </td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                                    <button 
+                                      type="button" 
+                                      className="btn-icon" 
+                                      onClick={() => handleRemoveItem(originalIdx)}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        margin: '0 auto',
+                                        border: '1px solid #fca5a5',
+                                        background: '#fef2f2',
+                                        padding: '0.4rem',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer'
+                                      }}
+                                      title="Remover do Pedido"
+                                    >
+                                      <Trash2 size={16} color="var(--danger)" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            
+                            {/* Linha consolidada de Totais */}
+                            <tr style={{ 
+                              background: 'var(--bg-secondary)', 
+                              borderTop: '2.5px solid var(--border-color)', 
+                              fontWeight: '800',
+                              fontSize: '0.9rem',
+                              color: 'var(--text-primary)'
+                            }}>
+                              <td style={{ padding: '0.75rem 0.5rem', color: 'var(--accent-primary)', fontSize: '0.8rem', letterSpacing: '0.5px' }} colSpan="3">
+                                📊 TOTAIS DA REMESSA
+                              </td>
+                              <td style={{ padding: '0.75rem 0.5rem' }}>
+                                {/* Preço de Venda column empty */}
+                              </td>
+                              {isComissionado && (
+                                <td style={{ padding: '0.75rem 0.5rem', color: '#fbbf24' }}>
+                                  R$ {fmt(totalComissao)}
+                                </td>
+                              )}
+                              <td style={{ padding: '0.75rem 0.5rem', color: totalLucro >= 0 ? '#34d399' : '#f87171' }}>
+                                R$ {fmt(totalLucro)}
+                              </td>
+                              <td style={{ padding: '0.75rem 0.5rem', fontWeight: '900' }}>
+                                R$ {fmt(totalVal)}
+                              </td>
+                              <td style={{ padding: '0.75rem 0.5rem', fontWeight: '900', color: 'var(--accent-primary)' }} colSpan="2">
+                                {totalQtd} itens
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+
+                    {/* Tabela 2: Produtos Disponíveis */}
+                    <div className="card" style={{ padding: '1.5rem', borderRadius: '12px' }}>
+                      <h3 style={{ marginBottom: '1rem' }}>Produtos Disponíveis</h3>
+                      
+                      <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ textAlign: 'left', background: 'var(--bg-secondary)' }}>
+                            <th 
+                              style={{ padding: '0.75rem', cursor: 'pointer', userSelect: 'none' }} 
+                              onClick={() => handleSortClick('id')}
+                            >
+                              ID{renderSortIndicator('id')}
+                            </th>
+                            <th 
+                              style={{ padding: '0.75rem', cursor: 'pointer', userSelect: 'none' }} 
+                              onClick={() => handleSortClick('nome')}
+                            >
+                              Nome{renderSortIndicator('nome')}
+                            </th>
+                            <th 
+                              style={{ padding: '0.75rem', cursor: 'pointer', userSelect: 'none' }} 
+                              onClick={() => handleSortClick('custo')}
+                            >
+                              Preço de Custo{renderSortIndicator('custo')}
+                            </th>
+                            <th 
+                              style={{ padding: '0.75rem', width: '150px', cursor: 'pointer', userSelect: 'none' }} 
+                              onClick={() => handleSortClick('venda')}
+                            >
+                              Preço de Venda (R$){renderSortIndicator('venda')}
+                            </th>
+                            {isComissionado && (
+                              <th style={{ padding: '0.75rem', width: '130px', userSelect: 'none' }}>
+                                Comissão ({comissaoPct}%)
+                              </th>
                             )}
-                          </td>
-                          <td style={{ padding: '0.5rem', fontWeight: 'bold', color: active ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                            R$ {fmt(pVenda * parseN(it.qtd))}
-                          </td>
-                          <td style={{ padding: '0.5rem' }}>
-                            <input type="number" className="cell-input cell-qty" value={it.qtd} onChange={e => updateBatchItem(originalIdx, 'qtd', e.target.value)} />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
+                            <th style={{ padding: '0.75rem', width: '130px', userSelect: 'none' }}>
+                              Lucro
+                            </th>
+                            <th style={{ padding: '0.75rem', width: '160px', userSelect: 'none' }}>
+                              Qtd a Enviar
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {availableItems
+                            .filter(it => (it.nomePeca || '').toLowerCase().includes(searchTerm.toLowerCase()) || (it.indiceFt || '').toLowerCase().includes(searchTerm.toLowerCase()))
+                            .sort((a, b) => {
+                              let valA, valB;
+                              if (modalSortField === 'id') {
+                                  valA = a.indiceFt || '';
+                                  valB = b.indiceFt || '';
+                                  return modalSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                              } else if (modalSortField === 'nome') {
+                                  valA = a.nomePeca || '';
+                                  valB = b.nomePeca || '';
+                                  return modalSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                              } else if (modalSortField === 'custo') {
+                                  valA = parseN(a.custoBase);
+                                  valB = parseN(b.custoBase);
+                                  return modalSortAsc ? valA - valB : valB - valA;
+                              } else if (modalSortField === 'venda') {
+                                  valA = parseN(a.precoUnit);
+                                  valB = parseN(b.precoUnit);
+                                  return modalSortAsc ? valA - valB : valB - valA;
+                              }
+                              return 0;
+                            })
+                            .map((it) => {
+                              const originalIdx = newBatchItems.findIndex(oi => oi.indiceFt === it.indiceFt);
+                              const pVenda = parseN(it.precoUnit);
+                              const vComissao = pVenda * (comissaoPct / 100);
+                              const vLucro = isComissionado 
+                                ? (pVenda * (100 - comissaoPct) / 100) - parseN(it.custoBase)
+                                : pVenda - parseN(it.custoBase);
+
+                              return (
+                                <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                  <td style={{ padding: '0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
+                                  <td style={{ padding: '0.5rem' }}>{it.nomePeca}</td>
+                                  <td style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>R$ {fmt(it.custoBase)}</td>
+                                  <td style={{ padding: '0.5rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                      <span>R$</span>
+                                      <input 
+                                        type="number" 
+                                        className="cell-input" 
+                                        value={it.precoUnit} 
+                                        onChange={e => updateBatchItem(originalIdx, 'precoUnit', e.target.value)} 
+                                      />
+                                    </div>
+                                  </td>
+                                  {isComissionado && (
+                                    <td style={{ padding: '0.5rem' }}>
+                                      <div style={{ color: '#fbbf24', fontWeight: '600' }}>R$ {fmt(vComissao)}</div>
+                                    </td>
+                                  )}
+                                  <td style={{ padding: '0.5rem' }}>
+                                    <div style={{ fontWeight: 'bold', color: vLucro > 0 ? '#34d399' : vLucro < 0 ? '#f87171' : 'inherit' }}>
+                                      R$ {fmt(vLucro)}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '0.5rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <input 
+                                        type="number" 
+                                        className="cell-input cell-qty" 
+                                        placeholder="0"
+                                        value={it.tempQtd} 
+                                        onChange={e => updateBatchItem(originalIdx, 'tempQtd', e.target.value)}
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            handleAddItem(originalIdx);
+                                          }
+                                        }}
+                                      />
+                                      <button 
+                                        type="button" 
+                                        onClick={() => handleAddItem(originalIdx)}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          padding: '0.4rem 0.6rem',
+                                          background: 'var(--accent-primary, #7c3aed)',
+                                          color: 'white',
+                                          border: 'none',
+                                          borderRadius: '6px',
+                                          cursor: 'pointer',
+                                          fontWeight: 'bold',
+                                          fontSize: '1.2rem',
+                                          lineHeight: '1',
+                                          height: '32px',
+                                          width: '32px',
+                                          transition: 'opacity 0.2s'
+                                        }}
+                                        title="Adicionar ao pedido"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}

@@ -1,5 +1,11 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Resumo.css — Painel Consolidado de Resumo Financeiro
+   ═══════════════════════════════════════════════════════════════════ */
+
 .resumo-page {
   animation: fadeIn 0.4s ease-out;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
 .resumo-header {
@@ -7,14 +13,16 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
 .year-selector {
   display: flex;
   align-items: center;
   gap: 0.8rem;
-  background: var(--bg-surface);
-  padding: 0.6rem 1rem;
+  background: var(--bg-secondary);
+  padding: 0.6rem 1.2rem;
   border-radius: 10px;
   border: 1px solid var(--border-color);
 }
@@ -30,173 +38,199 @@
   outline: none;
 }
 
+/* ── Yearly Stats Cards ─────────────────────────────────────────── */
 .resumo-stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 2.5rem;
 }
 
 .stat-card {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
   padding: 1.5rem;
-  border-left: 5px solid transparent;
-}
-
-.stat-card.total-vendas {
-  border-left-color: var(--success);
-}
-
-.stat-card.total-saidas {
-  border-left-color: var(--danger);
-}
-
-.stat-icon {
-  background: var(--bg-primary);
-  width: 56px;
-  height: 56px;
   border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+}
+
+.stat-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.stat-card-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.total-vendas .stat-icon { color: var(--success); }
-.total-saidas .stat-icon { color: var(--danger); }
+.stat-card.faturamento { border-top: 4px solid var(--accent-primary); }
+.stat-card.faturamento .stat-card-icon { background: rgba(124, 58, 237, 0.1); color: var(--accent-primary); }
 
-.section-subtitle {
-  font-size: 1.25rem;
-  color: var(--text-primary);
-  margin-bottom: 1.5rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+.stat-card.caixa { border-top: 4px solid var(--success); }
+.stat-card.caixa .stat-card-icon { background: rgba(16, 185, 129, 0.1); color: var(--success); }
 
-.featured-month {
-  margin-bottom: 3rem;
-}
+.stat-card.pendente { border-top: 4px solid var(--warning); }
+.stat-card.pendente .stat-card-icon { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
 
-.featured-container {
-  max-width: 450px;
-}
+.stat-card.despesas { border-top: 4px solid var(--danger); }
+.stat-card.despesas .stat-card-icon { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+
+.stat-card.resultado { border-top: 4px solid #06b6d4; }
+.stat-card.resultado .stat-card-icon { background: rgba(6, 182, 212, 0.1); color: #06b6d4; }
 
 .stat-label {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: var(--text-secondary);
-  font-weight: 500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .stat-value {
-  font-size: 2rem;
+  font-size: 1.6rem;
   color: var(--text-primary);
-  margin: 0.2rem 0;
+  font-weight: 800;
+  margin: 0;
+  font-family: 'Outfit', sans-serif;
 }
 
-.months-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 1.5rem;
+.stat-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.3;
 }
 
-.month-card {
-  padding: 1.25rem;
+/* ── Monthly Revamped Table ────────────────────────────────────── */
+.table-card {
+  padding: 1.5rem;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+}
+
+.table-title-area {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
-.month-card.empty-month {
-  opacity: 0.6;
-  filter: grayscale(0.5);
+.table-title-area h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
 }
 
-.month-card.current-month {
-  border: 2px solid var(--accent-primary);
-  box-shadow: 0 8px 30px rgba(99, 102, 241, 0.15);
-  background: linear-gradient(180deg, var(--bg-surface) 0%, rgba(99, 102, 241, 0.05) 100%);
-  transform: scale(1.02);
-  z-index: 10;
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
 }
 
-.current-badge {
+.resumo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.resumo-table th {
+  padding: 1rem;
+  background: var(--bg-primary);
+  border-bottom: 2px solid var(--border-color);
+  color: var(--text-secondary);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.resumo-table td {
+  padding: 1.1rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.resumo-table tbody tr {
+  transition: background 0.15s;
+}
+
+.resumo-table tbody tr:hover {
+  background: var(--bg-surface-hover);
+}
+
+/* Destaque do Mês Atual */
+.resumo-table tbody tr.row-current-month {
+  background: rgba(124, 58, 237, 0.04);
+  border-left: 5px solid var(--accent-primary);
+  font-weight: 500;
+}
+
+.resumo-table tbody tr.row-current-month:hover {
+  background: rgba(124, 58, 237, 0.07);
+}
+
+.month-badge {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-left: 8px;
+  display: inline-block;
+}
+
+.month-badge.current {
   background: var(--accent-primary);
   color: white;
-  font-size: 0.65rem;
-  padding: 2px 8px;
-  border-radius: 12px;
-  text-transform: uppercase;
-  font-weight: 800;
-  letter-spacing: 0.02em;
 }
 
-.month-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.25rem;
+.month-badge.empty {
+  background: var(--border-color);
+  color: var(--text-muted);
 }
 
-.month-card-header h3 {
-  font-size: 1.1rem;
+/* Estilos de Célula e Sub-tags */
+.currency-main {
+  font-weight: 700;
   color: var(--text-primary);
 }
 
-.balance-tag {
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 20px;
+.currency-sub {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.balance-tag.positive {
-  background: #DCFCE7;
-  color: #166534;
-}
+.green-tag { color: var(--success); font-weight: 600; }
+.orange-tag { color: var(--warning); font-weight: 600; }
+.red-tag { color: var(--danger); font-weight: 600; }
 
-.balance-tag.negative {
-  background: #FEE2E2;
-  color: #991B1B;
-}
-
-.month-sections {
+.total-summary-cell {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-}
-
-.month-sections h4 {
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 0.75rem;
-}
-
-.row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.88rem;
-  margin-bottom: 0.4rem;
-  color: var(--text-secondary);
-}
-
-.row.subtotal {
-  margin-top: 0.6rem;
-  padding-top: 0.6rem;
-  border-top: 1px dashed var(--border-color);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.divider {
-  height: 1px;
-  background: linear-gradient(to right, var(--border-color), transparent);
+  gap: 4px;
+  align-items: flex-end;
+  text-align: right;
 }
 
 @keyframes fadeIn {
@@ -204,8 +238,18 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
+  .resumo-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
   .resumo-stats-grid {
     grid-template-columns: 1fr;
+  }
+  .resumo-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

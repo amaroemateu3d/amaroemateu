@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getResultados } from '../utils/financeCalculators';
-import { TrendingDown, TrendingUp, ClipboardList, ShoppingCart, Calendar, Loader } from 'lucide-react';
+import { TrendingDown, TrendingUp, ClipboardList, ShoppingCart, Calendar, Loader, DollarSign } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import './Resumo.css';
 
@@ -9,21 +9,13 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 
-const CATEGORIES_LABELS = {
-  materiais: '📦 Matéria-Prima',
-  contas: '⚡ Contas Fixas',
-  manutencao: '🛠️ Manutenção',
-  diversos: '📄 Diversos'
-};
-
 export default function Resumo() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [summaryData, setSummaryData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   const now = new Date();
   const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchData();
@@ -37,7 +29,7 @@ export default function Resumo() {
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const headers = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
 
-      // Busca consolidada via fetch direto para evitar deadlock do cliente Supabase
+      // Busca consolidada para evitar deadlock e garantir performance
       const [ordersRes, expensesRes, ftsRes, salesRes, overRes, defRes, consignadosRes] = await Promise.allSettled([
         fetch(`${SUPA_URL}/rest/v1/orders?select=*&client_data=not.is.null`, { headers }),
         fetch(`${SUPA_URL}/rest/v1/expenses?select=*`, { headers }),
@@ -62,161 +54,145 @@ export default function Resumo() {
       const pedidos = ordersData || [];
       const saidas = expensesData || [];
     
-    const vendasQty = {};
-    (salesData || []).forEach(s => {
-       if(!vendasQty[s.month]) vendasQty[s.month] = {};
-       if(!vendasQty[s.month][s.channel_id]) vendasQty[s.month][s.channel_id] = {};
-       vendasQty[s.month][s.channel_id][s.ft_id] = s.quantity;
-    });
-
-    const overrides = {};
-    (overData || []).forEach(o => {
-       if(!overrides[o.channel_id]) overrides[o.channel_id] = {};
-       overrides[o.channel_id][o.ft_id] = o.settings;
-    });
-
-    const channelDefaults = {};
-    (defData || []).forEach(d => {
-       channelDefaults[d.channel_id] = d.settings;
-    });
-
-    const yearlyMonthsData = [];
-
-    // Helper to get price for a specific FT and channel
-    const getFtPrice = (ft, channelId) => {
-      const physicalFT = {
-        indiceFt: ft.indiceFt,
-        nomePeca: ft.nomePeca,
-        quantidade: ft.quantidade,
-        pesoGramas: ft.pesoGramas,
-        tempoImpressao: ft.tempoImpressao,
-        precoKgMaterial: ft.precoKgMaterial,
-        custoKwh: ft.custoKwh,
-        custoDepreciacao: ft.custoDepreciacao,
-        extraValor1: ft.extraValor1,
-        extraValor2: ft.extraValor2,
-        extraValor3: ft.extraValor3
-      };
-      const defaults = channelDefaults[channelId] || {
-        custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0,
-        taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0
-      };
-      const channelOps = overrides[channelId]?.[ft.indiceFt] || {};
-      const merged = { ...physicalFT, ...defaults, ...channelOps };
-      const res = getResultados(merged);
-      return res.precoPraticado;
-    };
-
-    // 2. Aggregate by month
-    for (let m = 0; m < 12; m++) {
-      const monthStr = `${selectedYear}-${String(m + 1).padStart(2, '0')}`;
-      
-      // -- Vendas Multi-Canal --
-      let totalVendasEcommerce = 0;
-      const channelData = vendasQty[monthStr] || {};
-      Object.entries(channelData).forEach(([channelId, ftsQty]) => {
-        Object.entries(ftsQty).forEach(([ftId, qty]) => {
-          const ft = savedFts.find(f => f.indiceFt === ftId);
-          if (ft && qty > 0) {
-            totalVendasEcommerce += getFtPrice(ft, channelId) * qty;
-          }
-        });
+      const vendasQty = {};
+      (salesData || []).forEach(s => {
+         if(!vendasQty[s.month]) vendasQty[s.month] = {};
+         if(!vendasQty[s.month][s.channel_id]) vendasQty[s.month][s.channel_id] = {};
+         vendasQty[s.month][s.channel_id][s.ft_id] = s.quantity;
       });
 
-      // -- Pedidos e Consignados --
-      let totalPedidosPago = 0;
-      let totalPedidosPendente = 0;
-      let totalConsignadosPago = 0;
-      let totalConsignadosPendente = 0; // legado
-      let totalConsignadosGerado = 0;
+      const overrides = {};
+      (overData || []).forEach(o => {
+         if(!overrides[o.channel_id]) overrides[o.channel_id] = {};
+         overrides[o.channel_id][o.ft_id] = o.settings;
+      });
 
-      // Consignados (Nova Tabela)
-      (consignadosData || []).forEach(acc => {
-        const comissao = acc.cliente?.tipoAcerto === 'comissionado' ? Number(acc.cliente?.comissaoPct || 0) : 0;
-        const repasseRate = (100 - comissao) / 100;
+      const channelDefaults = {};
+      (defData || []).forEach(d => {
+         channelDefaults[d.channel_id] = d.settings;
+      });
 
-        (acc.batches || []).forEach(batch => {
-          if (!batch.date) return;
-          const bDate = new Date(batch.date);
-          const bMonthStr = `${bDate.getUTCFullYear()}-${String(bDate.getUTCMonth() + 1).padStart(2, '0')}`;
-          
-          if (bMonthStr === monthStr) {
-            let bTotal = 0;
-            (batch.items || []).forEach(it => {
-              bTotal += Number(it.qtd || 0) * Number(it.precoUnit || 0);
-            });
-            totalConsignadosGerado += bTotal * repasseRate;
-          }
+      const yearlyMonthsData = [];
+
+      // Helper para obter preço de um FT e canal específico
+      const getFtPrice = (ft, channelId) => {
+        const physicalFT = {
+          indiceFt: ft.indiceFt,
+          nomePeca: ft.nomePeca,
+          quantidade: ft.quantidade,
+          pesoGramas: ft.pesoGramas,
+          tempoImpressao: ft.tempoImpressao,
+          precoKgMaterial: ft.precoKgMaterial,
+          custoKwh: ft.custoKwh,
+          custoDepreciacao: ft.custoDepreciacao,
+          extraValor1: ft.extraValor1,
+          extraValor2: ft.extraValor2,
+          extraValor3: ft.extraValor3
+        };
+        const defaults = channelDefaults[channelId] || {
+          custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0,
+          taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0
+        };
+        const channelOps = overrides[channelId]?.[ft.indiceFt] || {};
+        const merged = { ...physicalFT, ...defaults, ...channelOps };
+        const res = getResultados(merged);
+        return res.precoPraticado;
+      };
+
+      // Agregar dados por mês
+      for (let m = 0; m < 12; m++) {
+        const monthStr = `${selectedYear}-${String(m + 1).padStart(2, '0')}`;
+        
+        // -- Vendas Multi-Canal (Marketplaces) --
+        let totalVendasEcommerce = 0;
+        const channelData = vendasQty[monthStr] || {};
+        Object.entries(channelData).forEach(([channelId, ftsQty]) => {
+          Object.entries(ftsQty).forEach(([ftId, qty]) => {
+            const ft = savedFts.find(f => f.indiceFt === ftId);
+            if (ft && qty > 0) {
+              totalVendasEcommerce += getFtPrice(ft, channelId) * qty;
+            }
+          });
         });
 
-        (acc.payments || []).forEach(payment => {
-          if (!payment.date) return;
-          const pDate = new Date(payment.date);
-          const pMonthStr = `${pDate.getUTCFullYear()}-${String(pDate.getUTCMonth() + 1).padStart(2, '0')}`;
-          
+        // -- Pedidos e Consignados --
+        let totalPedidosPago = 0;
+        let totalPedidosPendente = 0;
+        let totalConsignadosPago = 0;
+        let totalConsignadosGerado = 0;
+
+        // Consignados
+        (consignadosData || []).forEach(acc => {
+          const comissao = acc.cliente?.tipoAcerto === 'comissionado' ? Number(acc.cliente?.comissaoPct || 0) : 0;
+          const repasseRate = (100 - comissao) / 100;
+
+          (acc.batches || []).forEach(batch => {
+            if (!batch.date) return;
+            const bDate = new Date(batch.date);
+            const bMonthStr = `${bDate.getUTCFullYear()}-${String(bDate.getUTCMonth() + 1).padStart(2, '0')}`;
+            
+            if (bMonthStr === monthStr) {
+              let bTotal = 0;
+              (batch.items || []).forEach(it => {
+                bTotal += Number(it.qtd || 0) * Number(it.precoUnit || 0);
+              });
+              totalConsignadosGerado += bTotal * repasseRate;
+            }
+          });
+
+          (acc.payments || []).forEach(payment => {
+            if (!payment.date) return;
+            const pDate = new Date(payment.date);
+            const pMonthStr = `${pDate.getUTCFullYear()}-${String(pDate.getUTCMonth() + 1).padStart(2, '0')}`;
+            
+            if (pMonthStr === monthStr) {
+              totalConsignadosPago += Number(payment.amount || 0);
+            }
+          });
+        });
+
+        // Pedidos
+        pedidos.forEach(p => {
+          const pDate = new Date(p.created_at);
+          const pMonthStr = `${pDate.getFullYear()}-${String(pDate.getMonth() + 1).padStart(2, '0')}`;
           if (pMonthStr === monthStr) {
-            totalConsignadosPago += Number(payment.amount || 0);
+            const amount = Number(p.total || 0);
+            const pTipo = p.client_data?.tipo || 'pedido';
+            if (pTipo === 'pedido') {
+               if (p.status === 'paid') totalPedidosPago += amount;
+               else totalPedidosPendente += amount;
+            } else if (pTipo === 'consignado') {
+               if (p.status === 'paid') totalConsignadosPago += amount;
+               else totalPedidosPendente += amount; // fallback legado
+               totalConsignadosGerado += amount;
+            }
           }
         });
-      });
 
-      pedidos.forEach(p => {
-        const pDate = new Date(p.created_at);
-        const pMonthStr = `${pDate.getFullYear()}-${String(pDate.getMonth() + 1).padStart(2, '0')}`;
-        if (pMonthStr === monthStr) {
-          const amount = Number(p.total || 0);
-          const pTipo = p.client_data?.tipo || 'pedido';
-          if (pTipo === 'pedido') {
-             if (p.status === 'paid') totalPedidosPago += amount;
-             else totalPedidosPendente += amount;
-          } else if (pTipo === 'consignado') {
-             if (p.status === 'paid') totalConsignadosPago += amount;
-             else totalConsignadosPendente += amount;
-             totalConsignadosGerado += amount;
+        // -- Saídas e Despesas --
+        let totalSaidasGeral = 0;
+        saidas.forEach(s => {
+          if (!s.date) return;
+          const sMonthStr = s.date.substring(0, 7); // 'YYYY-MM'
+          if (sMonthStr === monthStr) {
+            totalSaidasGeral += Number(s.amount || 0);
           }
-        }
-      });
+        });
 
+        yearlyMonthsData.push({
+          monthName: MONTH_NAMES[m],
+          monthStr,
+          vendasEcommerce: totalVendasEcommerce,
+          pedidosPago: totalPedidosPago,
+          pedidosPendente: totalPedidosPendente,
+          pedidosVenda: totalPedidosPago + totalPedidosPendente,
+          consignadosPago: totalConsignadosPago,
+          consignadosGerados: totalConsignadosGerado,
+          totalSaidasGeral
+        });
+      }
 
-
-      // -- Saídas e Despesas --
-      const totalSaidasPorCategoria = { materiais: 0, contas: 0, manutencao: 0, diversos: 0 };
-      saidas.forEach(s => {
-        // Agora extraímos o mês da coluna 'date' (YYYY-MM-DD)
-        if (!s.date) return;
-        const sMonthStr = s.date.substring(0, 7); // Pega 'YYYY-MM'
-
-        if (sMonthStr === monthStr) {
-          totalSaidasPorCategoria[s.category] = (totalSaidasPorCategoria[s.category] || 0) + Number(s.amount || 0);
-          
-          // Se for uma categoria fora do padrão, garante que seja somada se já não foi
-          if (s.category && !['materiais', 'contas', 'manutencao', 'diversos'].includes(s.category)) {
-             totalSaidasPorCategoria[s.category] = (totalSaidasPorCategoria[s.category] || 0) + Number(s.amount || 0);
-          }
-        }
-      });
-
-      
-      const totalSaidasGeral = Object.values(totalSaidasPorCategoria).reduce((a, b) => a + b, 0);
-
-      yearlyMonthsData.push({
-        monthName: MONTH_NAMES[m],
-        monthStr,
-        vendasEcommerce: totalVendasEcommerce,
-        pedidosPago: totalPedidosPago,
-        pedidosPendente: totalPedidosPendente,
-        pedidosVenda: totalPedidosPago + totalPedidosPendente,
-        consignadosPago: totalConsignadosPago,
-        consignadosGerados: totalConsignadosGerado,
-        consignados: totalConsignadosGerado,
-        saidasPorCategoria: totalSaidasPorCategoria,
-        totalSaidasGeral
-
-
-      });
-    }
-
-    setSummaryData(yearlyMonthsData);
+      setSummaryData(yearlyMonthsData);
     } catch (e) {
       console.error('[Resumo] Erro ao consolidar dados:', e);
     } finally {
@@ -224,116 +200,33 @@ export default function Resumo() {
     }
   };
 
-
-  const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
-
-  // Calcula totais anuais
-  const totalAnualVendas = summaryData.reduce((acc, curr) => acc + curr.vendasEcommerce + curr.pedidosVenda, 0);
-  const totalAnualSaidas = summaryData.reduce((acc, curr) => acc + curr.totalSaidasGeral, 0);
-
-  const totalAnualConsignadoGerado = summaryData.reduce((acc, curr) => acc + curr.consignadosGerados, 0);
-  const totalAnualConsignadoPago = summaryData.reduce((acc, curr) => acc + curr.consignadosPago, 0);
-  const totalAnualConsignadoDevedor = totalAnualConsignadoGerado - totalAnualConsignadoPago;
-
-  // Separa o mês atual e o anterior para destaque
-  const prevMonthDate = new Date();
-  prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
-  const prevMonthStr = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
-
-  const currentMonthData = summaryData.find(d => d.monthStr === currentMonthStr);
-  const prevMonthData = summaryData.find(d => d.monthStr === prevMonthStr);
-  const otherMonths = summaryData.filter(d => d.monthStr !== currentMonthStr && d.monthStr !== prevMonthStr);
-
-  const renderMonthCard = (data, customBadge = null) => {
-    const hasMovement = data.vendasEcommerce > 0 || data.pedidosVenda > 0 || data.consignados > 0 || data.totalSaidasGeral > 0;
-    const isCurrent = data.monthStr === currentMonthStr;
-    const isPrev = data.monthStr === prevMonthStr;
-
-    return (
-      <div key={data.monthStr} className={`card month-card ${!hasMovement ? 'empty-month' : ''} ${isCurrent ? 'current-month' : ''}`}>
-        <div className="month-card-header">
-          <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
-            <h3 style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-              {data.monthName} / {selectedYear}
-              {customBadge ? (
-                <span className="current-badge" style={{ background: isPrev ? 'var(--text-muted)' : 'var(--accent-primary)' }}>{customBadge}</span>
-              ) : isCurrent ? (
-                <span className="current-badge">Mês Atual</span>
-              ) : null}
-            </h3>
-          </div>
-          {hasMovement && (
-            <span className={`balance-tag ${data.vendasEcommerce + data.pedidosVenda - data.totalSaidasGeral >= 0 ? 'positive' : 'negative'}`}>
-              Saldo: {formatCurrency(data.vendasEcommerce + data.pedidosVenda - data.totalSaidasGeral)}
-            </span>
-          )}
-        </div>
-
-        <div className="month-sections">
-          <section>
-            <h4><ShoppingCart size={14} /> Vendas e Pedidos</h4>
-            <div className="row">
-              <span>Vendas Online (E-commerce)</span>
-              <span>{formatCurrency(data.vendasEcommerce)}</span>
-            </div>
-            <div className="row">
-              <span>Pedidos de Venda Direta</span>
-              <span>{formatCurrency(data.pedidosVenda)}</span>
-            </div>
-            <div className="row subtotal">
-              <span>Total em Vendas</span>
-              <span style={{color: 'var(--success)', fontWeight: 'bold'}}>{formatCurrency(data.vendasEcommerce + data.pedidosVenda)}</span>
-            </div>
-            <div className="row" style={{fontSize: '0.8rem', paddingLeft: '0.5rem', color: 'var(--text-secondary)'}}>
-              <span>└ Recebido (Pago)</span>
-              <span style={{color: 'var(--success)'}}>{formatCurrency(data.pedidosPago)}</span>
-            </div>
-            <div className="row" style={{fontSize: '0.8rem', paddingLeft: '0.5rem', color: 'var(--text-secondary)'}}>
-              <span>└ Pendente</span>
-              <span style={{color: 'var(--warning)'}}>{formatCurrency(data.pedidosPendente)}</span>
-            </div>
-
-            <div className="row subtotal" style={{marginTop: '0.4rem', color: 'var(--accent-secondary)'}}>
-              <span>Consignados (Remessas do Mês)</span>
-              <span style={{fontWeight: 'bold'}}>{formatCurrency(data.consignadosGerados)}</span>
-            </div>
-            <div className="row" style={{fontSize: '0.8rem', paddingLeft: '0.5rem', color: 'var(--text-secondary)'}}>
-              <span>└ Recebido no Mês (Pago)</span>
-              <span style={{color: 'var(--success)'}}>{formatCurrency(data.consignadosPago)}</span>
-            </div>
-            <div className="row" style={{fontSize: '0.8rem', paddingLeft: '0.5rem', color: 'var(--text-secondary)'}}>
-              <span>└ Variação do Saldo</span>
-              <span style={{color: 'var(--warning)'}}>{formatCurrency(data.consignadosGerados - data.consignadosPago)}</span>
-            </div>
-
-          </section>
-
-          <div className="divider" />
-
-          <section>
-            <h4><TrendingDown size={14} /> Despesas (Saídas)</h4>
-            {Object.entries(data.saidasPorCategoria).map(([cat, val]) => (
-              <div className="row" key={cat}>
-                <span>{CATEGORIES_LABELS[cat]}</span>
-                <span>{formatCurrency(val)}</span>
-              </div>
-            ))}
-            <div className="row subtotal">
-              <span>Total Despesas</span>
-              <span style={{color: 'var(--danger)', fontWeight: 'bold'}}>{formatCurrency(data.totalSaidasGeral)}</span>
-            </div>
-          </section>
-        </div>
-      </div>
-    );
+  const formatCurrency = (val) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
   };
 
+  // ── Totais Anuais (Consolidados para Cards Superiores) ──────────────────────────
+  const totalAnualFaturado = summaryData.reduce((acc, curr) => acc + curr.vendasEcommerce + curr.pedidosVenda + curr.consignadosGerados, 0);
+  const totalAnualRecebido = summaryData.reduce((acc, curr) => acc + curr.vendasEcommerce + curr.pedidosPago + curr.consignadosPago, 0);
+  const totalAnualDespesas = summaryData.reduce((acc, curr) => acc + curr.totalSaidasGeral, 0);
+  const totalAnualPendente = summaryData.reduce((acc, curr) => acc + curr.pedidosPendente + Math.max(0, curr.consignadosGerados - curr.consignadosPago), 0);
+  const resultadoAnualFaturamento = totalAnualFaturado - totalAnualDespesas;
+  const resultadoAnualCaixa = totalAnualRecebido - totalAnualDespesas;
+
+  // Ordena os meses colocando o mês atual no topo (se for o ano atual), seguido pelos meses mais recentes
+  const sortedMonths = [...summaryData].sort((a, b) => {
+    const isCurrentA = selectedYear === now.getFullYear() && a.monthStr === currentMonthStr;
+    const isCurrentB = selectedYear === now.getFullYear() && b.monthStr === currentMonthStr;
+    if (isCurrentA) return -1;
+    if (isCurrentB) return 1;
+    return b.monthStr.localeCompare(a.monthStr);
+  });
+
   return (
-    <div className="page-wrapper resumo-page">
+    <div className="page-wrapper resumo-page" translate="no">
       <div className="resumo-header">
         <div>
-          <h1 className="page-title">Resumo Financeiro Anual</h1>
-          <p className="page-description">Visão consolidada de todas as movimentações do ano.</p>
+          <h1 className="page-title">Resumo Financeiro</h1>
+          <p className="page-description">Acompanhamento consolidado de faturamento, recebimentos, consignados e despesas.</p>
         </div>
         
         <div className="year-selector">
@@ -350,68 +243,152 @@ export default function Resumo() {
       {isLoading ? (
         <div style={{textAlign: 'center', padding: '5rem', color: 'var(--text-secondary)'}}>
            <Loader size={50} className="spinner" color="var(--primary)" style={{marginBottom: '1rem'}} />
-           <h2>Consolidando dados financeiros da nuvem...</h2>
-           <p>Calculando margens de pedidos, vendas e despesas de todos os meses de {selectedYear}.</p>
+           <h2>Consolidando fluxo financeiro...</h2>
+           <p>Calculando margens de marketplaces, pedidos de vendas e consignados do ano {selectedYear}.</p>
         </div>
       ) : (
         <>
+          {/* ── SEÇÃO: RESUMO ANUAL (ACIMA DE TUDO) ── */}
+          <h2 className="section-subtitle">
+            <TrendingUp size={20} style={{ color: 'var(--accent-primary)' }} /> Resumo Anual ({selectedYear})
+          </h2>
           <div className="resumo-stats-grid">
-            <div className="card stat-card total-vendas">
-              <div className="stat-icon"><TrendingUp size={28} /></div>
-          <div>
-            <p className="stat-label">Total em Vendas ({selectedYear})</p>
-            <h2 className="stat-value">{formatCurrency(totalAnualVendas)}</h2>
-            <small style={{color: 'var(--text-secondary)'}}>Soma de E-commerce + Pedidos Diretos</small>
-          </div>
-        </div>
+            <div className="stat-card faturamento">
+              <div className="stat-card-header">
+                <span className="stat-label">Faturamento Total</span>
+                <div className="stat-card-icon"><TrendingUp size={20} /></div>
+              </div>
+              <h2 className="stat-value">{formatCurrency(totalAnualFaturado)}</h2>
+              <span className="stat-sub">Soma de Marketplaces, Pedidos e Remessas</span>
+            </div>
 
-        <div className="card stat-card total-saidas">
-          <div className="stat-icon"><TrendingDown size={28} /></div>
-          <div>
-            <p className="stat-label">Total de Despesas ({selectedYear})</p>
-            <h2 className="stat-value">{formatCurrency(totalAnualSaidas)}</h2>
-            <small style={{color: 'var(--text-secondary)'}}>Insumos, Contas e Manutenção</small>
-          </div>
-        </div>
+            <div className="stat-card caixa">
+              <div className="stat-card-header">
+                <span className="stat-label">Caixa Realizado</span>
+                <div className="stat-card-icon"><DollarSign size={20} /></div>
+              </div>
+              <h2 className="stat-value">{formatCurrency(totalAnualRecebido)}</h2>
+              <span className="stat-sub">Valor de fato já recebido/pago</span>
+            </div>
 
-        <div className="card stat-card total-consignados" style={{ background: 'linear-gradient(135deg, #1e293b, #0f172a)', color: '#fff', border: '1px solid #334155' }}>
-          <div className="stat-icon" style={{ background: 'rgba(255,255,255,0.1)' }}><ShoppingCart size={28} color="#60a5fa" /></div>
-          <div>
-            <p className="stat-label" style={{ color: '#94a3b8' }}>Consignados ({selectedYear})</p>
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-              <div>
-                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Gerado</span><br/>
-                <strong style={{ fontSize: '1.1rem' }}>{formatCurrency(totalAnualConsignadoGerado)}</strong>
+            <div className="stat-card pendente">
+              <div className="stat-card-header">
+                <span className="stat-label">Aberto / Pendente</span>
+                <div className="stat-card-icon"><ClipboardList size={20} /></div>
               </div>
-              <div>
-                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Pago</span><br/>
-                <strong style={{ fontSize: '1.1rem', color: '#34d399' }}>{formatCurrency(totalAnualConsignadoPago)}</strong>
+              <h2 className="stat-value">{formatCurrency(totalAnualPendente)}</h2>
+              <span className="stat-sub">Valores aguardando acerto ou pagamento</span>
+            </div>
+
+            <div className="stat-card despesas">
+              <div className="stat-card-header">
+                <span className="stat-label">Saídas e Despesas</span>
+                <div className="stat-card-icon"><TrendingDown size={20} /></div>
               </div>
-              <div>
-                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Saldo</span><br/>
-                <strong style={{ fontSize: '1.1rem', color: totalAnualConsignadoDevedor > 0 ? '#f87171' : '#fff' }}>{formatCurrency(totalAnualConsignadoDevedor)}</strong>
+              <h2 className="stat-value">{formatCurrency(totalAnualDespesas)}</h2>
+              <span className="stat-sub">Matéria-prima, manutenção e custos fixos</span>
+            </div>
+
+            <div className="stat-card resultado">
+              <div className="stat-card-header">
+                <span className="stat-label">Resultado Líquido</span>
+                <div className="stat-card-icon"><ShoppingCart size={20} /></div>
               </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span className="stat-sub" style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
+                  Contábil: <span className={resultadoAnualFaturamento >= 0 ? 'green-tag' : 'red-tag'}>{formatCurrency(resultadoAnualFaturamento)}</span>
+                </span>
+                <span className="stat-sub" style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
+                  Caixa: <span className={resultadoAnualCaixa >= 0 ? 'green-tag' : 'red-tag'}>{formatCurrency(resultadoAnualCaixa)}</span>
+                </span>
+              </div>
+              <span className="stat-sub" style={{ marginTop: 'auto' }}>Margem líquida consolidada</span>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* SEÇÃO EM DESTAQUE (MÊS ATUAL E ANTERIOR) */}
-      {(currentMonthData || prevMonthData) && selectedYear === now.getFullYear() && (
-        <div className="featured-month">
-          <h2 className="section-subtitle">Mês em Destaque</h2>
-          <div className="featured-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem', maxWidth: '900px' }}>
-            {prevMonthData && renderMonthCard(prevMonthData, 'Mês Anterior')}
-            {currentMonthData && renderMonthCard(currentMonthData, 'Mês Atual')}
+          {/* ── SEÇÃO: ACOMPANHAMENTO MENSAL TABULAR ── */}
+          <div className="card table-card">
+            <div className="table-title-area">
+              <h2>Acompanhamento Mensal Consolidado</h2>
+            </div>
+            
+            <div className="table-responsive">
+              <table className="resumo-table">
+                <thead>
+                  <tr>
+                    <th>Mês</th>
+                    <th>Vendas Marketplaces (Multicanal)</th>
+                    <th>Pedidos de Venda Direta</th>
+                    <th>Vendas Consignados (Remessas)</th>
+                    <th>Saídas e Despesas</th>
+                    <th style={{ textAlign: 'right' }}>Resumo Total do Mês</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedMonths.map((data) => {
+                    const isCurrent = data.monthStr === currentMonthStr && selectedYear === now.getFullYear();
+                    
+                    const billingBalance = data.vendasEcommerce + data.pedidosVenda + data.consignadosGerados - data.totalSaidasGeral;
+                    const cashBalance = data.vendasEcommerce + data.pedidosPago + data.consignadosPago - data.totalSaidasGeral;
+                    const consignadoAberto = Math.max(0, data.consignadosGerados - data.consignadosPago);
+
+                    const hasMovement = data.vendasEcommerce > 0 || data.pedidosVenda > 0 || data.consignadosGerados > 0 || data.totalSaidasGeral > 0;
+
+                    return (
+                      <tr key={data.monthStr} className={`${isCurrent ? 'row-current-month' : ''} ${!hasMovement ? 'empty-row' : ''}`} style={!hasMovement ? { opacity: 0.6 } : {}}>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <span className="currency-main">{data.monthName}</span>
+                            {isCurrent ? (
+                              <span className="month-badge current">Mês Atual</span>
+                            ) : !hasMovement ? (
+                              <span className="month-badge empty">Sem Mov.</span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td>
+                          <span className="currency-main">{formatCurrency(data.vendasEcommerce)}</span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <strong className="currency-main">{formatCurrency(data.pedidosVenda)}</strong>
+                            <span className="currency-sub green-tag">✔ Pago: {formatCurrency(data.pedidosPago)}</span>
+                            <span className="currency-sub orange-tag">⌛ Aberto: {formatCurrency(data.pedidosPendente)}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <strong className="currency-main">{formatCurrency(data.consignadosGerados)}</strong>
+                            <span className="currency-sub green-tag">✔ Pago: {formatCurrency(data.consignadosPago)}</span>
+                            <span className="currency-sub orange-tag">⌛ Aberto: {formatCurrency(consignadoAberto)}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className="currency-main red-tag">{formatCurrency(data.totalSaidasGeral)}</span>
+                        </td>
+                        <td>
+                          <div className="total-summary-cell">
+                            <div>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Faturamento Líquido: </span>
+                              <strong style={{ color: billingBalance >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 'bold' }}>
+                                {formatCurrency(billingBalance)}
+                              </strong>
+                            </div>
+                            <div style={{ marginTop: '2px' }}>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Fluxo de Caixa Real: </span>
+                              <strong style={{ color: cashBalance >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 'bold' }}>
+                                {formatCurrency(cashBalance)}
+                              </strong>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div className="divider" style={{margin: '2.5rem 0'}} />
-        </div>
-      )}
-
-      <h2 className="section-subtitle">Acompanhamento Mensal</h2>
-      <div className="months-grid">
-        {otherMonths.map((data) => renderMonthCard(data))}
-      </div>
         </>
       )}
     </div>

@@ -24,6 +24,7 @@ const fmt = (n) => {
 export default function Acertos() {
   const { signOut, profile } = useAuth();
   const [accounts, setAccounts] = useState([]);
+  const [productNames, setProductNames] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
@@ -39,7 +40,10 @@ export default function Acertos() {
       ? `*Comissão (${settlement.comissaoPct}%):* - R$ ${fmt(settlement.grossTotal * (parseN(settlement.comissaoPct) / 100))}\n*Valor Líquido Recebido:* R$ ${fmt(settlement.netTotal)}`
       : `*Valor Recebido:* R$ ${fmt(settlement.netTotal)}`;
 
-    const itemsText = settlement.items.map(it => `• ${it.qtd}x ${it.nomePeca} (R$ ${fmt(it.precoUnit)}/un)`).join('\n');
+    const itemsText = settlement.items.map(it => {
+      const displayNome = it.nomePeca || productNames[it.indiceFt] || 'Sem Nome';
+      return `• ${it.qtd}x ${displayNome} (R$ ${fmt(it.precoUnit)}/un)`;
+    }).join('\n');
 
     const message = `*AM3D - COMPROVANTE DE ACERTO CONSIGNADO*\n\n` +
       `🤝 *Cliente:* ${settlement.cliente.nome}\n` +
@@ -76,16 +80,19 @@ export default function Acertos() {
     const accentColor = '#10B981';
     const accentBg = '#D1FAE5';
 
-    const itemsHtml = settlement.items.map((it, i) => `
-      <tr class="${i % 2 === 0 ? 'row-even' : ''}">
-        <td class="cell-center text-muted" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; text-align: center; color: #64748B;">${i + 1}</td>
-        <td class="cell-id" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; font-weight: 700; color: #1E293B;">${it.indiceFt}</td>
-        <td class="cell-name" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; font-weight: 500;">${it.nomePeca}</td>
-        <td class="cell-center cell-bold" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; font-weight: 700; text-align: center;">${it.qtd}</td>
-        <td class="cell-right text-muted" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; text-align: right; color: #64748B;">R$ ${fmt(it.precoUnit)}</td>
-        <td class="cell-right cell-bold" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; text-align: right; font-weight: 700;">R$ ${fmt(it.qtd * it.precoUnit)}</td>
-      </tr>
-    `).join('');
+    const itemsHtml = settlement.items.map((it, i) => {
+      const displayNome = it.nomePeca || productNames[it.indiceFt] || 'Sem Nome';
+      return `
+        <tr class="${i % 2 === 0 ? 'row-even' : ''}">
+          <td class="cell-center text-muted" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; text-align: center; color: #64748B;">${i + 1}</td>
+          <td class="cell-id" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; font-weight: 700; color: #1E293B;">${it.indiceFt}</td>
+          <td class="cell-name" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; font-weight: 500;">${displayNome}</td>
+          <td class="cell-center cell-bold" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; font-weight: 700; text-align: center;">${it.qtd}</td>
+          <td class="cell-right text-muted" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; text-align: right; color: #64748B;">R$ ${fmt(it.precoUnit)}</td>
+          <td class="cell-right cell-bold" style="padding: 9px 10px; border-bottom: 1px solid #F1F5F9; text-align: right; font-weight: 700;">R$ ${fmt(it.qtd * it.precoUnit)}</td>
+        </tr>
+      `;
+    }).join('');
 
     const totalsHtml = settlement.tipoAcerto === 'comissionado' ? `
       <div style="background: ${accentBg}; border-radius: 10px; padding: 13px 22px; text-align: right; min-width: 240px; display: flex; flex-direction: column; gap: 4px; print-color-adjust: exact; -webkit-print-color-adjust: exact; margin-left: auto;">
@@ -220,12 +227,36 @@ export default function Acertos() {
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const headers = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
 
-      const resp = await fetch(`${SUPA_URL}/rest/v1/consignados?select=*&order=created_at.desc`, { headers });
-      if (resp.ok) {
-        setAccounts(await resp.json());
+      const [accResp, ftsResp, orcsResp] = await Promise.allSettled([
+        fetch(`${SUPA_URL}/rest/v1/consignados?select=*&order=created_at.desc`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=*&order=id.asc`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/orcamentos_rapidos?select=*&order=id.asc`, { headers })
+      ]);
+
+      if (accResp.status === 'fulfilled' && accResp.value.ok) {
+        setAccounts(await accResp.value.json());
       }
+
+      const ftsData = ftsResp.status === 'fulfilled' && ftsResp.value.ok ? await ftsResp.value.json() : [];
+      const cleanFts = ftsData.map(r => r.data || r).filter(f => f && f.indiceFt);
+      
+      const orcsData = orcsResp.status === 'fulfilled' && orcsResp.value.ok ? await orcsResp.value.json() : [];
+      const cleanOrcs = orcsData.map(r => ({
+        indiceFt: r.id,
+        nomePeca: r.name
+      }));
+
+      const namesMap = {};
+      cleanFts.forEach(f => {
+        namesMap[f.indiceFt] = f.nomePeca;
+      });
+      cleanOrcs.forEach(o => {
+        namesMap[o.indiceFt] = o.nomePeca;
+      });
+
+      setProductNames(namesMap);
     } catch (e) {
-      console.error('Erro ao buscar contas:', e);
+      console.error('Erro ao buscar dados:', e);
     } finally {
       setLoading(false);
     }
@@ -562,12 +593,13 @@ export default function Acertos() {
               {openItems.map(it => {
                 const selectedQty = salesToRegister[it.indiceFt] || 0;
                 const subtotal = selectedQty * parseN(it.precoUnit);
+                const displayNome = it.nomePeca || productNames[it.indiceFt] || 'Sem Nome';
                 return (
                   <div key={it.indiceFt} className={`acerto-item-row ${selectedQty > 0 ? 'active' : ''}`}>
                     <div className="item-meta">
                       <div className="item-title">
                         <span className="item-ft-badge">{it.indiceFt}</span>
-                        <h4>{it.nomePeca}</h4>
+                        <h4>{displayNome}</h4>
                       </div>
                       <div className="item-summary-row">
                         <span>Enviados: <strong>{it.totalQtd}</strong></span>
