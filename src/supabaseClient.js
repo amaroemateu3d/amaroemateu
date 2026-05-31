@@ -11,6 +11,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    // Desativa o sistema navigator.locks que causa deadlocks no Chrome durante o Fast Refresh do Vite
+    lock: async (name, acquireTimeout, fn) => {
+      return await fn();
+    }
   }
 });
