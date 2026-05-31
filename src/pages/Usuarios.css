@@ -305,3 +305,77 @@
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(0.8); }
 }
+
+/* Classes para o gerenciamento de abas SaaS */
+.saas-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  background: var(--bg-primary);
+  padding: 0.35rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  width: fit-content;
+}
+
+.saas-tab {
+  padding: 0.6rem 1.2rem;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.saas-tab:hover {
+  color: var(--text-primary);
+}
+
+.saas-tab.active {
+  background: var(--accent-primary);
+  color: white;
+}
+
+/* Tabela de Empresas */
+.tenants-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.tenants-table th, .tenants-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tenants-table th {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.tenants-table tr {
+  transition: background 0.2s;
+}
+
+.tenants-table tr:hover {
+  background: var(--accent-subtle);
+}
+
+.tenant-badge-limit {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.8rem;
+}

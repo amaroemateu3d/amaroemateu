@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import './AppLayout.css';
 
 export default function AppLayout() {
-  const { signOut, profile, isAdmin } = useAuth();
+  const { signOut, profile, isAdmin, isDaniel } = useAuth();
 
   const handleBackup = () => {
     try {
@@ -62,6 +62,11 @@ export default function AppLayout() {
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
               {isAdmin ? '👑 Administrador' : 'Usuário'}
             </div>
+            {profile?.tenants?.name && (
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-primary)', marginTop: 2, opacity: 0.9 }}>
+                🏢 {profile.tenants.name}
+              </div>
+            )}
           </div>
         </div>
 
@@ -111,8 +116,8 @@ export default function AppLayout() {
             <span>Saídas e Despesas</span>
           </NavLink>
 
-          {/* Gestão de Usuários — apenas para admins */}
-          {isAdmin && (
+          {/* Gestão de Usuários — apenas para Daniel */}
+          {isDaniel && (
             <>
               <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '0.75rem 0' }} />
               <NavLink to="/usuarios" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>

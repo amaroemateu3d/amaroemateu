@@ -3,6 +3,7 @@ import FtInputs from '../components/fichas/FtInputs';
 import FtResults from '../components/fichas/FtResults';
 import { parseTime, parseNumber, getCustoUnitario, getResultados, getUnitProductionTime, formatTime } from '../utils/financeCalculators';
 import { supabase } from '../supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
 import { Loader } from 'lucide-react';
 import './FichasTecnicas.css';
 
@@ -39,6 +40,7 @@ const getNextFtId = (listaAtual) => {
 };
 
 export default function FichasTecnicas() {
+  const { profile } = useAuth();
   const [savedFts, setSavedFts] = useState([]);
   const [loadingDb, setLoadingDb] = useState(true);
   const [isMigrating, setIsMigrating] = useState(false);
@@ -241,6 +243,15 @@ export default function FichasTecnicas() {
 
   const handleSaveFt = async () => {
     if (!inputs.indiceFt.trim()) return alert("O Índice da FT não pode estar vazio.");
+    
+    // Validar limite de FTs da empresa (apenas para novas FTs)
+    const isNewFt = !savedFts.some(item => item.indiceFt === inputs.indiceFt);
+    if (isNewFt) {
+      const limit = profile?.tenants?.limit_fts ?? 50;
+      if (savedFts.length >= limit) {
+        return alert(`⚠️ Limite Atingido: A sua empresa atingiu o limite de ${limit} Fichas Técnicas cadastradas para o seu plano. Entre em contato para atualizar o seu plano!`);
+      }
+    }
     
     const ftData = {
       ...inputs,

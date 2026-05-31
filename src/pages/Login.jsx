@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import './Login.css';
 
@@ -14,6 +14,21 @@ export default function Login() {
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    try {
+      // Limpa chaves antigas e resíduos do Supabase para garantir login 100% limpo
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('supabase') || key.includes('am3d') || key.startsWith('sb-'))) {
+          localStorage.removeItem(key);
+        }
+      }
+      console.log("Login: Resíduos de sessão local limpos com sucesso.");
+    } catch (e) {
+      console.error("Erro ao limpar localStorage no Login:", e);
+    }
+  }, []);
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -37,13 +52,17 @@ export default function Login() {
       return;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
-
-    if (error) {
-      setErro('Usuário ou senha incorretos.');
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
+      if (error) {
+        setErro('Usuário ou senha incorretos: ' + error.message);
+      }
+    } catch (err) {
+      console.error("Erro de execução no signInWithPassword:", err);
+      setErro('Erro de conexão: ' + err.message);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   return (

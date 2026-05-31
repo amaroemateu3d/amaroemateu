@@ -11,18 +11,40 @@ export function AuthProvider({ children }) {
 
   async function loadProfile(userId) {
     console.log("AuthContext: Carregando perfil para o ID:", userId);
-    const { data, error } = await supabase
+    const { data: profileData, error: profileError } = await supabase
       .from('user_profiles')
       .select('*')
       .eq('id', userId)
       .single();
     
-    if (error) {
-      console.error("AuthContext: Erro ao carregar perfil:", error);
-    } else {
-      console.log("AuthContext: Perfil carregado com sucesso:", data);
+    if (profileError || !profileData) {
+      console.error("AuthContext: Erro ao carregar perfil:", profileError);
+      setProfile(null);
+      return;
     }
-    setProfile(data || null);
+
+    // Carrega os dados da empresa separadamente para evitar travamentos de join
+    let tenantData = null;
+    if (profileData.empresa_id) {
+      try {
+        const { data: tData } = await supabase
+          .from('tenants')
+          .select('name, limit_fts')
+          .eq('id', profileData.empresa_id)
+          .single();
+        tenantData = tData;
+      } catch (err) {
+        console.error("AuthContext: Erro ao carregar empresa:", err);
+      }
+    }
+
+    const fullProfile = {
+      ...profileData,
+      tenants: tenantData || { name: 'A&M 3D', limit_fts: 99999 }
+    };
+
+    console.log("AuthContext: Perfil carregado com sucesso:", fullProfile);
+    setProfile(fullProfile);
   }
 
   async function loadPermissions(userId) {
@@ -52,29 +74,114 @@ export function AuthProvider({ children }) {
       if (mounted) setLoading(false);
     }, 6000);
 
-    // onAuthStateChange dispara o evento 'INITIAL_SESSION' assim que é registrado
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // Inicialização assíncrona robusta e instantânea do estado de autenticação
+    async function initializeAuth() {
+      try {
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        if (!mounted) return;
+
+        if (initialSession?.user) {
+          console.log("AuthContext: Sessão inicial detectada para o ID:", initialSession.user.id);
+          const { data: profileData, error: profileError } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', initialSession.user.id)
+            .single();
+
+          if (!profileError && profileData) {
+            // Carrega empresa separadamente
+            let tenantData = null;
+            if (profileData.empresa_id) {
+              try {
+                const { data: tData } = await supabase
+                  .from('tenants')
+                  .select('name, limit_fts')
+                  .eq('id', profileData.empresa_id)
+                  .single();
+                tenantData = tData;
+              } catch (err) {
+                console.error("AuthContext Init: Erro ao carregar empresa:", err);
+              }
+            }
+
+            const fullProfile = {
+              ...profileData,
+              tenants: tenantData || { name: 'A&M 3D', limit_fts: 99999 }
+            };
+
+            setSession(initialSession);
+            setProfile(fullProfile);
+            await loadPermissions(initialSession.user.id);
+          } else {
+            console.warn("AuthContext Init: Perfil não encontrado ou inativo para a sessão inicial.");
+          }
+        }
+      } catch (err) {
+        console.error("Erro na inicialização rápida do AuthContext:", err);
+      } finally {
+        if (mounted) {
+          clearTimeout(fallback);
+          setLoading(false);
+        }
+      }
+    }
+
+    initializeAuth();
+
+    // Escuta ativa de eventos de autenticação
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       if (!mounted) return;
-      
-      setSession(session);
-      if (session?.user) {
+      console.log(`AuthContext event: ${event}`);
+
+      if (currentSession?.user) {
         try {
-          await Promise.all([
-            loadProfile(session.user.id),
-            loadPermissions(session.user.id),
-          ]);
+          const { data: profileData, error: profileError } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', currentSession.user.id)
+            .single();
+
+          if (profileError || !profileData) {
+            console.warn("AuthContext Event: Perfil não encontrado ou inativo, deslogando.");
+            setSession(null);
+            setProfile(null);
+            setPermissions({});
+            await supabase.auth.signOut();
+          } else {
+            // Carrega empresa separadamente
+            let tenantData = null;
+            if (profileData.empresa_id) {
+              try {
+                const { data: tData } = await supabase
+                  .from('tenants')
+                  .select('name, limit_fts')
+                  .eq('id', profileData.empresa_id)
+                  .single();
+                tenantData = tData;
+              } catch (err) {
+                console.error("AuthContext Event: Erro ao carregar empresa:", err);
+              }
+            }
+
+            const fullProfile = {
+              ...profileData,
+              tenants: tenantData || { name: 'A&M 3D', limit_fts: 99999 }
+            };
+
+            setSession(currentSession);
+            setProfile(fullProfile);
+            await loadPermissions(currentSession.user.id);
+          }
         } catch (e) {
-          console.error("Erro ao carregar perfil/permissões no AuthContext:", e);
+          console.error("Erro ao carregar perfil/permissões no evento de Auth:", e);
         }
       } else {
+        setSession(null);
         setProfile(null);
         setPermissions({});
       }
-      
-      // Limpa o timer de fallback já que o Supabase respondeu
-      clearTimeout(fallback);
 
-      // Libera a tela de loading após o evento inicial ou após login/logout
+      clearTimeout(fallback);
       setLoading(false);
     });
 
@@ -96,6 +203,7 @@ export function AuthProvider({ children }) {
 
   const isAdmin = profile?.is_admin === true;
   const isAcertos = profile?.is_acertos === true;
+  const isDaniel = profile?.id === '45a50fe2-fb93-4d1f-a1b9-c95eb470d38f' || profile?.nome?.toLowerCase() === 'daniel';
 
   async function signOut() {
     try {
@@ -109,7 +217,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, profile, permissions, isAdmin, isAcertos, canView, canEdit, signOut, loading }}>
+    <AuthContext.Provider value={{ session, profile, permissions, isAdmin, isAcertos, isDaniel, canView, canEdit, signOut, loading }}>
       {children}
     </AuthContext.Provider>
   );
