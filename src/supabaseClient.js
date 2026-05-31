@@ -18,3 +18,47 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     }
   }
 });
+
+// Interceptor global do fetch para injetar automaticamente o Bearer Token do usuário autenticado
+// em requisições diretas de REST API feitas pelo app (que originalmente usavam a anon key).
+if (typeof window !== 'undefined') {
+  const originalFetch = window.fetch;
+  window.fetch = async function (url, options) {
+    const urlStr = String(url);
+    // Intercepta apenas requisições para a API Rest, ignorando autenticação para evitar recursão
+    if (urlStr.includes('/rest/v1/') && !urlStr.includes('/auth/v1/')) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          options = options || {};
+          
+          // Trata headers se for um objeto simples
+          if (options.headers && !(options.headers instanceof Headers)) {
+            const authHeader = options.headers['Authorization'] || options.headers['authorization'];
+            if (!authHeader || authHeader.includes(supabaseAnonKey)) {
+              options.headers['Authorization'] = `Bearer ${session.access_token}`;
+            }
+          } 
+          // Trata headers se for uma instância de Headers
+          else if (options.headers instanceof Headers) {
+            const authHeader = options.headers.get('Authorization');
+            if (!authHeader || authHeader.includes(supabaseAnonKey)) {
+              options.headers.set('Authorization', `Bearer ${session.access_token}`);
+            }
+          } 
+          // Cria headers se não existirem
+          else {
+            options.headers = {
+              'apikey': supabaseAnonKey,
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json'
+            };
+          }
+        }
+      } catch (err) {
+        console.warn("Erro ao injetar Bearer Token no fetch interceptor:", err);
+      }
+    }
+    return originalFetch.apply(this, [url, options]);
+  };
+}
