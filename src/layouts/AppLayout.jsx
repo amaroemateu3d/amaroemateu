@@ -42,35 +42,26 @@ export default function AppLayout() {
         </Link>
 
         {/* Perfil do usuário */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '0.6rem',
-          padding: '0.75rem 1rem', marginBottom: '0.5rem',
-          background: 'rgba(255,255,255,0.05)', borderRadius: 10
-        }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: '50%',
-            background: 'var(--accent-primary)', display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, fontSize: '0.85rem', color: 'white', flexShrink: 0
-          }}>
+        <div className="user-profile">
+          <div className="user-avatar">
             {inicial}
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div className="user-info">
+            <div className="user-name">
               {nomeUsuario}
             </div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+            <div className="user-role">
               {isAdmin ? '👑 Administrador' : 'Usuário'}
             </div>
             {profile?.tenants?.name && (
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-primary)', marginTop: 2, opacity: 0.9 }}>
+              <div className="user-tenant">
                 🏢 {profile.tenants.name}
               </div>
             )}
           </div>
         </div>
 
-        <nav className="sidebar-nav" style={{ flex: 1 }}>
+        <nav className="sidebar-nav">
           <NavLink to="/" end className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
             <LayoutDashboard size={20} />
             <span>Início</span>
@@ -124,7 +115,7 @@ export default function AppLayout() {
           {/* Gestão de Usuários — apenas para Daniel */}
           {isDaniel && (
             <>
-              <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '0.75rem 0' }} />
+              <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '0.5rem 0' }} />
               <NavLink to="/usuarios" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
                 <Users size={20} />
                 <span>Gestão de Usuários</span>
@@ -133,12 +124,12 @@ export default function AppLayout() {
           )}
         </nav>
 
-        <div style={{ paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        <div className="sidebar-footer">
           <button
             onClick={handleBackup}
             className="nav-item"
-            style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', color: 'var(--accent-primary)' }}
             title="Baixar Cópia de Segurança"
+            style={{ color: 'var(--accent-primary)' }}
           >
             <Download size={20} />
             <span style={{ fontWeight: 600 }}>Fazer Backup</span>
@@ -147,8 +138,8 @@ export default function AppLayout() {
           <button
             onClick={signOut}
             className="nav-item"
-            style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', color: 'var(--danger)' }}
             title="Sair do sistema"
+            style={{ color: 'var(--danger)' }}
           >
             <LogOut size={20} />
             <span style={{ fontWeight: 600 }}>Sair</span>
