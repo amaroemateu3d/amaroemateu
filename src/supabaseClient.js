@@ -28,31 +28,47 @@ if (typeof window !== 'undefined') {
     // Intercepta apenas requisições para a API Rest, ignorando autenticação para evitar recursão
     if (urlStr.includes('/rest/v1/') && !urlStr.includes('/auth/v1/')) {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.access_token) {
-          options = options || {};
-          
-          // Trata headers se for um objeto simples
-          if (options.headers && !(options.headers instanceof Headers)) {
-            const authHeader = options.headers['Authorization'] || options.headers['authorization'];
-            if (!authHeader || authHeader.includes(supabaseAnonKey)) {
-              options.headers['Authorization'] = `Bearer ${session.access_token}`;
+        // Verifica se já possui um header Authorization com token de usuário (que não seja a anon key)
+        let hasUserToken = false;
+        if (options && options.headers) {
+          let authHeader = null;
+          if (options.headers instanceof Headers) {
+            authHeader = options.headers.get('Authorization') || options.headers.get('authorization');
+          } else {
+            authHeader = options.headers['Authorization'] || options.headers['authorization'];
+          }
+          if (authHeader && authHeader.startsWith('Bearer ') && !authHeader.includes(supabaseAnonKey)) {
+            hasUserToken = true;
+          }
+        }
+
+        if (!hasUserToken) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            options = options || {};
+            
+            // Trata headers se for um objeto simples
+            if (options.headers && !(options.headers instanceof Headers)) {
+              const authHeader = options.headers['Authorization'] || options.headers['authorization'];
+              if (!authHeader || authHeader.includes(supabaseAnonKey)) {
+                options.headers['Authorization'] = `Bearer ${session.access_token}`;
+              }
+            } 
+            // Trata headers se for uma instância de Headers
+            else if (options.headers instanceof Headers) {
+              const authHeader = options.headers.get('Authorization');
+              if (!authHeader || authHeader.includes(supabaseAnonKey)) {
+                options.headers.set('Authorization', `Bearer ${session.access_token}`);
+              }
+            } 
+            // Cria headers se não existirem
+            else {
+              options.headers = {
+                'apikey': supabaseAnonKey,
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json'
+              };
             }
-          } 
-          // Trata headers se for uma instância de Headers
-          else if (options.headers instanceof Headers) {
-            const authHeader = options.headers.get('Authorization');
-            if (!authHeader || authHeader.includes(supabaseAnonKey)) {
-              options.headers.set('Authorization', `Bearer ${session.access_token}`);
-            }
-          } 
-          // Cria headers se não existirem
-          else {
-            options.headers = {
-              'apikey': supabaseAnonKey,
-              'Authorization': `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json'
-            };
           }
         }
       } catch (err) {

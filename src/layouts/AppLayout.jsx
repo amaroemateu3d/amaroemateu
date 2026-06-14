@@ -1,4 +1,4 @@
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, Link } from 'react-router-dom';
 import {
   LayoutDashboard, Calculator,
   ShoppingCart, TrendingDown, ClipboardList, BarChart3,
@@ -36,10 +36,10 @@ export default function AppLayout() {
   return (
     <div className="app-container">
       <aside className="sidebar">
-        <div className="sidebar-header">
+        <Link to="/" className="sidebar-header" style={{ textDecoration: 'none', color: 'inherit' }}>
           <img src="/logo.png" alt="AM3D Logo" className="logo-img" />
           <h2>AM3D</h2>
-        </div>
+        </Link>
 
         {/* Perfil do usuário */}
         <div style={{
@@ -71,6 +71,11 @@ export default function AppLayout() {
         </div>
 
         <nav className="sidebar-nav" style={{ flex: 1 }}>
+          <NavLink to="/" end className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
+            <LayoutDashboard size={20} />
+            <span>Início</span>
+          </NavLink>
+
           <NavLink to="/pesquisa-ecommerce" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
             <Search size={20} />
             <span>Pesquisa E-commerce</span>
