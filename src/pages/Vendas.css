@@ -224,8 +224,8 @@
 
 /* Unified Modal Layout */
 .modal-content {
-  max-width: 640px; /* Reduzido de 850px para um fluxo vertical elegante */
-  width: 90%;
+  max-width: 850px; /* Mais largo para evitar rolagem vertical */
+  width: 95%;
 }
 
 .modal-unified-layout {
@@ -249,9 +249,15 @@
 }
 
 .costs-unified-section {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .costs-unified-section {
+    grid-template-columns: 1fr;
+  }
 }
 
 .costs-group {
