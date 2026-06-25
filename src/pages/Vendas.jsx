@@ -622,6 +622,22 @@ export default function Vendas() {
                   const res = getResultados(editingOverride.customData);
                   return (
                     <div className="modal-unified-layout">
+                      {/* Métricas de Lucratividade Consolidadas (Agora no topo) */}
+                      <div className="modal-profitability-metrics">
+                        <div className="metric-box">
+                          <span className="metric-label">Custo Unitário Total</span>
+                          <h4 className="metric-value">R$ {res.custoUnitario.toFixed(2)}</h4>
+                        </div>
+                        <div className={`metric-box ${res.margemContribuicaoPerc > 0 ? 'positive' : 'negative'}`}>
+                          <span className="metric-label">Margem de Contribuição</span>
+                          <h4 className="metric-value">{res.margemContribuicaoPerc.toFixed(1)}%</h4>
+                        </div>
+                        <div className={`metric-box ${res.lucroLiquido >= 0 ? 'positive' : 'negative'}`}>
+                          <span className="metric-label">Lucro Líquido</span>
+                          <h4 className="metric-value">R$ {res.lucroLiquido.toFixed(2)}</h4>
+                        </div>
+                      </div>
+
                       {/* Propriedades do Produto */}
                       <div className="modal-prod-summary">
                         <span>⚖️ Peso: {(parseNumber(editingOverride.ftBase.pesoGramas) / Math.max(1, parseNumber(editingOverride.ftBase.quantidade))).toFixed(1)}g</span>
@@ -723,22 +739,6 @@ export default function Vendas() {
                           </div>
                         </div>
 
-                      </div>
-
-                      {/* Métricas de Lucratividade Consolidadas */}
-                      <div className="modal-profitability-metrics">
-                        <div className="metric-box">
-                          <span className="metric-label">Custo Unitário Total</span>
-                          <h4 className="metric-value">R$ {res.custoUnitario.toFixed(2)}</h4>
-                        </div>
-                        <div className={`metric-box ${res.margemContribuicaoPerc > 0 ? 'positive' : 'negative'}`}>
-                          <span className="metric-label">Margem de Contribuição</span>
-                          <h4 className="metric-value">{res.margemContribuicaoPerc.toFixed(1)}%</h4>
-                        </div>
-                        <div className={`metric-box ${res.lucroLiquido >= 0 ? 'positive' : 'negative'}`}>
-                          <span className="metric-label">Lucro Líquido</span>
-                          <h4 className="metric-value">R$ {res.lucroLiquido.toFixed(2)}</h4>
-                        </div>
                       </div>
 
                     </div>
