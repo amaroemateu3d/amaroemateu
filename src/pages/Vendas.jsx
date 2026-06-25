@@ -610,13 +610,6 @@ export default function Vendas() {
       {editingOverride && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <div className="modal-header">
-               <div>
-                  <h3>Ajustar {CHANNELS.find(c => c.id === activeChannel)?.label}</h3>
-                  <p>Alterações aqui se aplicam apenas a: <strong>{editingOverride.ftBase.nomePeca} ({editingOverride.ftBase.indiceFt})</strong> neste respectivo canal.</p>
-               </div>
-               <button className="btn-icon" onClick={() => setEditingOverride(null)}><X size={24}/></button>
-            </div>
             <div className="modal-body" style={{maxHeight: '75vh'}}>
                {(() => {
                   const res = getResultados(editingOverride.customData);
@@ -640,6 +633,7 @@ export default function Vendas() {
 
                       {/* Propriedades do Produto */}
                       <div className="modal-prod-summary">
+                        <span style={{color: 'var(--accent-primary)', fontWeight: 'bold'}}>💎 {editingOverride.ftBase.nomePeca} ({editingOverride.ftBase.indiceFt})</span>
                         <span>⚖️ Peso: {(parseNumber(editingOverride.ftBase.pesoGramas) / Math.max(1, parseNumber(editingOverride.ftBase.quantidade))).toFixed(1)}g</span>
                         <span>⏱️ Impressão: {formatTime(getUnitProductionTime(editingOverride.ftBase))}</span>
                         {editingOverride.ftBase.medidaSemCaixa && <span>📦 Sem Caixa: {editingOverride.ftBase.medidaSemCaixa}</span>}
