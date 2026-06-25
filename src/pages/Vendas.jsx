@@ -618,48 +618,132 @@ export default function Vendas() {
                <button className="btn-icon" onClick={() => setEditingOverride(null)}><X size={24}/></button>
             </div>
             <div className="modal-body" style={{maxHeight: '75vh'}}>
-               <div className="modal-layout-split">
-                  <div className="modal-physical-info">
-                     <h4 style={{marginBottom: '1rem', color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase'}}>Custos de Produção (Fixo)</h4>
-                     <div className="costs-summary-small">
-                        {(() => {
-                           const res = getResultados(editingOverride.customData);
-                           return (
-                             <>
-                               <div className="cost-item-mini"><span>Material (Unit):</span><strong>R$ {res.custoMaterialUnit.toFixed(2)}</strong></div>
-                               <div className="cost-item-mini"><span>Energia (Unit):</span><strong>R$ {res.custoEnergiaUnit.toFixed(2)}</strong></div>
-                               <div className="cost-item-mini"><span>Depreciação Maq (Unit):</span><strong>R$ {res.custoMaquinaUnit.toFixed(2)}</strong></div>
-                               <div className="cost-item-mini"><span>Gastos Extras (Unit):</span><strong>R$ {res.custosExtrasAdic.toFixed(2)}</strong></div>
-                               <div className="cost-divider-mini"></div>
-                               <div className="cost-item-mini total"><span>Custo Produção Unit:</span><strong>R$ {res.custoFisicoUnit.toFixed(2)}</strong></div>
-                               <div style={{marginTop: '1.5rem', padding: '0.8rem', background: 'var(--bg-primary)', borderRadius: '8px', border: '1px solid var(--border-color)'}}>
-                                  <div style={{fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '5px'}}>PROPRIEDADES FÍSICAS (UNIT)</div>
-                                  <div style={{fontSize: '0.85rem', marginBottom: '8px'}}>⚖️ Peso Bruto: {(parseNumber(editingOverride.ftBase.pesoGramas) / Math.max(1, parseNumber(editingOverride.ftBase.quantidade))).toFixed(1)}g</div>
-                                  <div style={{fontSize: '0.85rem', marginBottom: '8px'}}>⏱️ Impressão: {formatTime(getUnitProductionTime(editingOverride.ftBase))}</div>
-                                  <div style={{fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginTop: '15px', marginBottom: '5px'}}>LOGÍSTICA E EMBALAGEM</div>
-                                  <div style={{fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '4px'}}>
-                                    <span>📦 <strong>Sem Caixa:</strong> {editingOverride.ftBase.medidaSemCaixa || '--'} ({editingOverride.ftBase.pesoSemCaixa ? editingOverride.ftBase.pesoSemCaixa + 'g' : '--'})</span>
-                                    <span>🏷️ <strong>Com Caixa:</strong> {editingOverride.ftBase.medidaComCaixa || '--'} ({editingOverride.ftBase.pesoComCaixa ? editingOverride.ftBase.pesoComCaixa + 'g' : '--'})</span>
-                                  </div>
-                               </div>
-                             </>
-                           );
-                        })()}
-                     </div>
-                  </div>
-                  <div className="modal-sales-settings">
-                     <h4 style={{marginBottom: '1rem', color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase'}}>Configurações de Venda ({activeChannel})</h4>
-                     <div className="override-grid">
-                        <div className="input-group"><label>Embalagem</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="custoEmbalagem" className="has-prefix" value={String(editingOverride.customData.custoEmbalagem ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
-                        <div className="input-group"><label>Extras Venda</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="custoExtra" className="has-prefix" value={String(editingOverride.customData.custoExtra ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
-                        <div className="input-group"><label>Envio/Frete</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="custoEnvio" className="has-prefix" value={String(editingOverride.customData.custoEnvio ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
-                        <div className="input-group"><label>Taxa Fixa Venda</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="taxaFixaVenda" className="has-prefix" value={String(editingOverride.customData.taxaFixaVenda ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
-                        <div className="input-group"><label>Nota Fiscal</label><div className="input-wrapper"><span className="suffix">%</span><input type="text" name="impostosNF" className="has-suffix" value={String(editingOverride.customData.impostosNF ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
-                        <div className="input-group"><label>Taxa Plataforma</label><div className="input-wrapper"><span className="suffix">%</span><input type="text" name="taxaMLPerc" className="has-suffix" value={String(editingOverride.customData.taxaMLPerc ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
-                        <div className="input-group override-highlight" style={{borderColor: 'var(--accent-subtle)'}}><label>Preço de Venda Manual</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="precoVendaManual" className="has-prefix" value={String(editingOverride.customData.precoVendaManual ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" /></div></div>
-                     </div>
-                  </div>
-               </div>
+               {(() => {
+                  const res = getResultados(editingOverride.customData);
+                  return (
+                    <div className="modal-unified-layout">
+                      {/* Propriedades do Produto */}
+                      <div className="modal-prod-summary">
+                        <span>⚖️ Peso: {(parseNumber(editingOverride.ftBase.pesoGramas) / Math.max(1, parseNumber(editingOverride.ftBase.quantidade))).toFixed(1)}g</span>
+                        <span>⏱️ Impressão: {formatTime(getUnitProductionTime(editingOverride.ftBase))}</span>
+                        {editingOverride.ftBase.medidaSemCaixa && <span>📦 Sem Caixa: {editingOverride.ftBase.medidaSemCaixa}</span>}
+                        {editingOverride.ftBase.medidaComCaixa && <span>🏷️ Com Caixa: {editingOverride.ftBase.medidaComCaixa}</span>}
+                      </div>
+
+                      {/* Lista de Custos Unificados */}
+                      <div className="costs-unified-section">
+                        
+                        {/* Grupo: Custos de Produção (Fixo) */}
+                        <div className="costs-group fixed-costs">
+                          <h4 className="group-title">🛠️ Custos de Produção (Fixo / Ficha Técnica)</h4>
+                          <div className="costs-list-fixed">
+                            <div className="cost-row-fixed">
+                              <span>Matéria-Prima (Filamento)</span>
+                              <strong>R$ {res.custoMaterialUnit.toFixed(2)}</strong>
+                            </div>
+                            <div className="cost-row-fixed">
+                              <span>Consumo de Energia Elétrica</span>
+                              <strong>R$ {res.custoEnergiaUnit.toFixed(2)}</strong>
+                            </div>
+                            <div className="cost-row-fixed">
+                              <span>Depreciação de Máquina</span>
+                              <strong>R$ {res.custoMaquinaUnit.toFixed(2)}</strong>
+                            </div>
+                            <div className="cost-row-fixed">
+                              <span>Gastos Extras de Produção</span>
+                              <strong>R$ {res.custosExtrasAdic.toFixed(2)}</strong>
+                            </div>
+                            <div className="cost-row-fixed subtotal">
+                              <span>Subtotal Produção</span>
+                              <strong>R$ {res.custoFisicoUnit.toFixed(2)}</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Grupo: Configurações de Venda & Marketplace (Editável) */}
+                        <div className="costs-group editable-costs">
+                          <h4 className="group-title">🌐 Custos e Taxas do Marketplace (Editável)</h4>
+                          
+                          <div className="override-grid">
+                            <div className="input-group">
+                              <label>Embalagem</label>
+                              <div className="input-wrapper">
+                                <span className="prefix">R$</span>
+                                <input type="text" name="custoEmbalagem" className="has-prefix" value={String(editingOverride.customData.custoEmbalagem ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" />
+                              </div>
+                            </div>
+                            
+                            <div className="input-group">
+                              <label>Extras Venda</label>
+                              <div className="input-wrapper">
+                                <span className="prefix">R$</span>
+                                <input type="text" name="custoExtra" className="has-prefix" value={String(editingOverride.customData.custoExtra ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" />
+                              </div>
+                            </div>
+                            
+                            <div className="input-group">
+                              <label>Envio/Frete</label>
+                              <div className="input-wrapper">
+                                <span className="prefix">R$</span>
+                                <input type="text" name="custoEnvio" className="has-prefix" value={String(editingOverride.customData.custoEnvio ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" />
+                              </div>
+                            </div>
+                            
+                            <div className="input-group">
+                              <label>Taxa Fixa Venda</label>
+                              <div className="input-wrapper">
+                                <span className="prefix">R$</span>
+                                <input type="text" name="taxaFixaVenda" className="has-prefix" value={String(editingOverride.customData.taxaFixaVenda ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" />
+                              </div>
+                            </div>
+                            
+                            <div className="input-group">
+                              <label>Nota Fiscal</label>
+                              <div className="input-wrapper">
+                                <span className="suffix">%</span>
+                                <input type="text" name="impostosNF" className="has-suffix" value={String(editingOverride.customData.impostosNF ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" />
+                              </div>
+                            </div>
+                            
+                            <div className="input-group">
+                              <label>Taxa Plataforma</label>
+                              <div className="input-wrapper">
+                                <span className="suffix">%</span>
+                                <input type="text" name="taxaMLPerc" className="has-suffix" value={String(editingOverride.customData.taxaMLPerc ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" />
+                              </div>
+                            </div>
+
+                            <div className="input-group override-highlight" style={{ gridColumn: 'span 2' }}>
+                              <label>Preço de Venda Praticado</label>
+                              <div className="input-wrapper">
+                                <span className="prefix">R$</span>
+                                <input type="text" name="precoVendaManual" className="has-prefix" value={String(editingOverride.customData.precoVendaManual ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* Métricas de Lucratividade Consolidadas */}
+                      <div className="modal-profitability-metrics">
+                        <div className="metric-box">
+                          <span className="metric-label">Custo Unitário Total</span>
+                          <h4 className="metric-value">R$ {res.custoUnitario.toFixed(2)}</h4>
+                        </div>
+                        <div className={`metric-box ${res.margemContribuicaoPerc > 0 ? 'positive' : 'negative'}`}>
+                          <span className="metric-label">Margem de Contribuição</span>
+                          <h4 className="metric-value">{res.margemContribuicaoPerc.toFixed(1)}%</h4>
+                        </div>
+                        <div className={`metric-box ${res.lucroLiquido >= 0 ? 'positive' : 'negative'}`}>
+                          <span className="metric-label">Lucro Líquido</span>
+                          <h4 className="metric-value">R$ {res.lucroLiquido.toFixed(2)}</h4>
+                        </div>
+                      </div>
+
+                    </div>
+                  );
+               })()}
             </div>
             <div className="modal-footer" style={{justifyContent: 'space-between'}}><button className="btn-secondary" onClick={handleResetOverride} style={{color: 'var(--danger)', borderColor: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '6px'}}>🗑️ Resetar Regras</button><div style={{display: 'flex', gap: '10px'}}><button className="btn-secondary" onClick={() => setEditingOverride(null)}>Cancelar</button><button className="btn-primary" onClick={saveOverrideModal}><Save size={18}/> Salvar Substituição Local</button></div></div>
           </div>

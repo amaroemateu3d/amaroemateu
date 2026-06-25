@@ -222,52 +222,137 @@
   padding-right: 2.2rem !important;
 }
 
-/* Split Modal Layout */
+/* Unified Modal Layout */
 .modal-content {
-  max-width: 850px; /* Alargado para caber as duas colunas */
+  max-width: 640px; /* Reduzido de 850px para um fluxo vertical elegante */
+  width: 90%;
 }
 
-.modal-layout-split {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 2rem;
-  align-items: start;
-}
-
-.modal-physical-info {
-  background: var(--bg-surface-hover);
-  padding: 1.5rem;
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-}
-
-.costs-summary-small {
+.modal-unified-layout {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 1.25rem;
 }
 
-.cost-item-mini {
+.modal-prod-summary {
   display: flex;
-  justify-content: space-between;
-  font-size: 0.9rem;
-}
-
-.cost-item-mini span {
+  flex-wrap: wrap;
+  justify-content: space-around;
+  gap: 0.8rem;
+  background: var(--bg-surface-hover);
+  border: 1px solid var(--border-color);
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
   color: var(--text-secondary);
 }
 
-.cost-item-mini.total {
-  font-weight: bold;
-  color: var(--accent-primary);
-  font-size: 0.95rem;
-  padding-top: 5px;
+.costs-unified-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
-.cost-divider-mini {
-  height: 1px;
-  background: var(--border-color);
-  margin: 5px 0;
+.costs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  text-align: left;
+}
+
+.costs-group .group-title {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.4rem;
+}
+
+.costs-list-fixed {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f8fafc; /* Diferença sutil de cor: fundo levemente cinza */
+}
+
+.cost-row-fixed {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.cost-row-fixed:last-child {
+  border-bottom: none;
+}
+
+.cost-row-fixed strong {
+  color: var(--text-primary);
+}
+
+.cost-row-fixed.subtotal {
+  background: #f1f5f9; /* Destaque sutil no subtotal */
+  font-weight: bold;
+}
+
+.cost-row-fixed.subtotal strong {
+  color: var(--accent-primary);
+}
+
+.modal-profitability-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--border-color);
+  padding-top: 1.25rem;
+}
+
+.metric-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0.8rem;
+  border-radius: 10px;
+  background: var(--bg-surface-hover);
+  border: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.metric-box .metric-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.metric-box .metric-value {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.metric-box.positive {
+  background: rgba(52, 211, 153, 0.06);
+  border-color: rgba(52, 211, 153, 0.2);
+}
+
+.metric-box.positive .metric-value {
+  color: #059669;
+}
+
+.metric-box.negative {
+  background: rgba(248, 113, 113, 0.06);
+  border-color: rgba(248, 113, 113, 0.2);
+}
+
+.metric-box.negative .metric-value {
+  color: #DC2626;
 }
 
 /* Report Overlay */
