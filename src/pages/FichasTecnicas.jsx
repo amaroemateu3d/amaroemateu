@@ -303,6 +303,25 @@ export default function FichasTecnicas() {
     window.scrollTo({ top: 0, behavior: 'smooth' }); // Sobe a tela suavemente
   };
 
+  const handleClearForm = () => {
+    setInputs(c => ({
+      ...INITIAL_STATE,
+      indiceFt: getNextFtId(savedFts),
+      nomePeca: '',
+      quantidade: 1,
+      pesoGramas: '',
+      tempoImpressao: '',
+      extraNome1: '', extraValor1: '',
+      extraNome2: '', extraValor2: '',
+      extraNome3: '', extraValor3: '',
+      medidaSemCaixa: '', pesoSemCaixa: '',
+      medidaComCaixa: '', pesoComCaixa: '',
+      isKit: false,
+      components: []
+    }));
+    setKitItems([]);
+  };
+
   const handleDelete = async (id) => {
     const ft = savedFts.find(f => f.indiceFt === id);
     openConfirm(
@@ -427,9 +446,12 @@ export default function FichasTecnicas() {
           <h1 className="page-title">Mestre de Fichas Técnicas (Produção Física)</h1>
           <p className="page-description">Gerencie as propriedades físicas das peças. Precificação e vendas são definidas no painel Multi-Canal.</p>
         </div>
-        <div className="header-actions">
+        <div className="header-actions" style={{ display: 'flex', gap: '10px' }}>
           {activeTab === 'single' && (
-            <button className="btn-primary" onClick={handleSaveFt}>Salvar Ficha Técnica</button>
+            <>
+              <button className="btn-secondary" onClick={handleClearForm} style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>Limpar Formulário</button>
+              <button className="btn-primary" onClick={handleSaveFt}>Salvar Ficha Técnica</button>
+            </>
           )}
           {activeTab === 'kit' && (
             <button className="btn-primary" onClick={handleGenerateKitFt}>Gerar FT do Kit</button>
