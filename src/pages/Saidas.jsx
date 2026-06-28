@@ -5,6 +5,7 @@ import {
   PlusCircle, ArrowLeft, AlertCircle, FileText, Check
 } from 'lucide-react';
 import './Saidas.css';
+import ConfirmModal from '../components/ConfirmModal';
 
 const CATEGORIAS = [
   { id: 'materiais', label: '📦 Matéria-Prima / Insumos' },
@@ -61,6 +62,10 @@ export default function Saidas() {
   // Dados
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'save', title: '', details: [], onConfirm: null });
+  const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
+  const closeConfirm = () => setConfirmModal(m => ({ ...m, isOpen: false }));
 
   // Form State
   const [formData, setFormData] = useState({
@@ -137,70 +142,97 @@ export default function Saidas() {
       });
     }
 
-    try {
-      const resp = await fetch(`${SUPA_URL}/rest/v1/expenses`, {
-        method: 'POST',
-        headers: { 
-          'apikey': SUPA_KEY, 
-          'Authorization': `Bearer ${SUPA_KEY}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation'
-        },
-        body: JSON.stringify(novosLancamentos)
-      });
+    const catLabel = CATEGORIAS.find(c => c.id === formData.categoria)?.label || formData.categoria;
+    openConfirm(
+      'save',
+      formData.parcelado ? `Lançar ${numP} Parcelas de Despesa` : 'Registrar Despesa',
+      [
+        { label: 'Descrição', value: formData.descricao },
+        { label: 'Categoria', value: catLabel },
+        { label: 'Valor por Parcela', value: 'R$ ' + Number(formData.valor).toFixed(2) },
+        { label: 'Data Inicial', value: new Date(formData.data + 'T12:00:00').toLocaleDateString('pt-BR') },
+        ...(formData.parcelado ? [{ label: 'Parcelas', value: formData.numParcelas + 'x' }, { label: 'Total', value: 'R$ ' + (Number(formData.valor) * numP).toFixed(2) }] : []),
+        ...(formData.notes ? [{ label: 'Obs', value: formData.notes }] : [])
+      ],
+      async () => {
+        closeConfirm();
+        try {
+          const resp = await fetch(`${SUPA_URL}/rest/v1/expenses`, {
+            method: 'POST',
+            headers: { 
+              'apikey': SUPA_KEY, 
+              'Authorization': `Bearer ${SUPA_KEY}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify(novosLancamentos)
+          });
 
-      if (!resp.ok) {
-        const err = await resp.text();
-        throw new Error(err);
+          if (!resp.ok) {
+            const err = await resp.text();
+            throw new Error(err);
+          }
+
+          await fetchExpenses(); // Recarrega todas as despesas do ano corrente
+
+          // Limpa formulário mantendo as configurações básicas
+          setFormData(prev => ({
+            ...prev,
+            descricao: '',
+            valor: '',
+            notes: '',
+            parcelado: false,
+            numParcelas: '2'
+          }));
+
+          alert(formData.parcelado 
+            ? `Lançamento parcelado registrado com sucesso! (${numP} despesas geradas).` 
+            : 'Despesa registrada com sucesso!'
+          );
+          
+          // Chaveia para a aba de listagem para que o usuário veja o lançamento
+          setActiveTab('listar');
+          
+          // Se a despesa adicionada foi no ano atual, o filtro do mês vai para o mês do lançamento
+          const itemMonth = formData.data.substring(5, 7);
+          const itemYear = Number(formData.data.substring(0, 4));
+          if (itemYear === currentYear) {
+            setFilterMonth(itemMonth);
+          }
+        } catch (e) {
+          console.error('Erro ao salvar lançamento:', e);
+          alert('Erro ao salvar no banco: ' + e.message);
+        }
       }
-
-      await fetchExpenses(); // Recarrega todas as despesas do ano corrente
-
-      // Limpa formulário mantendo as configurações básicas
-      setFormData(prev => ({
-        ...prev,
-        descricao: '',
-        valor: '',
-        notes: '',
-        parcelado: false,
-        numParcelas: '2'
-      }));
-
-      alert(formData.parcelado 
-        ? `Lançamento parcelado registrado com sucesso! (${numP} despesas geradas).` 
-        : 'Despesa registrada com sucesso!'
-      );
-      
-      // Chaveia para a aba de listagem para que o usuário veja o lançamento
-      setActiveTab('listar');
-      
-      // Se a despesa adicionada foi no ano atual, o filtro do mês vai para o mês do lançamento
-      const itemMonth = formData.data.substring(5, 7);
-      const itemYear = Number(formData.data.substring(0, 4));
-      if (itemYear === currentYear) {
-        setFilterMonth(itemMonth);
-      }
-    } catch (e) {
-      console.error('Erro ao salvar lançamento:', e);
-      alert('Erro ao salvar no banco: ' + e.message);
-    }
+    );
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm("Apagar definitivamente este lançamento?")) {
-      try {
-        const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
-        const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        const resp = await fetch(`${SUPA_URL}/rest/v1/expenses?id=eq.${id}`, {
-          method: 'DELETE',
-          headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
-        });
-        if (!resp.ok) throw new Error('Falha ao excluir');
-        setExpenses(prev => prev.filter(s => s.id !== id));
-      } catch (e) {
-        alert('Erro ao deletar: ' + e.message);
+  const handleDelete = (id) => {
+    const expense = expenses.find(e => e.id === id);
+    openConfirm(
+      'delete',
+      'Excluir Lançamento de Despesa',
+      [
+        { label: 'Descrição', value: expense?.description || '—' },
+        { label: 'Valor', value: expense ? 'R$ ' + Number(expense.amount).toFixed(2) : '—' },
+        { label: 'Data', value: expense?.date ? new Date(expense.date + 'T12:00:00').toLocaleDateString('pt-BR') : '—' }
+      ],
+      async () => {
+        closeConfirm();
+        try {
+          const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+          const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          const resp = await fetch(`${SUPA_URL}/rest/v1/expenses?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+          });
+          if (!resp.ok) throw new Error('Falha ao excluir');
+          setExpenses(prev => prev.filter(s => s.id !== id));
+        } catch (e) {
+          alert('Erro ao deletar: ' + e.message);
+        }
       }
-    }
+    );
   };
 
   const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -593,6 +625,14 @@ export default function Saidas() {
           )}
         </div>
       )}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        type={confirmModal.type}
+        title={confirmModal.title}
+        details={confirmModal.details}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Package, Search, Plus, Minus, Save, Loader, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import './Estoque.css';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function Estoque() {
   const { session } = useAuth();
@@ -10,6 +11,10 @@ export default function Estoque() {
   const [searchTerm, setSearchTerm] = useState('');
   const [adjustments, setAdjustments] = useState({});
   const [saving, setSaving] = useState(false);
+
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'save', title: '', details: [], onConfirm: null });
+  const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
+  const closeConfirm = () => setConfirmModal(m => ({ ...m, isOpen: false }));
 
   useEffect(() => {
     fetchEstoque();
@@ -67,8 +72,18 @@ export default function Estoque() {
 
     const newStock = calculateNewStock(item.estoque, adjustment);
     
-    // Atualiza individualmente no DB
-    saveStockUpdate(id, newStock);
+    openConfirm(
+      'edit',
+      'Confirmar Ajuste de Estoque',
+      [
+        { label: 'Produto', value: item.nome },
+        { label: 'ID', value: id },
+        { label: 'Estoque Atual', value: item.estoque + ' un' },
+        { label: 'Ajuste Aplicado', value: adjustment },
+        { label: 'Novo Saldo', value: newStock + ' un' }
+      ],
+      () => { closeConfirm(); saveStockUpdate(id, newStock); }
+    );
   };
 
   const saveStockUpdate = async (id, newStock) => {
@@ -111,42 +126,56 @@ export default function Estoque() {
   const saveAllAdjustments = async () => {
     const keys = Object.keys(adjustments).filter(k => adjustments[k]);
     if (keys.length === 0) return;
-    
-    setSaving(true);
-    let errorCount = 0;
-    
-    for (const id of keys) {
-      const adjustment = adjustments[id];
+
+    const details = keys.map(id => {
       const item = fts.find(f => f.id === id);
-      if (item) {
-        const newStock = calculateNewStock(item.estoque, adjustment);
-        try {
-          const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
-          const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-          const resp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${id}`, {
-            method: 'PATCH',
-            headers: { 
-              'apikey': SUPA_KEY, 
-              'Authorization': `Bearer ${SUPA_KEY}`,
-              'Content-Type': 'application/json',
-              'Prefer': 'return=minimal'
-            },
-            body: JSON.stringify({ estoque: newStock })
-          });
-          if (resp.ok) {
-            setFts(prev => prev.map(f => f.id === id ? { ...f, estoque: newStock } : f));
-          } else {
-            errorCount++;
+      const newStock = calculateNewStock(item?.estoque || 0, adjustments[id]);
+      return { label: item?.nome || id, value: `${item?.estoque || 0} → ${newStock} un` };
+    });
+
+    openConfirm(
+      'edit',
+      `Salvar ${keys.length} Ajuste(s) em Lote`,
+      details,
+      async () => {
+        closeConfirm();
+        setSaving(true);
+        let errorCount = 0;
+        
+        for (const id of keys) {
+          const adjustment = adjustments[id];
+          const item = fts.find(f => f.id === id);
+          if (item) {
+            const newStock = calculateNewStock(item.estoque, adjustment);
+            try {
+              const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+              const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+              const resp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${id}`, {
+                method: 'PATCH',
+                headers: { 
+                  'apikey': SUPA_KEY, 
+                  'Authorization': `Bearer ${SUPA_KEY}`,
+                  'Content-Type': 'application/json',
+                  'Prefer': 'return=minimal'
+                },
+                body: JSON.stringify({ estoque: newStock })
+              });
+              if (resp.ok) {
+                setFts(prev => prev.map(f => f.id === id ? { ...f, estoque: newStock } : f));
+              } else {
+                errorCount++;
+              }
+            } catch (e) {
+              errorCount++;
+            }
           }
-        } catch (e) {
-          errorCount++;
         }
+        
+        if (errorCount > 0) alert(`Houve erro ao salvar ${errorCount} itens.`);
+        setAdjustments({});
+        setSaving(false);
       }
-    }
-    
-    if (errorCount > 0) alert(`Houve erro ao salvar ${errorCount} itens.`);
-    setAdjustments({});
-    setSaving(false);
+    );
   };
 
   const filteredFts = fts.filter(f => 
@@ -261,6 +290,14 @@ export default function Estoque() {
           </div>
         )}
       </div>
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        type={confirmModal.type}
+        title={confirmModal.title}
+        details={confirmModal.details}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }

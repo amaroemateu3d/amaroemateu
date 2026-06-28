@@ -3,6 +3,7 @@ import { getUnitProductionTime, formatTime } from '../utils/financeCalculators';
 import { supabase } from '../supabaseClient';
 import { Loader } from 'lucide-react';
 import './Pedidos.css';
+import ConfirmModal from '../components/ConfirmModal';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = (n) => Number(n || 0).toFixed(2);
@@ -595,6 +596,10 @@ export default function Pedidos() {
   const [showModal, setShowModal] = useState(false);
   const [editingPedido, setEditingPedido] = useState(null);
 
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'save', title: '', details: [], onConfirm: null });
+  const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
+  const closeConfirm = () => setConfirmModal(m => ({ ...m, isOpen: false }));
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -684,7 +689,7 @@ export default function Pedidos() {
     }
   };
 
-  const handleSave = useCallback(async ({ id, cliente, itens }) => {
+  const _doSave = useCallback(async ({ id, cliente, itens }) => {
     setLoading(true);
     try {
       const total = itens.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
@@ -694,7 +699,6 @@ export default function Pedidos() {
         total: total
       };
 
-      // Se for um novo pedido, define status inicial
       if (!id) {
         dbRecord.status = 'pending';
       }
@@ -719,14 +723,12 @@ export default function Pedidos() {
 
       let resp;
       if (id) {
-        // UPDATE via PATCH
         resp = await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${id}`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify(dbRecord)
         });
       } else {
-        // INSERT via POST
         resp = await fetch(`${SUPA_URL}/rest/v1/orders`, {
           method: 'POST',
           headers,
@@ -739,19 +741,10 @@ export default function Pedidos() {
         throw new Error(`Falha ao salvar: ${resp.status} ${errText}`);
       }
       
-      // Calcular deltas de estoque
       const deltas = {};
-      oldItems.forEach(oldIt => {
-        deltas[oldIt.indiceFt] = -(parseN(oldIt.qtd));
-      });
-      itens.forEach(newIt => {
-        deltas[newIt.indiceFt] = (deltas[newIt.indiceFt] || 0) + parseN(newIt.qtd);
-      });
-      
-      // Atualizar estoques assincronamente sem travar a interface
-      Object.entries(deltas).forEach(([ftId, delta]) => {
-        updateFtStock(ftId, delta);
-      });
+      oldItems.forEach(oldIt => { deltas[oldIt.indiceFt] = -(parseN(oldIt.qtd)); });
+      itens.forEach(newIt => { deltas[newIt.indiceFt] = (deltas[newIt.indiceFt] || 0) + parseN(newIt.qtd); });
+      Object.entries(deltas).forEach(([ftId, delta]) => { updateFtStock(ftId, delta); });
       
       setShowModal(false);
       setEditingPedido(null);
@@ -763,6 +756,22 @@ export default function Pedidos() {
       setLoading(false);
     }
   }, []);
+
+  const handleSave = useCallback(({ id, cliente, itens }) => {
+    const total = itens.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
+    const isEdit = !!id;
+    openConfirm(
+      isEdit ? 'edit' : 'save',
+      isEdit ? 'Confirmar Edição de Pedido' : 'Confirmar Novo Pedido',
+      [
+        { label: 'Cliente', value: cliente.nome || '—' },
+        { label: 'Telefone', value: cliente.telefone || '—' },
+        { label: 'Itens no Pedido', value: `${itens.length} ${itens.length === 1 ? 'item' : 'itens'}` },
+        { label: 'Total', value: `R$ ${fmt(total)}` },
+      ],
+      () => { closeConfirm(); _doSave({ id, cliente, itens }); }
+    );
+  }, [_doSave]);
 
 
   const togglePaymentStatus = async (id, currentStatus) => {
@@ -813,37 +822,37 @@ export default function Pedidos() {
   };
 
 
-  const handleDelete = async (id) => {
-    if (window.confirm(`Excluir o documento?`)) {
-      try {
-        const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
-        const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        const headers = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
-        
-        // Buscar o pedido para recuperar itens e retornar ao estoque
-        const oldResp = await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${id}&select=items`, { headers });
-        let oldItems = [];
-        if (oldResp.ok) {
-          const oldData = await oldResp.json();
-          oldItems = oldData[0]?.items || [];
+  const handleDelete = (id) => {
+    const pedido = pedidos.find(p => p.id === id);
+    openConfirm(
+      'delete',
+      'Excluir Documento',
+      [
+        { label: 'Nº do Pedido', value: formatId(id, pedido?.tipo) },
+        { label: 'Cliente', value: pedido?.cliente?.nome || '—' },
+        { label: 'Total', value: pedido ? `R$ ${fmt(pedido.total || 0)}` : '—' },
+      ],
+      async () => {
+        closeConfirm();
+        try {
+          const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+          const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          const headers = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
+          const oldResp = await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${id}&select=items`, { headers });
+          let oldItems = [];
+          if (oldResp.ok) {
+            const oldData = await oldResp.json();
+            oldItems = oldData[0]?.items || [];
+          }
+          const resp = await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${id}`, { method: 'DELETE', headers });
+          if (!resp.ok) throw new Error('Falha ao excluir');
+          oldItems.forEach(it => { updateFtStock(it.indiceFt, -(parseN(it.qtd))); });
+          setPedidos(prev => prev.filter(p => p.id !== id));
+        } catch (e) {
+          alert('Erro ao excluir: ' + e.message);
         }
-
-        const resp = await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${id}`, {
-          method: 'DELETE',
-          headers
-        });
-        if (!resp.ok) throw new Error('Falha ao excluir');
-        
-        // Devolver as quantidades ao estoque (delta negativo)
-        oldItems.forEach(it => {
-          updateFtStock(it.indiceFt, -(parseN(it.qtd)));
-        });
-
-        setPedidos(prev => prev.filter(p => p.id !== id));
-      } catch (e) {
-        alert('Erro ao excluir: ' + e.message);
       }
-    }
+    );
   };
 
 
@@ -954,6 +963,15 @@ export default function Pedidos() {
           initialData={editingPedido}
         />
       )}
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        type={confirmModal.type}
+        title={confirmModal.title}
+        details={confirmModal.details}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
     </>
   );
 }

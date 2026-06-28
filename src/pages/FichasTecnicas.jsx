@@ -5,6 +5,7 @@ import { parseTime, parseNumber, getCustoUnitario, getResultados, getUnitProduct
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { Loader } from 'lucide-react';
+import ConfirmModal from '../components/ConfirmModal';
 import './FichasTecnicas.css';
 
 const INITIAL_STATE = {
@@ -49,6 +50,10 @@ export default function FichasTecnicas() {
   const [activeTab, setActiveTab] = useState('single'); // 'single' ou 'kit'
   const [searchTerm, setSearchTerm] = useState('');
   const [kitItems, setKitItems] = useState([]); // [{ ftId, qty }]
+
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'save', title: '', details: [], onConfirm: null });
+  const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
+  const closeConfirm = () => setConfirmModal(m => ({ ...m, isOpen: false }));
 
   useEffect(() => {
     fetchFichas();
@@ -185,91 +190,95 @@ export default function FichasTecnicas() {
   };
 
   const handleSaveFt = async () => {
-    if (!inputs.indiceFt.trim()) return alert("O Índice da FT não pode estar vazio.");
+    if (!inputs.indiceFt.trim()) return alert('O Índice da FT não pode estar vazio.');
     
-    // Validar limite de FTs da empresa (apenas para novas FTs)
     const isNewFt = !savedFts.some(item => item.indiceFt === inputs.indiceFt);
     if (isNewFt) {
       const limit = profile?.tenants?.limit_fts ?? 50;
       if (savedFts.length >= limit) {
-        return alert(`⚠️ Limite Atingido: A sua empresa atingiu o limite de ${limit} Fichas Técnicas cadastradas para o seu plano. Entre em contato para atualizar o seu plano!`);
+        return alert(`⚠️ Limite Atingido: A sua empresa atingiu o limite de ${limit} Fichas Técnicas cadastradas para o seu plano.`);
       }
     }
-    
-    const ftData = {
-      ...inputs,
-      _custoFinal: resultados.custoFisicoUnit
-    };
 
-    let novaLista = [];
-    setSavedFts(prev => {
-      const idx = prev.findIndex(item => item.indiceFt === inputs.indiceFt);
-      novaLista = [...prev];
+    const ftData = { ...inputs, _custoFinal: resultados.custoFisicoUnit };
 
-      if (idx >= 0) {
-        novaLista[idx] = ftData; // Atualiza se já existir (Edit)
-      } else {
-        novaLista.push(ftData); // Cria novo caso não exista
-      }
+    openConfirm(
+      isNewFt ? 'save' : 'edit',
+      isNewFt ? 'Salvar Nova Ficha Técnica' : 'Atualizar Ficha Técnica',
+      [
+        { label: 'ID', value: inputs.indiceFt },
+        { label: 'Nome', value: inputs.nomePeca || '—' },
+        { label: 'Peso', value: (inputs.pesoGramas || '0') + 'g' },
+        { label: 'Tempo de Impressão', value: inputs.tempoImpressao || '—' },
+        { label: 'Custo Unitário', value: 'R$ ' + (resultados.custoFisicoUnit || 0).toFixed(2) },
+      ],
+      async () => {
+        closeConfirm();
 
-      // Recalcula kits na nova lista
-      novaLista = novaLista.map(item => {
-        if (item.isKit && item.components && item.components.some(c => c.ftId === ftData.indiceFt || novaLista.some(f => f.indiceFt === c.ftId))) {
-          return recalculateKit(item, novaLista);
+        let novaLista = [];
+        setSavedFts(prev => {
+          const idx = prev.findIndex(item => item.indiceFt === inputs.indiceFt);
+          novaLista = [...prev];
+          if (idx >= 0) {
+            novaLista[idx] = ftData;
+          } else {
+            novaLista.push(ftData);
+          }
+          novaLista = novaLista.map(item => {
+            if (item.isKit && item.components && item.components.some(c => c.ftId === ftData.indiceFt || novaLista.some(f => f.indiceFt === c.ftId))) {
+              return recalculateKit(item, novaLista);
+            }
+            return item;
+          });
+          setTimeout(() => {
+            setInputs(c => ({
+              ...c,
+              indiceFt: getNextFtId(novaLista),
+              nomePeca: '',
+              quantidade: 1,
+              pesoGramas: '',
+              tempoImpressao: '',
+              extraNome1: '', extraValor1: '',
+              extraNome2: '', extraValor2: '',
+              extraNome3: '', extraValor3: '',
+              medidaSemCaixa: '', pesoSemCaixa: '',
+              medidaComCaixa: '', pesoComCaixa: '',
+              isKit: false,
+              components: []
+            }));
+          }, 100);
+          return novaLista;
+        });
+
+        const { error: saveError } = await supabase
+          .from('fichas_tecnicas')
+          .upsert(
+            { id: ftData.indiceFt, name: ftData.nomePeca, cost: ftData._custoFinal, data: ftData },
+            { onConflict: 'id' }
+          );
+
+        if (saveError) {
+          console.error('[FichasTecnicas] Erro ao salvar FT:', saveError);
+          alert('Erro ao salvar no banco: ' + saveError.message);
+          return;
         }
-        return item;
-      });
 
-      // Automotivamente puxa o próximo ID limpo pra tela E reseta os campos especificados
-      setTimeout(() => {
-        setInputs(c => ({
-          ...c, 
-          indiceFt: getNextFtId(novaLista),
-          nomePeca: '',
-          quantidade: 1,
-          pesoGramas: '',
-          tempoImpressao: '',
-          extraNome1: '', extraValor1: '',
-          extraNome2: '', extraValor2: '',
-          extraNome3: '', extraValor3: '',
-          medidaSemCaixa: '', pesoSemCaixa: '',
-          medidaComCaixa: '', pesoComCaixa: '',
-          isKit: false,
-          components: []
-        }));
-      }, 100);
-      return novaLista;
-    });
+        const updatedKits = novaLista.filter(item => {
+          if (!item.isKit) return false;
+          const oldKit = savedFts.find(k => k.indiceFt === item.indiceFt);
+          return !oldKit || oldKit._custoFinal !== item._custoFinal || oldKit.pesoGramas !== item.pesoGramas;
+        });
 
-    // Salva FT no Supabase usando o client autenticado (satisfaz RLS)
-    const { error: saveError } = await supabase
-      .from('fichas_tecnicas')
-      .upsert(
-        { id: ftData.indiceFt, name: ftData.nomePeca, cost: ftData._custoFinal, data: ftData },
-        { onConflict: 'id' }
-      );
-
-    if (saveError) {
-      console.error('[FichasTecnicas] Erro ao salvar FT:', saveError);
-      alert('Erro ao salvar no banco: ' + saveError.message);
-      return;
-    }
-
-    // Atualiza kits afetados
-    const updatedKits = novaLista.filter(item => {
-      if (!item.isKit) return false;
-      const oldKit = savedFts.find(k => k.indiceFt === item.indiceFt);
-      return !oldKit || oldKit._custoFinal !== item._custoFinal || oldKit.pesoGramas !== item.pesoGramas;
-    });
-
-    for (const kit of updatedKits) {
-      await supabase
-        .from('fichas_tecnicas')
-        .upsert(
-          { id: kit.indiceFt, name: kit.nomePeca, cost: kit._custoFinal, data: kit },
-          { onConflict: 'id' }
-        );
-    }
+        for (const kit of updatedKits) {
+          await supabase
+            .from('fichas_tecnicas')
+            .upsert(
+              { id: kit.indiceFt, name: kit.nomePeca, cost: kit._custoFinal, data: kit },
+              { onConflict: 'id' }
+            );
+        }
+      }
+    );
   };
 
   const handleEdit = (ft) => {
@@ -280,53 +289,59 @@ export default function FichasTecnicas() {
   };
 
   const handleDelete = async (id) => {
-    if(window.confirm(`Tem certeza que deseja excluir ${id}?`)) {
-      let novaLista = [];
-      setSavedFts(prev => {
-        const filtrada = prev.filter(f => f.indiceFt !== id);
-        
-        // Remove componente excluído de todos os kits correspondentes e recalcula
-        novaLista = filtrada.map(item => {
-          if (item.isKit && item.components && item.components.some(c => c.ftId === id)) {
-            const updatedComponents = item.components.filter(c => c.ftId !== id);
-            const updatedKit = { ...item, components: updatedComponents };
-            return recalculateKit(updatedKit, filtrada);
-          }
-          return item;
+    const ft = savedFts.find(f => f.indiceFt === id);
+    openConfirm(
+      'delete',
+      'Excluir Ficha Técnica',
+      [
+        { label: 'ID', value: id },
+        { label: 'Nome', value: ft?.nomePeca || '—' },
+        { label: 'Custo Unitário', value: ft?._custoFinal ? 'R$ ' + ft._custoFinal.toFixed(2) : '—' },
+      ],
+      async () => {
+        closeConfirm();
+        let novaLista = [];
+        setSavedFts(prev => {
+          const filtrada = prev.filter(f => f.indiceFt !== id);
+          novaLista = filtrada.map(item => {
+            if (item.isKit && item.components && item.components.some(c => c.ftId === id)) {
+              const updatedComponents = item.components.filter(c => c.ftId !== id);
+              const updatedKit = { ...item, components: updatedComponents };
+              return recalculateKit(updatedKit, filtrada);
+            }
+            return item;
+          });
+          setInputs(c => ({...c, indiceFt: getNextFtId(novaLista)}));
+          return novaLista;
         });
 
-        setInputs(c => ({...c, indiceFt: getNextFtId(novaLista)}));
-        return novaLista;
-      });
-
-      // Deleta usando o client autenticado (satisfaz RLS)
-      const { error: deleteError } = await supabase
-        .from('fichas_tecnicas')
-        .delete()
-        .eq('id', id);
-
-      if (deleteError) {
-        console.error('[FichasTecnicas] Erro ao deletar FT:', deleteError);
-        alert('Erro ao deletar: ' + deleteError.message);
-        return;
-      }
-
-      // Atualiza kits afetados
-      const kitsParaAtualizar = novaLista.filter(item => {
-        if (!item.isKit) return false;
-        const oldKit = savedFts.find(k => k.indiceFt === item.indiceFt);
-        return oldKit && oldKit.components?.length !== item.components?.length;
-      });
-
-      for (const kit of kitsParaAtualizar) {
-        await supabase
+        const { error: deleteError } = await supabase
           .from('fichas_tecnicas')
-          .upsert(
-            { id: kit.indiceFt, name: kit.nomePeca, cost: kit._custoFinal, data: kit },
-            { onConflict: 'id' }
-          );
+          .delete()
+          .eq('id', id);
+
+        if (deleteError) {
+          console.error('[FichasTecnicas] Erro ao deletar FT:', deleteError);
+          alert('Erro ao deletar: ' + deleteError.message);
+          return;
+        }
+
+        const kitsParaAtualizar = novaLista.filter(item => {
+          if (!item.isKit) return false;
+          const oldKit = savedFts.find(k => k.indiceFt === item.indiceFt);
+          return oldKit && oldKit.components?.length !== item.components?.length;
+        });
+
+        for (const kit of kitsParaAtualizar) {
+          await supabase
+            .from('fichas_tecnicas')
+            .upsert(
+              { id: kit.indiceFt, name: kit.nomePeca, cost: kit._custoFinal, data: kit },
+              { onConflict: 'id' }
+            );
+        }
       }
-    }
+    );
   };
 
   // --- Lógica de Kits ---
@@ -590,7 +605,14 @@ export default function FichasTecnicas() {
         )}
       </div>
 
-
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        type={confirmModal.type}
+        title={confirmModal.title}
+        details={confirmModal.details}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }

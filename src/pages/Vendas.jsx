@@ -4,6 +4,7 @@ import { Settings, Save, X, Printer, CheckCircle2, RefreshCw, Loader } from 'luc
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import './Vendas.css';
+import ConfirmModal from '../components/ConfirmModal';
 
 const CHANNELS = [
   { id: 'ml', label: 'Mercado Livre', icon: '📦' },
@@ -101,6 +102,10 @@ export default function Vendas() {
   const [selectedFts, setSelectedFts] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'save', title: '', details: [], onConfirm: null });
+  const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
+  const closeConfirm = () => setConfirmModal(m => ({ ...m, isOpen: false }));
 
   useEffect(() => {
     fetchData();
@@ -385,7 +390,7 @@ export default function Vendas() {
     });
   };
 
-  const saveOverrideModal = async () => {
+  const _doSaveOverride = async () => {
     const { ftBase, customData } = editingOverride;
     const keysToOverride = ['custoEmbalagem', 'custoExtra', 'custoEnvio', 'taxaFixaVenda', 'impostosNF', 'taxaMLPerc', 'precoVendaManual'];
     const finalOps = {};
@@ -423,18 +428,48 @@ export default function Vendas() {
     setEditingOverride(null);
   };
 
-  const handleResetOverride = async () => {
+  const saveOverrideModal = () => {
+    const { ftBase, customData } = editingOverride;
+    const channelLabel = CHANNELS.find(c => c.id === activeChannel)?.label || activeChannel;
+    openConfirm(
+      'edit',
+      'Salvar Substituição Local',
+      [
+        { label: 'Produto', value: `${ftBase.nomePeca} (${ftBase.indiceFt})` },
+        { label: 'Canal', value: channelLabel },
+        { label: 'Embalagem', value: `R$ ${String(customData.custoEmbalagem ?? '0').replace('.', ',')}` },
+        { label: 'Envio/Frete', value: `R$ ${String(customData.custoEnvio ?? '0').replace('.', ',')}` },
+        { label: 'Preço de Venda', value: customData.precoVendaManual ? `R$ ${String(customData.precoVendaManual).replace('.', ',')}` : '(sem override)' },
+      ],
+      _doSaveOverride
+    );
+  };
+
+  const _doResetOverride = async () => {
     const { ftBase } = editingOverride;
-    if (window.confirm(`Tem certeza que deseja apagar a customização da ${ftBase.nomePeca} neste canal? Ela voltará a obedecer 100% da Regra Global.`)) {
-      const newOverrides = { ...overrides };
-      if (newOverrides[activeChannel]) delete newOverrides[activeChannel][ftBase.indiceFt];
-      setOverrides(newOverrides);
-      setEditingOverride(null);
-      await supaWrite('ecommerce_overrides', 'DELETE', null, {
-          channel_id: activeChannel,
-          ft_id: ftBase.indiceFt
-      });
-    }
+    const newOverrides = { ...overrides };
+    if (newOverrides[activeChannel]) delete newOverrides[activeChannel][ftBase.indiceFt];
+    setOverrides(newOverrides);
+    setEditingOverride(null);
+    await supaWrite('ecommerce_overrides', 'DELETE', null, {
+        channel_id: activeChannel,
+        ft_id: ftBase.indiceFt
+    });
+  };
+
+  const handleResetOverride = () => {
+    const { ftBase } = editingOverride;
+    const channelLabel = CHANNELS.find(c => c.id === activeChannel)?.label || activeChannel;
+    openConfirm(
+      'delete',
+      'Resetar Regras do Produto',
+      [
+        { label: 'Produto', value: `${ftBase.nomePeca} (${ftBase.indiceFt})` },
+        { label: 'Canal', value: channelLabel },
+        { label: 'Ação', value: 'A customização será apagada e o produto voltará a obedecer 100% da Regra Global.' },
+      ],
+      _doResetOverride
+    );
   };
 
   const openGlobalModal = () => {
@@ -454,7 +489,7 @@ export default function Vendas() {
     setGlobalFormData(prev => ({ ...prev, [name]: safeVal }));
   };
 
-  const saveGlobalModal = async () => {
+  const _doSaveGlobal = async () => {
     const newDefaults = { ...channelDefaults, [activeChannel]: globalFormData };
     setChannelDefaults(newDefaults);
     setEditingGlobal(false);
@@ -463,6 +498,21 @@ export default function Vendas() {
       channel_id: activeChannel,
       settings: globalFormData
     }, {}, 'channel_id');
+  };
+
+  const saveGlobalModal = () => {
+    const channelLabel = CHANNELS.find(c => c.id === activeChannel)?.label || activeChannel;
+    openConfirm(
+      'save',
+      'Salvar Regra Mestre do Canal',
+      [
+        { label: 'Canal', value: channelLabel },
+        { label: 'Embalagem Padrão', value: `R$ ${String(globalFormData.custoEmbalagem ?? '0').replace('.', ',')}` },
+        { label: 'Taxa Plataforma', value: `${String(globalFormData.taxaMLPerc ?? '0').replace('.', ',')}%` },
+        { label: 'Nota Fiscal', value: `${String(globalFormData.impostosNF ?? '0').replace('.', ',')}%` },
+      ],
+      _doSaveGlobal
+    );
   };
 
   const handleShopeePreset = (e) => {
@@ -767,6 +817,15 @@ export default function Vendas() {
         </div>
       )}
       {showReport && (<MonthlyReportOverlay month={currentMonth} vendasMensal={vendasMensal[currentMonth] || {}} savedFts={savedFts} overrides={overrides} channelDefaults={channelDefaults} onClose={() => setShowReport(false)} />)}
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        type={confirmModal.type}
+        title={confirmModal.title}
+        details={confirmModal.details}
+        onConfirm={async () => { closeConfirm(); await confirmModal.onConfirm?.(); }}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }
