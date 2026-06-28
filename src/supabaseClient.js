@@ -19,16 +19,42 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-// Interceptor global do fetch para injetar automaticamente o Bearer Token do usuário autenticado
-// em requisições diretas de REST API feitas pelo app (que originalmente usavam a anon key).
+let currentSessionToken = null;
+
+if (typeof window !== 'undefined') {
+  supabase.auth.onAuthStateChange((event, session) => {
+    currentSessionToken = session?.access_token || null;
+  });
+}
+
+function getCachedToken() {
+  if (currentSessionToken) return currentSessionToken;
+  if (typeof window === 'undefined') return null;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
+        const jsonStr = localStorage.getItem(key);
+        if (jsonStr) {
+          const data = JSON.parse(jsonStr);
+          currentSessionToken = data?.access_token || null;
+          return currentSessionToken;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Erro ao obter token do localStorage:", e);
+  }
+  return null;
+}
+
+// Interceptor global do fetch para injetar síncronamente o Bearer Token do usuário
 if (typeof window !== 'undefined') {
   const originalFetch = window.fetch;
   window.fetch = async function (url, options) {
     const urlStr = String(url);
-    // Intercepta apenas requisições para a API Rest, ignorando autenticação para evitar recursão
     if (urlStr.includes('/rest/v1/') && !urlStr.includes('/auth/v1/')) {
       try {
-        // Verifica se já possui um header Authorization com token de usuário (que não seja a anon key)
         let hasUserToken = false;
         if (options && options.headers) {
           let authHeader = null;
@@ -43,29 +69,23 @@ if (typeof window !== 'undefined') {
         }
 
         if (!hasUserToken) {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.access_token) {
+          const token = getCachedToken();
+          if (token) {
             options = options || {};
-            
-            // Trata headers se for um objeto simples
             if (options.headers && !(options.headers instanceof Headers)) {
               const authHeader = options.headers['Authorization'] || options.headers['authorization'];
               if (!authHeader || authHeader.includes(supabaseAnonKey)) {
-                options.headers['Authorization'] = `Bearer ${session.access_token}`;
+                options.headers['Authorization'] = `Bearer ${token}`;
               }
-            } 
-            // Trata headers se for uma instância de Headers
-            else if (options.headers instanceof Headers) {
+            } else if (options.headers instanceof Headers) {
               const authHeader = options.headers.get('Authorization');
               if (!authHeader || authHeader.includes(supabaseAnonKey)) {
-                options.headers.set('Authorization', `Bearer ${session.access_token}`);
+                options.headers.set('Authorization', `Bearer ${token}`);
               }
-            } 
-            // Cria headers se não existirem
-            else {
+            } else {
               options.headers = {
                 'apikey': supabaseAnonKey,
-                'Authorization': `Bearer ${session.access_token}`,
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
               };
             }
