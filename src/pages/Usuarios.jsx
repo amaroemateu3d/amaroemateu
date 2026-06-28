@@ -7,6 +7,7 @@ import {
   BarChart3, Check, X, Building2, Plus, Lock
 } from 'lucide-react';
 import './Usuarios.css';
+import ConfirmModal from '../components/ConfirmModal';
 
 const PAGES = [
   { id: 'dashboard',       label: 'Dashboard',          icon: <LayoutDashboard size={16} /> },
@@ -40,6 +41,11 @@ export default function Usuarios() {
   const [adding, setAdding] = useState(false);
   const [erro, setErro] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(true);
+
+  // Estados do Modal de Confirmação Global
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'save', title: '', details: [], onConfirm: null });
+  const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
+  const closeConfirm = () => setConfirmModal(m => ({ ...m, isOpen: false }));
 
   // Estados Multi-Tenant SaaS
   const [tenants, setTenants] = useState([]);
@@ -139,15 +145,31 @@ export default function Usuarios() {
     }
   }
 
-  async function savePermissions() {
+  function savePermissions() {
     if (!selectedUser) return;
+    const userName = profiles[selectedUser.id]?.nome || selectedUser.email;
+    openConfirm(
+      'save',
+      'Salvar Permissões do Usuário',
+      [
+        { label: 'Usuário', value: userName },
+        { label: 'Ação', value: 'Atualizar as regras de visualização e edição das áreas do sistema para este usuário.' }
+      ],
+      () => {
+        closeConfirm();
+        executeSavePermissions();
+      }
+    );
+  }
+
+  async function executeSavePermissions() {
     setSaving(true);
     try {
       const targetUser = profiles[selectedUser.id];
       const targetEmpresaId = targetUser?.empresa_id || profile?.empresa_id || 'a0d8e8fc-66de-4e31-8c4d-eb4044c3c3a9';
 
       for (const page of PAGES) {
-        const perm = permissions[page.id];
+        const perm = permissions[page.id] || { can_view: true, can_edit: true };
         const { error } = await supabase
           .from('user_permissions')
           .upsert({
@@ -204,11 +226,36 @@ export default function Usuarios() {
   }
 
   // Criação segura de usuário usando client secundário (Evita logout do admin)
-  async function handleAddUser(e) {
+  function handleAddUserSubmit(e) {
     e.preventDefault();
     setErro('');
-    setAdding(true);
+    if (!newUser.nome.trim() || !newUser.email.trim() || !newUser.password) {
+      return alert("Preencha todos os campos obrigatórios.");
+    }
+    if (newUser.password.length < 6) {
+      return alert("A senha deve conter no mínimo 6 caracteres.");
+    }
 
+    const empName = tenants.find(t => t.id === newUser.empresa_id)?.name || 'A&M 3D';
+    openConfirm(
+      'save',
+      'Criar Novo Usuário',
+      [
+        { label: 'Nome', value: newUser.nome },
+        { label: 'Login/Email', value: newUser.email },
+        { label: 'Senha Provisória', value: newUser.password },
+        { label: 'Administrador', value: newUser.is_admin ? 'Sim' : 'Não' },
+        { label: 'Empresa', value: empName }
+      ],
+      () => {
+        closeConfirm();
+        executeAddUser();
+      }
+    );
+  }
+
+  async function executeAddUser() {
+    setAdding(true);
     try {
       const { createClient } = await import('@supabase/supabase-js');
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -222,7 +269,6 @@ export default function Usuarios() {
         }
       });
 
-      // Converter login simples em formato de email válido para o Supabase Auth
       let finalEmail = newUser.email.toLowerCase().trim();
       if (!finalEmail.includes('@')) {
         finalEmail = `${finalEmail.replace(/\s+/g, '')}@am3d.app`;
@@ -244,12 +290,11 @@ export default function Usuarios() {
       const newUserId = authData.user?.id;
       if (!newUserId) throw new Error("Falha ao registrar ID no Auth do Supabase.");
 
-      // Vincular à empresa correta
       const targetEmpresaId = isSuperAdmin
         ? (newUser.empresa_id || 'a0d8e8fc-66de-4e31-8c4d-eb4044c3c3a9')
         : (profile?.empresa_id || 'a0d8e8fc-66de-4e31-8c4d-eb4044c3c3a9');
 
-      // 2. Inserir perfil na tabela user_profiles
+      // 2. Inserir perfil na tabela user_profiles (com senha em texto plano)
       const { error: profileError } = await supabase
         .from('user_profiles')
         .insert({
@@ -258,7 +303,8 @@ export default function Usuarios() {
           email: finalEmail,
           is_admin: newUser.is_admin,
           is_acertos: newUser.is_acertos,
-          empresa_id: targetEmpresaId
+          empresa_id: targetEmpresaId,
+          password_plain: newUser.password
         });
 
       if (profileError) throw profileError;
@@ -290,31 +336,54 @@ export default function Usuarios() {
 
   // Remoção segura de usuário (Exclui o perfil para bloquear o acesso)
   async function handleDeleteUser(user) {
-    const prof = profiles[user.id];
-    if (prof?.is_admin && prof?.empresa_id === 'a0d8e8fc-66de-4e31-8c4d-eb4044c3c3a9') {
-      return alert('Não é possível remover administradores do sistema master.');
+    if (user.id === '45a50fe2-fb93-4d1f-a1b9-c95eb470d38f') {
+      return alert('Não é possível remover o administrador master Daniel.');
     }
-    if (!confirm(`Remover o usuário ${user.email}?`)) return;
 
-    try {
-      const { error } = await supabase
-        .from('user_profiles')
-        .delete()
-        .eq('id', user.id);
+    openConfirm(
+      'delete',
+      'Excluir Usuário',
+      [
+        { label: 'Nome', value: profiles[user.id]?.nome || '—' },
+        { label: 'Email', value: user.email },
+        { label: 'Ação', value: 'O usuário será removido completamente do banco de dados e do sistema de autenticação.' }
+      ],
+      async () => {
+        closeConfirm();
+        try {
+          const { error } = await supabase.rpc('excluir_usuario_completo', { usr_id: user.id });
+          if (error) throw error;
 
-      if (error) throw error;
-
-      if (selectedUser?.id === user.id) setSelectedUser(null);
-      await loadUsers();
-      alert("Usuário removido com sucesso!");
-    } catch (err) {
-      alert("Erro ao remover usuário: " + err.message);
-    }
+          if (selectedUser?.id === user.id) setSelectedUser(null);
+          await loadUsers();
+          alert("Usuário removido com sucesso!");
+        } catch (err) {
+          alert("Erro ao remover usuário: " + err.message);
+        }
+      }
+    );
   }
 
   // Redefinir senha de qualquer usuário (Exclusivo para o Daniel)
-  async function handleUpdatePassword() {
+  function handleUpdatePassword() {
     if (tempPassword.length < 6) return alert("A senha deve conter no mínimo 6 caracteres.");
+    const userName = profiles[selectedUser.id]?.nome || selectedUser.email;
+    
+    openConfirm(
+      'edit',
+      'Alterar Senha do Usuário',
+      [
+        { label: 'Usuário', value: userName },
+        { label: 'Nova Senha', value: tempPassword }
+      ],
+      () => {
+        closeConfirm();
+        executeUpdatePassword();
+      }
+    );
+  }
+
+  async function executeUpdatePassword() {
     setChangingPassword(true);
     try {
       const { error } = await supabase.rpc('alterar_senha_usuario', {
@@ -325,6 +394,15 @@ export default function Usuarios() {
       if (error) throw error;
 
       alert("Senha alterada com sucesso!");
+      
+      // Atualiza localmente no estado profiles
+      setProfiles(prev => {
+        const next = { ...prev };
+        if (next[selectedUser.id]) {
+          next[selectedUser.id] = { ...next[selectedUser.id], password_plain: tempPassword };
+        }
+        return next;
+      });
       setTempPassword('');
     } catch (err) {
       alert("Erro ao alterar senha: " + err.message);
@@ -583,7 +661,7 @@ export default function Usuarios() {
                               <span className={`user-badge ${prof?.is_admin ? 'admin' : 'user'}`}>
                                 {prof?.is_admin ? 'Admin' : 'Usuário'}
                               </span>
-                              {(!prof?.is_admin || prof?.empresa_id !== 'a0d8e8fc-66de-4e31-8c4d-eb4044c3c3a9') && (
+                              {user.id !== '45a50fe2-fb93-4d1f-a1b9-c95eb470d38f' && (
                                 <button
                                   className="btn-delete-user"
                                   onClick={e => { e.stopPropagation(); handleDeleteUser(user); }}
@@ -613,9 +691,14 @@ export default function Usuarios() {
             ) : (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                  <h3 style={{ margin: 0 }}>
-                    Permissões — {profiles[selectedUser.id]?.nome || selectedUser.email.split('@')[0]}
-                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <h3 style={{ margin: 0 }}>
+                      Permissões — {profiles[selectedUser.id]?.nome || selectedUser.email.split('@')[0]}
+                    </h3>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      🔑 Senha Cadastrada: <strong style={{ color: 'var(--success)', fontFamily: 'monospace', fontSize: '0.95rem' }}>{profiles[selectedUser.id]?.password_plain || '—'}</strong>
+                    </span>
+                  </div>
                   {!profiles[selectedUser.id]?.is_admin && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', background: 'var(--bg-secondary)', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '0.9rem' }}>
                       <input
@@ -751,7 +834,7 @@ export default function Usuarios() {
               </div>
               <button className="btn-icon" onClick={() => setShowModal(false)}><X size={18} /></button>
             </div>
-            <form className="modal-body add-user-form" onSubmit={handleAddUser}>
+            <form className="modal-body add-user-form" onSubmit={handleAddUserSubmit}>
               {isSuperAdmin && (
                 <div className="input-group">
                   <label>Empresa Vinculada</label>
@@ -898,6 +981,15 @@ export default function Usuarios() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        type={confirmModal.type}
+        title={confirmModal.title}
+        details={confirmModal.details}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }
