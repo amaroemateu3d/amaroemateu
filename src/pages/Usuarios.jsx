@@ -364,6 +364,38 @@ export default function Usuarios() {
     );
   }
 
+  async function handleDeleteTenant(tenant) {
+    if (tenant.id === 'a0d8e8fc-66de-4e31-8c4d-eb4044c3c3a9') {
+      return alert('Não é possível remover a empresa master A&M 3D.');
+    }
+
+    openConfirm(
+      'delete',
+      'Excluir Empresa SaaS',
+      [
+        { label: 'Empresa', value: tenant.name },
+        { label: 'ID', value: tenant.id },
+        { label: 'Ação', value: 'Todos os usuários, fichas técnicas, pedidos, despesas e dados vinculados a esta empresa serão excluídos para sempre.' }
+      ],
+      async () => {
+        closeConfirm();
+        setLoadingTenants(true);
+        try {
+          const { error } = await supabase.rpc('excluir_tenant_completo', { tnt_id: tenant.id });
+          if (error) throw error;
+
+          alert("Empresa excluída com sucesso!");
+          await loadTenants();
+          await loadUsers(); // Recarrega os usuários também
+        } catch (err) {
+          alert("Erro ao excluir empresa: " + err.message);
+        } finally {
+          setLoadingTenants(false);
+        }
+      }
+    );
+  }
+
   // Redefinir senha de qualquer usuário (Exclusivo para o Daniel)
   function handleUpdatePassword() {
     if (tempPassword.length < 6) return alert("A senha deve conter no mínimo 6 caracteres.");
@@ -557,6 +589,7 @@ export default function Usuarios() {
                     <th>Limite de FTs</th>
                     <th>Cadastrada em</th>
                     <th>ID do Tenant</th>
+                    <th style={{ textAlign: 'right' }}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -596,6 +629,18 @@ export default function Usuarios() {
                       </td>
                       <td style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.75rem' }}>
                         {t.id}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {t.id !== 'a0d8e8fc-66de-4e31-8c4d-eb4044c3c3a9' && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTenant(t)}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '1.1rem' }}
+                            title="Excluir Empresa"
+                          >
+                            🗑️
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
