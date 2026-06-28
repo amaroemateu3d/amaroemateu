@@ -381,6 +381,21 @@ export default function FichasTecnicas() {
   };
 
   const handleClearForm = () => {
+    openConfirm(
+      'delete',
+      'Limpar Formulário',
+      [
+        { label: 'Aviso', value: 'Todas as modificações não salvas do formulário atual serão perdidas.' },
+        { label: 'Indice da FT', value: inputs.indiceFt }
+      ],
+      () => {
+        closeConfirm();
+        executeClearForm();
+      }
+    );
+  };
+
+  const executeClearForm = () => {
     setInputs(c => ({
       ...INITIAL_STATE,
       indiceFt: getNextFtId(savedFts),
