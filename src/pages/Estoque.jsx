@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Package, Search, Plus, Minus, Save, Loader, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../supabaseClient';
 import './Estoque.css';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -18,6 +19,21 @@ export default function Estoque() {
 
   useEffect(() => {
     fetchEstoque();
+
+    const channel = supabase
+      .channel('realtime-estoque')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fichas_tecnicas' },
+        () => {
+          fetchEstoque();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchEstoque = async () => {

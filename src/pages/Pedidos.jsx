@@ -602,6 +602,28 @@ export default function Pedidos() {
 
   useEffect(() => {
     fetchData();
+
+    const channel = supabase
+      .channel('realtime-pedidos')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        () => {
+          fetchData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fichas_tecnicas' },
+        () => {
+          fetchData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchData = async () => {

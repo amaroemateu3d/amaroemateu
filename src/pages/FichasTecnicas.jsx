@@ -57,6 +57,21 @@ export default function FichasTecnicas() {
 
   useEffect(() => {
     fetchFichas();
+
+    const channel = supabase
+      .channel('realtime-fichas')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fichas_tecnicas' },
+        () => {
+          fetchFichas();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchFichas = async () => {

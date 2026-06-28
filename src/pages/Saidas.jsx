@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../supabaseClient';
 import {
   Trash2, TrendingDown, Calendar, Search, Loader,
   PlusCircle, ArrowLeft, AlertCircle, FileText, Check
@@ -80,6 +81,21 @@ export default function Saidas() {
 
   useEffect(() => {
     fetchExpenses();
+
+    const channel = supabase
+      .channel('realtime-expenses')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'expenses' },
+        () => {
+          fetchExpenses();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [currentYear]);
 
   const fetchExpenses = async () => {
