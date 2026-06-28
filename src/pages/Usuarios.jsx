@@ -870,7 +870,7 @@ export default function Usuarios() {
 
       {/* Modal Novo Usuário */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div>
@@ -974,7 +974,7 @@ export default function Usuarios() {
 
       {/* Modal Nova Empresa (Tenant) */}
       {showTenantModal && (
-        <div className="modal-overlay" onClick={() => setShowTenantModal(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div>
