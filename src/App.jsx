@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AppLayout from './layouts/AppLayout';
@@ -17,17 +16,10 @@ import Login from './pages/Login';
 import Acertos from './pages/Acertos';
 import './splash.css';
 
-function SplashScreen({ onDone }) {
-  const [fading, setFading] = useState(false);
-
-  useEffect(() => {
-    const t1 = setTimeout(() => setFading(true), 1800);
-    const t2 = setTimeout(() => onDone(), 2400);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [onDone]);
-
+// Tela de carregamento simples — apenas o logo centralizado
+function LoadingScreen() {
   return (
-    <div className={`splash-overlay ${fading ? 'splash-fade-out' : ''}`}>
+    <div className="splash-overlay">
       <div className="splash-card">
         <img src="/logo.png" alt="AM3D Logo" className="splash-logo" />
         <div className="splash-dots">
@@ -40,12 +32,10 @@ function SplashScreen({ onDone }) {
 
 // AppContent usa o AuthContext como ÚNICA fonte de verdade
 function AppContent() {
-  const { session, loading, isAcertos, profile } = useAuth();
-
-  console.log("AppContent Render:", { loading, hasSession: !!session, isAcertos, profile });
+  const { session, loading, isAcertos } = useAuth();
 
   // Aguarda o AuthContext resolver a sessão
-  if (loading) return <SplashScreen onDone={() => {}} />;
+  if (loading) return <LoadingScreen />;
 
   // Sem sessão = tela de login
   if (!session) return <Login />;
