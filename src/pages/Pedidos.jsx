@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { getUnitProductionTime, formatTime } from '../utils/financeCalculators';
 import { supabase } from '../supabaseClient';
 import { Loader } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import './Pedidos.css';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -31,7 +32,7 @@ const formatId = (id, tipo) => {
 };
 
 // ─── Geração de impressão via nova janela ─────────────────────────────────────
-const openPrintWindow = (pedido) => {
+const openPrintWindow = (pedido, tenant = {}) => {
   const total = pedido.itens.reduce((s, it) => s + parseN(it.precoUnit) * parseN(it.qtd), 0);
   const isConsignado = pedido.tipo === 'consignado';
   const label = isConsignado ? 'CONSIGNADO' : 'PEDIDO DE VENDA';
@@ -50,6 +51,16 @@ const openPrintWindow = (pedido) => {
     </tr>
   `).join('');
 
+  const logoHtml = tenant.logo_url 
+    ? `<img class="logo-img" src="${tenant.logo_url}" alt="Logo" onerror="this.style.display='none'; document.getElementById('lf').style.display='flex';"/>`
+    : `<img class="logo-img" src="${window.location.origin}/logo.png" alt="Logo" onerror="this.style.display='none'; document.getElementById('lf').style.display='flex';"/>`;
+
+  const detailsHtml = `
+    ${tenant.email ? `✉️ E-mail: <span>${tenant.email}</span>` : ''}
+    ${tenant.telefone ? ` | 📞 Tel: <span>${tenant.telefone}</span>` : ''}
+  `;
+
+  const signatureName = tenant.name || 'AM3D';
   const assinaturaBlock = isConsignado ? `
     <div class="sign-section">
       <div class="sign-banner">
@@ -64,7 +75,7 @@ const openPrintWindow = (pedido) => {
         </div>
         <div class="sign-block">
           <div class="sign-line"></div>
-          <p class="sign-label">Responsável AM3D</p>
+          <p class="sign-label">Responsável ${signatureName}</p>
           <p class="sign-name">Data: _______ / _______ / _________</p>
         </div>
       </div>
@@ -75,7 +86,7 @@ const openPrintWindow = (pedido) => {
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8"/>
-  <title>${label} ${formatId(pedido.id, pedido.tipo)} — AM3D</title>
+  <title>${label} ${formatId(pedido.id, pedido.tipo)} — ${tenant.name || 'AM3D'}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@700;900&display=swap" rel="stylesheet">
   <style>
@@ -224,15 +235,28 @@ const openPrintWindow = (pedido) => {
     <!-- HEADER -->
     <div class="header">
       <div class="logo-area">
-        <img class="logo-img" src="${window.location.origin}/logo.png" alt="Logo"
-          onerror="this.style.display='none'; document.getElementById('lf').style.display='flex';"/>
+        ${logoHtml}
         <div id="lf" class="logo-fallback">
           <div class="logo-box">3D</div>
           <div>
-            <div class="company-name">AM3D</div>
-            <div class="company-sub">Impressão 3D Profissional</div>
+            <div class="company-name">${tenant.name || 'AM3D'}</div>
+            <div class="company-sub">${tenant.custom_header || 'Impressão 3D Profissional'}</div>
           </div>
         </div>
+        ${tenant.name ? `
+        <div class="company-info-text" translate="no" style="display: flex; flex-direction: column; gap: 2px; font-size: 8pt; color: #475569; line-height: 1.3; text-align: left; margin-left: 10px;">
+          <div class="company-title" style="font-family: 'Outfit', sans-serif; font-size: 14pt; font-weight: 900; color: #1e293b; line-height: 1.1;">${tenant.name}</div>
+          <div class="company-subtitle" style="font-weight: 700; color: #64748b; font-size: 8.5pt;">${tenant.custom_header || 'Impressão 3D'}</div>
+          ${tenant.documento ? `<div style="font-size: 7.5pt; color: #94a3b8;">CNPJ/CPF: ${tenant.documento}</div>` : ''}
+          ${tenant.endereco ? `<div style="font-size: 7.5pt; color: #64748b;">📍 Endereço: <span>${tenant.endereco}</span></div>` : ''}
+          ${tenant.email || tenant.telefone ? `<div style="font-size: 7.5pt; color: #64748b;">${detailsHtml}</div>` : ''}
+        </div>
+        ` : `
+        <div style="margin-left: 10px;">
+          <div class="company-name">AM3D</div>
+          <div class="company-sub">Impressão 3D Profissional</div>
+        </div>
+        `}
       </div>
       <div class="doc-badge-wrap">
         <div class="doc-badge">${label}</div>
@@ -288,7 +312,7 @@ const openPrintWindow = (pedido) => {
 
     <!-- FOOTER -->
     <div class="footer">
-      <span class="footer-brand">AM3D — Impressão 3D Profissional</span>
+      <span class="footer-brand">${tenant.name || 'AM3D'} — Impressão 3D Profissional</span>
       <span>Gerado em ${new Date().toLocaleString('pt-BR')}</span>
     </div>
   </div>
@@ -590,6 +614,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
 
 // ─── Página Principal ─────────────────────────────────────────────────────────
 export default function Pedidos() {
+  const { profile } = useAuth();
   const [pedidos, setPedidos] = useState([]);
   const [fts, setFts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -957,7 +982,7 @@ export default function Pedidos() {
                       <td className="date-cell">{new Date(p.createdAt).toLocaleDateString('pt-BR')}</td>
                       <td>
                         <div className="row-actions">
-                          <button className="btn-icon" onClick={() => openPrintWindow(p)} title="Imprimir">
+                          <button className="btn-icon" onClick={() => openPrintWindow(p, profile?.tenants)} title="Imprimir">
                             🖨️
                           </button>
                           <button className="btn-icon" onClick={() => { setEditingPedido(p); setShowModal(true); }} title="Editar">

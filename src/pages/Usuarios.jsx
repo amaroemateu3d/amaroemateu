@@ -54,6 +54,8 @@ export default function Usuarios() {
   const [newTenant, setNewTenant] = useState({ name: '', limit_fts: 50 });
   const [creatingTenant, setCreatingTenant] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState('usuarios'); // 'usuarios' ou 'empresas'
+  const [showEditTenantModal, setShowEditTenantModal] = useState(false);
+  const [selectedTenantData, setSelectedTenantData] = useState(null);
 
   // Estados para redefinição de senha
   const [tempPassword, setTempPassword] = useState('');
@@ -487,6 +489,35 @@ export default function Usuarios() {
     }
   }
 
+  async function handleSaveTenantDetails(e) {
+    e.preventDefault();
+    setLoadingTenants(true);
+    try {
+      const { error } = await supabase
+        .from('tenants')
+        .update({
+          name: selectedTenantData.name,
+          logo_url: selectedTenantData.logo_url || null,
+          telefone: selectedTenantData.telefone || null,
+          endereco: selectedTenantData.endereco || null,
+          email: selectedTenantData.email || null,
+          documento: selectedTenantData.documento || null,
+          custom_header: selectedTenantData.custom_header || null
+        })
+        .eq('id', selectedTenantData.id);
+
+      if (error) throw error;
+
+      alert("Configurações da empresa salvas com sucesso!");
+      setShowEditTenantModal(false);
+      await loadTenants();
+    } catch (err) {
+      alert("Erro ao salvar dados da empresa: " + err.message);
+    } finally {
+      setLoadingTenants(false);
+    }
+  }
+
   // Agrupar usuários por empresa para renderização agrupada na lista (Blindagem contra null/undefined)
   const groupedUsers = {};
   
@@ -631,6 +662,17 @@ export default function Usuarios() {
                         {t.id}
                       </td>
                       <td style={{ textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTenantData(t);
+                            setShowEditTenantModal(true);
+                          }}
+                          style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', fontSize: '1.1rem', marginRight: '10px' }}
+                          title="Configurar Dados da Empresa"
+                        >
+                          ✏️
+                        </button>
                         {t.id !== 'a0d8e8fc-66de-4e31-8c4d-eb4044c3c3a9' && (
                           <button
                             type="button"
@@ -1035,6 +1077,100 @@ export default function Usuarios() {
         onConfirm={confirmModal.onConfirm}
         onCancel={closeConfirm}
       />
+
+      {/* Modal Editar Dados da Empresa */}
+      {showEditTenantModal && selectedTenantData && (
+        <div className="modal-fullscreen" style={{ backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div className="card" style={{ width: '550px', maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: '1.5rem', background: 'var(--bg-surface)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: 0 }}>✏️ Configurar Dados da Empresa</h3>
+              <button className="btn-icon" onClick={() => setShowEditTenantModal(false)} style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>✕</button>
+            </div>
+            
+            <form onSubmit={handleSaveTenantDetails} className="modal-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0 5px' }}>
+              <div className="form-group" style={{ margin: 0, textAlign: 'left' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '4px', color: 'var(--text-secondary)' }}>Nome da Empresa *</label>
+                <input 
+                  type="text" 
+                  value={selectedTenantData.name || ''} 
+                  onChange={e => setSelectedTenantData({ ...selectedTenantData, name: e.target.value })} 
+                  required
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.95rem' }}
+                />
+              </div>
+              <div className="form-group" style={{ margin: 0, textAlign: 'left' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '4px', color: 'var(--text-secondary)' }}>URL da Logotipo (PNG/JPG)</label>
+                <input 
+                  type="text" 
+                  placeholder="https://exemplo.com/sua-logo.png"
+                  value={selectedTenantData.logo_url || ''} 
+                  onChange={e => setSelectedTenantData({ ...selectedTenantData, logo_url: e.target.value })} 
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.95rem' }}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="form-group" style={{ margin: 0, textAlign: 'left' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '4px', color: 'var(--text-secondary)' }}>Telefone</label>
+                  <input 
+                    type="text" 
+                    placeholder="Ex: 19 9 9672-5045"
+                    value={selectedTenantData.telefone || ''} 
+                    onChange={e => setSelectedTenantData({ ...selectedTenantData, telefone: e.target.value })} 
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.95rem' }}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0, textAlign: 'left' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '4px', color: 'var(--text-secondary)' }}>E-mail de Contato</label>
+                  <input 
+                    type="email" 
+                    placeholder="empresa@email.com"
+                    value={selectedTenantData.email || ''} 
+                    onChange={e => setSelectedTenantData({ ...selectedTenantData, email: e.target.value })} 
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.95rem' }}
+                  />
+                </div>
+              </div>
+              <div className="form-group" style={{ margin: 0, textAlign: 'left' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '4px', color: 'var(--text-secondary)' }}>CNPJ / CPF</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: 00.000.000/0001-00"
+                  value={selectedTenantData.documento || ''} 
+                  onChange={e => setSelectedTenantData({ ...selectedTenantData, documento: e.target.value })} 
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.95rem' }}
+                />
+              </div>
+              <div className="form-group" style={{ margin: 0, textAlign: 'left' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '4px', color: 'var(--text-secondary)' }}>Endereço Completo</label>
+                <input 
+                  type="text" 
+                  placeholder="Rua, Número, Bairro, Cidade - UF"
+                  value={selectedTenantData.endereco || ''} 
+                  onChange={e => setSelectedTenantData({ ...selectedTenantData, endereco: e.target.value })} 
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.95rem' }}
+                />
+              </div>
+              <div className="form-group" style={{ margin: 0, textAlign: 'left' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '4px', color: 'var(--text-secondary)' }}>Slogan / Subtítulo Cabeçalho (Exibido nas Impressões)</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: Produtos em Impressão 3D e Brindes"
+                  value={selectedTenantData.custom_header || ''} 
+                  onChange={e => setSelectedTenantData({ ...selectedTenantData, custom_header: e.target.value })} 
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.95rem' }}
+                />
+              </div>
+              
+              <div className="modal-footer" style={{ padding: 0, paddingTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowEditTenantModal(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary" disabled={loadingTenants}>
+                  {loadingTenants ? 'Salvando...' : 'Salvar Configurações'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -30,7 +30,7 @@ export function AuthProvider({ children }) {
         try {
           const { data: tData } = await supabase
             .from('tenants')
-            .select('name, limit_fts')
+            .select('*')
             .eq('id', profileData.empresa_id)
             .single();
           tenantData = tData;
@@ -41,7 +41,16 @@ export function AuthProvider({ children }) {
 
       const fullProfile = {
         ...profileData,
-        tenants: tenantData || { name: 'A&M 3D', limit_fts: 99999 }
+        tenants: tenantData || { 
+          name: 'A&M 3D', 
+          limit_fts: 99999,
+          logo_url: '',
+          telefone: '19 9 9672-5045',
+          endereco: 'Campinas, SP',
+          email: 'amaroemateu3d@gmail.com',
+          documento: '',
+          custom_header: 'Produtos em Impressão 3D'
+        }
       };
 
       // Carrega permissões

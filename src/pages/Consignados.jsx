@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { Loader, Trash2, Calendar, Printer } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import './Pedidos.css'; 
 
 const parseN = (v) => {
@@ -24,12 +25,22 @@ const fmt = (n) => {
 };
 
 // ─── Geração de impressão via nova janela ─────────────────────────────────────
-const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientData, itemsHtml, totalsHtml, assinaturaHtml = '', obsHtml = '', headersHtml = '') => `
+const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientData, itemsHtml, totalsHtml, assinaturaHtml = '', obsHtml = '', headersHtml = '', tenant = {}) => {
+  const logoHtml = tenant.logo_url 
+    ? `<img class="logo-img" src="${tenant.logo_url}" alt="Logo" onerror="this.style.display='none'; document.getElementById('lf').style.display='flex';"/>`
+    : `<img class="logo-img" src="${window.location.origin}/logo.png" alt="Logo" onerror="this.style.display='none'; document.getElementById('lf').style.display='flex';"/>`;
+
+  const detailsHtml = `
+    ${tenant.email ? `✉️ E-mail: <span>${tenant.email}</span>` : ''}
+    ${tenant.telefone ? ` | 📞 Tel: <span>${tenant.telefone}</span>` : ''}
+  `;
+
+  return `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8"/>
-  <title>${title} — AM3D</title>
+  <title>${title} — ${tenant.name || 'AM3D'}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@700;900&display=swap" rel="stylesheet">
   <style>
@@ -201,21 +212,23 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
   <div class="page">
     <div class="header">
       <div class="logo-area">
-        <img class="logo-img" src="${window.location.origin}/logo.png" alt="Logo"
-          onerror="this.style.display='none'; document.getElementById('lf').style.display='flex';"/>
+        ${logoHtml}
         <div id="lf" class="logo-fallback">
           <div class="logo-box">3D</div>
         </div>
         <div class="company-info-text" translate="no">
-          <div class="company-title">Amaro & Mateu 3D</div>
-          <div class="company-subtitle">Produtos em Impressão 3D</div>
-          <div class="company-slogan">Funcionais, criativos e prontos para você!</div>
-          <div class="company-details-row" style="white-space: nowrap;">
-            📸 Instagram: <span>@aem3d_</span> | ✉️ E-mail: <span>amaroemateu3d@gmail.com</span>
-          </div>
-          <div class="company-contacts-row" style="white-space: nowrap;">
-            <svg viewBox="0 0 24 24" width="11" height="11" style="fill: #25D366; vertical-align: middle; margin-right: 3px; display: inline-block;"><path d="M12.004 0C5.378 0 .004 5.374.004 12.004c0 2.115.548 4.183 1.588 6.006L.004 24l6.17-1.619c1.767.964 3.765 1.47 5.83 1.474h.005c6.626 0 12-5.374 12-12.004C24.009 5.374 18.63 0 12.004 0zm6.815 17.382c-.296.83-1.72 1.572-2.393 1.674-.46.069-.912.127-2.955-.674-2.613-1.023-4.298-3.687-4.43-3.86-.13-.173-1.077-1.43-1.077-2.729 0-1.3.676-1.939.917-2.204.24-.266.526-.333.7-.333h.498c.12 0 .28-.046.439.34.16.386.548 1.343.598 1.445.05.102.083.22.016.353-.067.133-.1.22-.2.339-.1.119-.21.266-.3.353-.1.102-.204.213-.087.414.117.2.52 1.83.82 2.102.302.27.564.385.803.486.24.1.385.053.53-.119.146-.173.628-.73 1.077-1.42.067-.102.133-.12.23-.083.1.037.628.297.747.353.12.057.2.087.23.137.03.05.03.287-.07.618z"/></svg> Cíntia: <span>19 9 8143-2080</span> | <svg viewBox="0 0 24 24" width="11" height="11" style="fill: #25D366; vertical-align: middle; margin-right: 3px; display: inline-block;"><path d="M12.004 0C5.378 0 .004 5.374.004 12.004c0 2.115.548 4.183 1.588 6.006L.004 24l6.17-1.619c1.767.964 3.765 1.47 5.83 1.474h.005c6.626 0 12-5.374 12-12.004C24.009 5.374 18.63 0 12.004 0zm6.815 17.382c-.296.83-1.72 1.572-2.393 1.674-.46.069-.912.127-2.955-.674-2.613-1.023-4.298-3.687-4.43-3.86-.13-.173-1.077-1.43-1.077-2.729 0-1.3.676-1.939.917-2.204.24-.266.526-.333.7-.333h.498c.12 0 .28-.046.439.34.16.386.548 1.343.598 1.445.05.102.083.22.016.353-.067.133-.1.22-.2.339-.1.119-.21.266-.3.353-.1.102-.204.213-.087.414.117.2.52 1.83.82 2.102.302.27.564.385.803.486.24.1.385.053.53-.119.146-.173.628-.73 1.077-1.42.067-.102.133-.12.23-.083.1.037.628.297.747.353.12.057.2.087.23.137.03.05.03.287-.07.618z"/></svg> Daniel: <span>19 9 9672-5045</span>
-          </div>
+          <div class="company-title">${tenant.name || 'Amaro & Mateu 3D'}</div>
+          <div class="company-subtitle">${tenant.custom_header || 'Produtos em Impressão 3D'}</div>
+          ${tenant.documento ? `<div class="company-slogan">CNPJ/CPF: ${tenant.documento}</div>` : ''}
+          ${tenant.endereco ? `<div class="company-details-row">📍 Endereço: <span>${tenant.endereco}</span></div>` : ''}
+          ${tenant.email || tenant.telefone ? `<div class="company-contacts-row">${detailsHtml}</div>` : `
+            <div class="company-details-row" style="white-space: nowrap;">
+              📸 Instagram: <span>@aem3d_</span> | ✉️ E-mail: <span>amaroemateu3d@gmail.com</span>
+            </div>
+            <div class="company-contacts-row" style="white-space: nowrap;">
+              Cíntia: <span>19 9 8143-2080</span> | Daniel: <span>19 9 9672-5045</span>
+            </div>
+          `}
         </div>
       </div>
       <div class="doc-badge-wrap">
@@ -255,7 +268,7 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
     </div>
     ${assinaturaHtml}
     <div class="footer">
-      <span class="footer-brand">AM3D — Impressão 3D Profissional</span>
+      <span class="footer-brand">${tenant.name || 'AM3D'} — Impressão 3D Profissional</span>
       <span>Gerado em ${new Date().toLocaleString('pt-BR')}</span>
     </div>
   </div>
@@ -263,8 +276,9 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
 </body>
 </html>
 `;
+};
 
-const openPrintBatchWindow = (batch, cliente) => {
+const openPrintBatchWindow = (batch, cliente, tenant = {}) => {
   const total = batch.items.reduce((s, it) => s + parseN(it.precoUnit) * parseN(it.qtd), 0);
   const dateStr = new Date(batch.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
   const accentColor = '#475569';
@@ -282,6 +296,7 @@ const openPrintBatchWindow = (batch, cliente) => {
     </tr>
   `).join('');
 
+  const signatureName = tenant.name || 'AM3D';
   const assinaturaHtml = `
     <div class="sign-section">
       <div class="sign-banner">
@@ -296,7 +311,7 @@ const openPrintBatchWindow = (batch, cliente) => {
         </div>
         <div class="sign-block">
           <div class="sign-line"></div>
-          <p class="sign-label">Responsável AM3D</p>
+          <p class="sign-label">Responsável ${signatureName}</p>
           <p class="sign-name">Data: _______ / _______ / _________</p>
         </div>
       </div>
@@ -316,13 +331,13 @@ const openPrintBatchWindow = (batch, cliente) => {
     <div class="obs-box">${cliente.obs}</div>
   ` : '';
 
-  const html = getPrintTemplate('REMESSA CONSIGNADO', '', dateStr, accentColor, accentBg, cliente, itemsHtml, totalsHtml, assinaturaHtml, obsHtml);
+  const html = getPrintTemplate('REMESSA CONSIGNADO', '', dateStr, accentColor, accentBg, cliente, itemsHtml, totalsHtml, assinaturaHtml, obsHtml, '', tenant);
   const win = window.open('', '_blank', 'width=960,height=780');
   win.document.write(html);
   win.document.close();
 };
 
-const openPrintBalanceWindow = (aggregatedItems, cliente, stats) => {
+const openPrintBalanceWindow = (aggregatedItems, cliente, stats, tenant = {}) => {
   const openItems = Object.values(aggregatedItems).filter(it => (it.totalQtd - it.totalPago - it.totalRetirado) > 0);
   openItems.sort((a, b) => String(a.indiceFt || '').localeCompare(String(b.indiceFt || '')));
   
@@ -370,13 +385,14 @@ const openPrintBalanceWindow = (aggregatedItems, cliente, stats) => {
     </div>
   `;
 
-  const html = getPrintTemplate('EXTRATO DE SALDO EM ABERTO', 'CONSIGNADO', dateStr, accentColor, accentBg, cliente, itemsHtml, totalsHtml, '', '', headersHtml);
+  const html = getPrintTemplate('EXTRATO DE SALDO EM ABERTO', 'CONSIGNADO', dateStr, accentColor, accentBg, cliente, itemsHtml, totalsHtml, '', '', headersHtml, tenant);
   const win = window.open('', '_blank', 'width=960,height=780');
   win.document.write(html);
   win.document.close();
 };
 
 export default function Consignados() {
+  const { profile } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [fts, setFts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1108,7 +1124,7 @@ export default function Consignados() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0 }}>Extrato de Itens</h3>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <button className="btn-outline btn-sm" onClick={() => openPrintBalanceWindow(aggregatedItems, selectedAccount.cliente, stats)} title="Imprimir Saldo em Aberto">
+                <button className="btn-outline btn-sm" onClick={() => openPrintBalanceWindow(aggregatedItems, selectedAccount.cliente, stats, profile?.tenants)} title="Imprimir Saldo em Aberto">
                   <Printer size={16} /> Saldo
                 </button>
                 <button className="btn-primary btn-sm" onClick={openBatchModal}>+ Nova Remessa</button>
@@ -1204,7 +1220,7 @@ export default function Consignados() {
                       Data de Envio: {new Date(batch.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
                     </div>
                     <div style={{ display: 'flex', gap: '10px' }}>
-                      <button className="btn-outline btn-sm" onClick={() => openPrintBatchWindow(batch, selectedAccount.cliente)} title="Imprimir Guia da Remessa">
+                      <button className="btn-outline btn-sm" onClick={() => openPrintBatchWindow(batch, selectedAccount.cliente, profile?.tenants)} title="Imprimir Guia da Remessa">
                         <Printer size={16} /> Imprimir
                       </button>
                       <button className="btn-outline btn-sm" onClick={() => openWithdrawModal(batch)} style={{ borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }} title="Retirar Itens Devolvidos">
