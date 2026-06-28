@@ -1748,6 +1748,79 @@ export default function Consignados() {
           );
         })()}
 
+        {/* MODAL RETIRADA DE ITENS */}
+        {withdrawBatch && (() => {
+          const dateObj = withdrawBatch.date ? new Date(withdrawBatch.date) : null;
+          const dateLabel = dateObj && !isNaN(dateObj.getTime()) 
+            ? dateObj.toLocaleDateString('pt-BR', { timeZone: 'UTC' }) 
+            : 'Data não informada';
+          return (
+            <div className="modal-fullscreen">
+              <div className="modal-topbar">
+                <div className="modal-topbar-left">
+                  <button className="btn-outline btn-sm" onClick={() => { setWithdrawBatch(null); setWithdrawItems([]); }}>✕ Cancelar</button>
+                  <div>
+                    <h2 className="modal-title">Retirar Itens Devolvidos</h2>
+                    <p className="modal-sub">Insira a quantidade que está sendo retirada. Estes itens voltarão para o seu estoque físico.</p>
+                  </div>
+                </div>
+                <div className="modal-topbar-right">
+                  <button className="btn-primary" onClick={handleSaveWithdraw} disabled={loading} style={{ background: 'var(--accent-primary)' }}>
+                    {loading ? 'Salvando...' : '↩️ Confirmar Retirada'}
+                  </button>
+                </div>
+              </div>
+              <div className="modal-scroll-body" style={{ padding: '2rem' }}>
+                <div style={{ background: 'var(--bg-secondary)', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '2rem' }}>
+                  <Calendar size={18} color="var(--primary)" />
+                  <h4 style={{ margin: 0 }}>Remessa de {dateLabel}</h4>
+                </div>
+
+                {withdrawItems.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '3rem' }}>
+                    <h3>Não há itens em aberto nesta remessa para retirar! 🎉</h3>
+                  </div>
+                ) : (
+                  <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+                        <th style={{ padding: '0.75rem' }}>ID</th>
+                        <th style={{ padding: '0.75rem' }}>Nome do Item</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'center' }}>Saldo em Aberto</th>
+                        <th style={{ padding: '0.75rem', width: '200px' }}>Qtd a Retirar (Devolver ao Estoque)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {withdrawItems.map((it, idx) => {
+                        const active = parseN(it.withdrawQtd) > 0;
+                        return (
+                          <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: active ? 'rgba(59, 130, 246, 0.05)' : 'transparent' }}>
+                            <td style={{ padding: '0.75rem 0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
+                            <td style={{ padding: '0.75rem 0.5rem', fontWeight: active ? 'bold' : 'normal' }}>{it.nomePeca}</td>
+                            <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>{it.maxQtd}</td>
+                            <td style={{ padding: '0.5rem' }}>
+                              <input 
+                                type="number" 
+                                className="cell-input cell-qty" 
+                                style={{ borderColor: active ? 'var(--accent-primary)' : 'var(--border-color)', width: '100px' }}
+                                min="0" 
+                                max={it.maxQtd} 
+                                placeholder="0"
+                                value={it.withdrawQtd} 
+                                onChange={e => updateWithdrawItem(idx, e.target.value)} 
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
       </div>
     );
   }
@@ -1854,72 +1927,6 @@ export default function Consignados() {
               <button className="btn-outline" onClick={() => setShowNewAccountModal(false)}>Cancelar</button>
               <button className="btn-primary" onClick={handleCreateAccount} disabled={loading}>{loading ? 'Salvando...' : 'Criar Conta'}</button>
             </div>
-          </div>
-        </div>
-      )}
-      {/* MODAL RETIRADA DE ITENS */}
-      {withdrawBatch && (
-        <div className="modal-fullscreen">
-          <div className="modal-topbar">
-            <div className="modal-topbar-left">
-              <button className="btn-outline btn-sm" onClick={() => { setWithdrawBatch(null); setWithdrawItems([]); }}>✕ Cancelar</button>
-              <div>
-                <h2 className="modal-title">Retirar Itens Devolvidos</h2>
-                <p className="modal-sub">Insira a quantidade que está sendo retirada. Estes itens voltarão para o seu estoque físico.</p>
-              </div>
-            </div>
-            <div className="modal-topbar-right">
-              <button className="btn-primary" onClick={handleSaveWithdraw} disabled={loading} style={{ background: 'var(--accent-primary)' }}>
-                {loading ? 'Salvando...' : '↩️ Confirmar Retirada'}
-              </button>
-            </div>
-          </div>
-          <div className="modal-scroll-body" style={{ padding: '2rem' }}>
-            <div style={{ background: 'var(--bg-secondary)', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '2rem' }}>
-              <Calendar size={18} color="var(--primary)" />
-              <h4 style={{ margin: 0 }}>Remessa de {new Date(withdrawBatch.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</h4>
-            </div>
-
-            {withdrawItems.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '3rem' }}>
-                <h3>Não há itens em aberto nesta remessa para retirar! 🎉</h3>
-              </div>
-            ) : (
-              <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
-                    <th style={{ padding: '0.75rem' }}>ID</th>
-                    <th style={{ padding: '0.75rem' }}>Nome do Item</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'center' }}>Saldo em Aberto</th>
-                    <th style={{ padding: '0.75rem', width: '200px' }}>Qtd a Retirar (Devolver ao Estoque)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {withdrawItems.map((it, idx) => {
-                    const active = parseN(it.withdrawQtd) > 0;
-                    return (
-                      <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: active ? 'rgba(59, 130, 246, 0.05)' : 'transparent' }}>
-                        <td style={{ padding: '0.75rem 0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
-                        <td style={{ padding: '0.75rem 0.5rem', fontWeight: active ? 'bold' : 'normal' }}>{it.nomePeca}</td>
-                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>{it.maxQtd}</td>
-                        <td style={{ padding: '0.5rem' }}>
-                          <input 
-                            type="number" 
-                            className="cell-input cell-qty" 
-                            style={{ borderColor: active ? 'var(--accent-primary)' : 'var(--border-color)', width: '100px' }}
-                            min="0" 
-                            max={it.maxQtd} 
-                            placeholder="0"
-                            value={it.withdrawQtd} 
-                            onChange={e => updateWithdrawItem(idx, e.target.value)} 
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
           </div>
         </div>
       )}
