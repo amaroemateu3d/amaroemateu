@@ -43,7 +43,6 @@ export default function FichasTecnicas() {
   const { profile } = useAuth();
   const [savedFts, setSavedFts] = useState([]);
   const [loadingDb, setLoadingDb] = useState(true);
-  const [isMigrating, setIsMigrating] = useState(false);
   const [semDados, setSemDados] = useState(false);
 
   const [inputs, setInputs] = useState({ ...INITIAL_STATE });
@@ -60,78 +59,31 @@ export default function FichasTecnicas() {
     setSemDados(false);
     
     try {
-      // Fetch DIRETO via REST API - bypassa completamente qualquer deadlock do cliente Supabase
-      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
-      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (!SUPA_URL || !SUPA_KEY) { setSemDados(true); return; }
+      // Usa o Supabase client diretamente — ele injeta o JWT do usuário autenticado
+      // satisfazendo a política RLS: empresa_id = get_user_empresa_id()
+      const { data, error } = await supabase
+        .from('fichas_tecnicas')
+        .select('*')
+        .order('id', { ascending: true });
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
-      let rawResp;
-      try {
-        rawResp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=*&order=id.asc`, {
-          signal: controller.signal,
-          headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' }
-        });
-      } finally { clearTimeout(timeout); }
-
-      const data = rawResp.ok ? await rawResp.json() : [];
-      const error = rawResp.ok ? null : { message: `HTTP ${rawResp.status}` };
-      
       if (error) {
-         console.error("Erro ao buscar FTs:", error);
-         return;
+        console.error('[FichasTecnicas] Erro ao buscar FTs:', error);
+        setSemDados(true);
+        return;
       }
 
       const safeData = data || [];
-      console.log(`[FichasTecnicas] Banco retornou ${safeData.length} registros via fetch direto.`);
+      console.log(`[FichasTecnicas] Banco retornou ${safeData.length} registros.`);
 
-      // Estratégia de Migração Automática!
       if (safeData.length === 0) {
-        const locais = localStorage.getItem('am3d_saved_fts');
-        const parsedLocais = locais ? JSON.parse(locais) : [];
-
-        if (parsedLocais.length > 0) {
-          setIsMigrating(true);
-          const inserts = parsedLocais.map(ft => ({
-             id: ft.indiceFt,
-             name: ft.nomePeca || 'Sem Nome',
-             cost: ft._custoFinal || 0,
-             data: ft
-          }));
-          
-          const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
-          const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-          const headers = { 
-            'apikey': SUPA_KEY, 
-            'Authorization': `Bearer ${SUPA_KEY}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal'
-          };
-          
-          await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(inserts)
-          });
-          
-          const res2resp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=*&order=id.asc`, { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } });
-          const res2data = res2resp.ok ? await res2resp.json() : [];
-          if (res2data) {
-             setSavedFts(res2data.map(r => r.data));
-             setInputs(prev => ({ ...prev, indiceFt: getNextFtId(res2data.map(r => r.data)) }));
-          }
-          setIsMigrating(false);
-        } else {
-          setSavedFts([]);
-          setSemDados(true);
-        }
+        setSavedFts([]);
+        setSemDados(true);
       } else {
         setSavedFts(safeData.map(r => r.data));
         setInputs(prev => ({ ...prev, indiceFt: getNextFtId(safeData.map(r => r.data)) }));
       }
     } catch (e) {
-      console.error("[FichasTecnicas] Exceção ao buscar FTs:", e);
+      console.error('[FichasTecnicas] Exceção ao buscar FTs:', e);
       setSemDados(true);
     } finally {
       setLoadingDb(false);
@@ -146,7 +98,6 @@ export default function FichasTecnicas() {
     reader.onload = async (ev) => {
       try {
         const json = JSON.parse(ev.target.result);
-        // Suporta tanto { fichas_tecnicas: [...] } quanto array direto
         const lista = Array.isArray(json) ? json : (json.fichas_tecnicas || json.am3d_saved_fts || []);
         if (!lista.length) return alert('Nenhuma FT encontrada no arquivo.');
 
@@ -157,20 +108,12 @@ export default function FichasTecnicas() {
           cost: ft._custoFinal || ft.cost || 0,
           data: ft.data || ft
         }));
-        const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
-        const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        const headers = { 
-          'apikey': SUPA_KEY, 
-          'Authorization': `Bearer ${SUPA_KEY}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=minimal'
-        };
-        const resp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(inserts)
-        });
-        if (!resp.ok) { alert('Erro ao importar.'); setIsMigrating(false); return; }
+
+        const { error } = await supabase
+          .from('fichas_tecnicas')
+          .upsert(inserts, { onConflict: 'id' });
+
+        if (error) { alert('Erro ao importar: ' + error.message); setIsMigrating(false); return; }
         alert(`✅ ${inserts.length} Fichas Técnicas importadas com sucesso!`);
         await fetchFichas();
       } catch {
@@ -298,28 +241,21 @@ export default function FichasTecnicas() {
       return novaLista;
     });
 
-    const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
-    const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    const headers = { 
-      'apikey': SUPA_KEY, 
-      'Authorization': `Bearer ${SUPA_KEY}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'resolution=merge-duplicates'
-    };
-    
-    // Salva FT original no Supabase
-    await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        id: ftData.indiceFt,
-        name: ftData.nomePeca,
-        cost: ftData._custoFinal,
-        data: ftData
-      })
-    });
+    // Salva FT no Supabase usando o client autenticado (satisfaz RLS)
+    const { error: saveError } = await supabase
+      .from('fichas_tecnicas')
+      .upsert(
+        { id: ftData.indiceFt, name: ftData.nomePeca, cost: ftData._custoFinal, data: ftData },
+        { onConflict: 'id' }
+      );
 
-    // Encontra os kits que foram alterados em relação à lista anterior e salva-os no Supabase
+    if (saveError) {
+      console.error('[FichasTecnicas] Erro ao salvar FT:', saveError);
+      alert('Erro ao salvar no banco: ' + saveError.message);
+      return;
+    }
+
+    // Atualiza kits afetados
     const updatedKits = novaLista.filter(item => {
       if (!item.isKit) return false;
       const oldKit = savedFts.find(k => k.indiceFt === item.indiceFt);
@@ -327,16 +263,12 @@ export default function FichasTecnicas() {
     });
 
     for (const kit of updatedKits) {
-      await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          id: kit.indiceFt,
-          name: kit.nomePeca,
-          cost: kit._custoFinal,
-          data: kit
-        })
-      });
+      await supabase
+        .from('fichas_tecnicas')
+        .upsert(
+          { id: kit.indiceFt, name: kit.nomePeca, cost: kit._custoFinal, data: kit },
+          { onConflict: 'id' }
+        );
     }
   };
 
@@ -367,16 +299,19 @@ export default function FichasTecnicas() {
         return novaLista;
       });
 
-      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
-      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      
-      // Deleta do Supabase
-      await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${id}`, {
-        method: 'DELETE',
-        headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
-      });
+      // Deleta usando o client autenticado (satisfaz RLS)
+      const { error: deleteError } = await supabase
+        .from('fichas_tecnicas')
+        .delete()
+        .eq('id', id);
 
-      // Atualiza no Supabase os kits afetados pela deleção
+      if (deleteError) {
+        console.error('[FichasTecnicas] Erro ao deletar FT:', deleteError);
+        alert('Erro ao deletar: ' + deleteError.message);
+        return;
+      }
+
+      // Atualiza kits afetados
       const kitsParaAtualizar = novaLista.filter(item => {
         if (!item.isKit) return false;
         const oldKit = savedFts.find(k => k.indiceFt === item.indiceFt);
@@ -384,21 +319,12 @@ export default function FichasTecnicas() {
       });
 
       for (const kit of kitsParaAtualizar) {
-        await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas`, {
-          method: 'POST',
-          headers: { 
-            'apikey': SUPA_KEY, 
-            'Authorization': `Bearer ${SUPA_KEY}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates'
-          },
-          body: JSON.stringify({
-            id: kit.indiceFt,
-            name: kit.nomePeca,
-            cost: kit._custoFinal,
-            data: kit
-          })
-        });
+        await supabase
+          .from('fichas_tecnicas')
+          .upsert(
+            { id: kit.indiceFt, name: kit.nomePeca, cost: kit._custoFinal, data: kit },
+            { onConflict: 'id' }
+          );
       }
     }
   };
@@ -611,10 +537,10 @@ export default function FichasTecnicas() {
           </div>
         </div>
         
-        {loadingDb || isMigrating ? (
+        {loadingDb ? (
           <div style={{textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)'}}>
              <Loader size={40} className="spinner" color="var(--primary)" style={{marginBottom: '1rem'}} />
-             <p>{isMigrating ? 'Sincronizando suas Fichas Técnicas para a Nuvem pela primeira vez...' : 'Carregando banco de dados...'}</p>
+             <p>Carregando banco de dados...</p>
           </div>
         ) : filteredFts.length === 0 ? (
           <div style={{textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)'}}>
