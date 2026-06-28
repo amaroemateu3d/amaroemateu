@@ -55,10 +55,17 @@ export default function FichasTecnicas() {
   const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
   const closeConfirm = () => setConfirmModal(m => ({ ...m, isOpen: false }));
 
+  // Estados de Insumos / Gastos Extras Pré-Cadastrados
+  const [insumos, setInsumos] = useState([]);
+  const [showInsumosManager, setShowInsumosManager] = useState(false);
+  const [selectInsumoIndex, setSelectInsumoIndex] = useState(null);
+  const [newInsumo, setNewInsumo] = useState({ nome: '', valor: '' });
+
   useEffect(() => {
     fetchFichas();
+    fetchInsumos();
 
-    const channel = supabase
+    const channelFts = supabase
       .channel('realtime-fichas')
       .on(
         'postgres_changes',
@@ -69,10 +76,80 @@ export default function FichasTecnicas() {
       )
       .subscribe();
 
+    const channelInsumos = supabase
+      .channel('realtime-insumos')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'insumos_base' },
+        () => {
+          fetchInsumos();
+        }
+      )
+      .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(channelFts);
+      supabase.removeChannel(channelInsumos);
     };
   }, []);
+
+  const fetchInsumos = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('insumos_base')
+        .select('*')
+        .order('nome', { ascending: true });
+      if (!error && data) {
+        setInsumos(data);
+      }
+    } catch (e) {
+      console.error("Erro ao buscar insumos:", e);
+    }
+  };
+
+  const handleAddInsumo = async (e) => {
+    e.preventDefault();
+    if (!newInsumo.nome.trim() || !newInsumo.valor) return;
+    try {
+      const empId = profile?.empresa_id || 'a0d8e8fc-66de-4e31-8c4d-eb4044c3c3a9';
+      const { error } = await supabase
+        .from('insumos_base')
+        .insert({
+          nome: newInsumo.nome,
+          valor: parseFloat(newInsumo.valor),
+          empresa_id: empId
+        });
+      if (error) throw error;
+      setNewInsumo({ nome: '', valor: '' });
+      fetchInsumos();
+    } catch (e) {
+      alert("Erro ao adicionar insumo: " + e.message);
+    }
+  };
+
+  const handleDeleteInsumo = async (id) => {
+    if (!window.confirm("Deseja mesmo excluir este insumo?")) return;
+    try {
+      const { error } = await supabase
+        .from('insumos_base')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      fetchInsumos();
+    } catch (e) {
+      alert("Erro ao excluir insumo: " + e.message);
+    }
+  };
+
+  const handleSelectInsumo = (insumo) => {
+    if (selectInsumoIndex === null) return;
+    setInputs(prev => ({
+      ...prev,
+      [`extraNome${selectInsumoIndex}`]: insumo.nome,
+      [`extraValor${selectInsumoIndex}`]: insumo.valor
+    }));
+    setSelectInsumoIndex(null);
+  };
 
   const fetchFichas = async () => {
     setLoadingDb(true);
@@ -481,6 +558,8 @@ export default function FichasTecnicas() {
               inputs={inputs} 
               onChange={handleChange} 
               savedFts={savedFts}
+              onManageInsumos={() => setShowInsumosManager(true)}
+              onSelectInsumoClick={(index) => setSelectInsumoIndex(index)}
             />
           </div>
           <div className="fichas-right">
@@ -650,6 +729,121 @@ export default function FichasTecnicas() {
         onConfirm={confirmModal.onConfirm}
         onCancel={closeConfirm}
       />
+
+      {/* MODAL GERENCIAR INSUMOS */}
+      {showInsumosManager && (
+        <div className="modal-fullscreen" style={{ backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div className="card" style={{ width: '550px', maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: '1.5rem', background: 'var(--bg-surface)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: 0 }}>⚙️ Gerenciar Insumos / Gastos Extras</h3>
+              <button className="btn-icon" onClick={() => setShowInsumosManager(false)} style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>✕</button>
+            </div>
+            
+            <form onSubmit={handleAddInsumo} style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem', alignItems: 'flex-end', background: 'var(--bg-secondary)', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+              <div className="form-group" style={{ flex: 2, margin: 0, textAlign: 'left' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '4px', color: 'var(--text-secondary)' }}>Nome do Insumo</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: Argola de Chaveiro" 
+                  value={newInsumo.nome} 
+                  onChange={e => setNewInsumo({ ...newInsumo, nome: e.target.value })} 
+                  required
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+                />
+              </div>
+              <div className="form-group" style={{ flex: 1, margin: 0, textAlign: 'left' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '4px', color: 'var(--text-secondary)' }}>Valor (R$)</label>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  placeholder="0,80" 
+                  value={newInsumo.valor} 
+                  onChange={e => setNewInsumo({ ...newInsumo, valor: e.target.value })} 
+                  required
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+                />
+              </div>
+              <button type="submit" className="btn-primary" style={{ padding: '0.62rem 1.25rem', borderRadius: '8px', height: 'fit-content', fontWeight: '600', fontSize: '0.88rem' }}>Cadastrar</button>
+            </form>
+
+            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '10px', background: 'var(--bg-primary)' }}>
+              {insumos.length === 0 ? (
+                <p style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)', margin: 0 }}>Nenhum insumo cadastrado ainda.</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', fontSize: '0.85rem' }}>
+                      <th style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>Insumo</th>
+                      <th style={{ padding: '0.75rem 1rem', width: '120px', color: 'var(--text-secondary)' }}>Valor</th>
+                      <th style={{ padding: '0.75rem 1rem', width: '60px', textAlign: 'center', color: 'var(--text-secondary)' }}>Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {insumos.map(ins => (
+                      <tr key={ins.id} style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
+                        <td style={{ padding: '0.75rem 1rem', fontWeight: '500', color: 'var(--text-primary)' }}>{ins.nome}</td>
+                        <td style={{ padding: '0.75rem 1rem', fontWeight: '700', color: 'var(--success)' }}>R$ {ins.valor.toFixed(2)}</td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                          <button type="button" onClick={() => handleDeleteInsumo(ins.id)} style={{ color: 'var(--danger)', cursor: 'pointer', background: 'none', border: 'none', fontSize: '1rem' }}>🗑️</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL SELECIONAR INSUMO */}
+      {selectInsumoIndex !== null && (
+        <div className="modal-fullscreen" style={{ backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div className="card" style={{ width: '450px', maxWidth: '90%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', padding: '1.5rem', background: 'var(--bg-surface)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ margin: 0 }}>Selecione um Insumo para a Linha {selectInsumoIndex}</h3>
+              <button className="btn-icon" onClick={() => setSelectInsumoIndex(null)} style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>✕</button>
+            </div>
+            
+            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '10px', background: 'var(--bg-primary)' }}>
+              {insumos.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', margin: 0 }}>Você não tem insumos pré-cadastrados.</p>
+                  <button className="btn-outline btn-sm" onClick={() => { setSelectInsumoIndex(null); setShowInsumosManager(true); }} style={{ padding: '6px 12px', fontSize: '0.85rem' }}>⚙️ Cadastrar Insumos</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {insumos.map(ins => (
+                    <button 
+                      key={ins.id}
+                      onClick={() => handleSelectInsumo(ins)}
+                      style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        padding: '1rem', 
+                        borderBottom: '1px solid var(--border-color)', 
+                        textAlign: 'left',
+                        width: '100%',
+                        cursor: 'pointer',
+                        transition: 'background 0.2s',
+                        background: 'transparent',
+                        border: 'none',
+                        borderBottom: '1px solid var(--border-color)'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--bg-surface-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <strong style={{ color: 'var(--text-primary)' }}>{ins.nome}</strong>
+                      <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>R$ {ins.valor.toFixed(2)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

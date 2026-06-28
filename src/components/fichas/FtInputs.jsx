@@ -25,22 +25,43 @@ const InputRow = ({ label, name, type = "number", suffix = "", prefix = "", step
 };
 
 // Sub-componente para cada linha de gasto extra
-const ExtraRow = ({ index, inputs, onChange, showLabels }) => {
+const ExtraRow = ({ index, inputs, onChange, showLabels, onSelectInsumoClick }) => {
   const nomeKey  = `extraNome${index}`;
   const valorKey = `extraValor${index}`;
 
   return (
-    <div className="extra-row">
+    <div className="extra-row" style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
       <div className="input-group" style={{ flex: 2 }}>
         {showLabels && <label>Descrição</label>}
-        <div className="input-wrapper">
+        <div className="input-wrapper" style={{ display: 'flex', gap: '4px' }}>
           <input
             type="text"
             name={nomeKey}
             value={inputs[nomeKey] || ''}
             onChange={onChange}
             placeholder={`Extra ${index}`}
+            style={{ flex: 1 }}
           />
+          <button 
+            type="button" 
+            onClick={() => onSelectInsumoClick && onSelectInsumoClick(index)}
+            style={{ 
+              padding: '0 10px', 
+              background: 'var(--bg-secondary)', 
+              border: '1px solid var(--border-color)', 
+              borderRadius: '8px', 
+              fontSize: '0.9rem',
+              color: 'var(--accent-primary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 'bold'
+            }}
+            title="Puxar Insumo Pré-Cadastrado"
+          >
+            ➕
+          </button>
         </div>
       </div>
       <div className="input-group" style={{ flex: 1 }}>
@@ -63,7 +84,7 @@ const ExtraRow = ({ index, inputs, onChange, showLabels }) => {
   );
 };
 
-export default function FtInputs({ inputs, onChange, savedFts = [] }) {
+export default function FtInputs({ inputs, onChange, savedFts = [], onManageInsumos, onSelectInsumoClick }) {
   
   const commonProps = { inputs, onChange };
 
@@ -144,18 +165,38 @@ export default function FtInputs({ inputs, onChange, savedFts = [] }) {
 
       {/* SEÇÃO 3: Gastos Extras */}
       <section className="input-section card">
-        <div className="section-header">
-          <div className="icon-box" style={{background: '#FEF3C7', color: '#D97706'}}><PackagePlus size={18} /></div>
-          <div>
-            <h3>Gastos Extras</h3>
-            <span style={{fontSize: '0.72rem', color: '#D97706', fontWeight: '600', background: '#FEF9EE', padding: '1px 7px', borderRadius: '10px'}}>por unidade</span>
+        <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="icon-box" style={{background: '#FEF3C7', color: '#D97706'}}><PackagePlus size={18} /></div>
+            <div>
+              <h3>Gastos Extras</h3>
+              <span style={{fontSize: '0.72rem', color: '#D97706', fontWeight: '600', background: '#FEF9EE', padding: '1px 7px', borderRadius: '10px'}}>por unidade</span>
+            </div>
           </div>
+          <button 
+            type="button" 
+            onClick={onManageInsumos} 
+            className="btn-outline btn-sm" 
+            style={{ 
+              padding: '4px 10px', 
+              fontSize: '0.75rem', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '4px', 
+              borderColor: 'var(--border-color)', 
+              color: 'var(--text-secondary)',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}
+          >
+            ⚙️ Gerenciar Insumos
+          </button>
         </div>
         
         <div className="extras-stack">
-          <ExtraRow index={1} inputs={inputs} onChange={onChange} showLabels />
-          <ExtraRow index={2} inputs={inputs} onChange={onChange} />
-          <ExtraRow index={3} inputs={inputs} onChange={onChange} />
+          <ExtraRow index={1} inputs={inputs} onChange={onChange} showLabels onSelectInsumoClick={onSelectInsumoClick} />
+          <ExtraRow index={2} inputs={inputs} onChange={onChange} onSelectInsumoClick={onSelectInsumoClick} />
+          <ExtraRow index={3} inputs={inputs} onChange={onChange} onSelectInsumoClick={onSelectInsumoClick} />
         </div>
         <p className="extras-hint">Cada valor é somado ao custo unitário da peça (não dividido pelo lote).</p>
       </section>
