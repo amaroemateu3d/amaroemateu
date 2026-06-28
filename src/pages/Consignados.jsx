@@ -323,7 +323,7 @@ const openPrintBatchWindow = (batch, cliente) => {
 };
 
 const openPrintBalanceWindow = (aggregatedItems, cliente, stats) => {
-  const openItems = Object.values(aggregatedItems).filter(it => (it.totalQtd - it.totalPago) > 0);
+  const openItems = Object.values(aggregatedItems).filter(it => (it.totalQtd - it.totalPago - it.totalRetirado) > 0);
   openItems.sort((a, b) => String(a.indiceFt || '').localeCompare(String(b.indiceFt || '')));
   
   const accentColor = '#059669';
@@ -331,9 +331,9 @@ const openPrintBalanceWindow = (aggregatedItems, cliente, stats) => {
   const dateStr = new Date().toLocaleDateString('pt-BR');
 
   const itemsHtml = openItems.length === 0 ? `
-    <tr><td colspan="8" class="cell-center text-muted" style="padding: 2rem;">Não há peças em aberto no momento. 🎉</td></tr>
+    <tr><td colspan="9" class="cell-center text-muted" style="padding: 2rem;">Não há peças em aberto no momento. 🎉</td></tr>
   ` : openItems.map((it, i) => {
-    const emAberto = it.totalQtd - it.totalPago;
+    const emAberto = it.totalQtd - it.totalPago - it.totalRetirado;
     return `
       <tr class="${i % 2 === 0 ? 'row-even' : ''}">
         <td class="cell-center text-muted">${i + 1}</td>
@@ -341,6 +341,7 @@ const openPrintBalanceWindow = (aggregatedItems, cliente, stats) => {
         <td class="cell-name">${it.nomePeca}</td>
         <td class="cell-right text-muted">R$ ${fmt(parseN(it.precoUnit))}</td>
         <td class="cell-center cell-bold">${it.totalQtd}</td>
+        <td class="cell-center" style="color: #3b82f6; font-weight: bold;">${it.totalRetirado}</td>
         <td class="cell-center" style="color: #059669; font-weight: bold;">${it.totalPago}</td>
         <td class="cell-center text-danger">${emAberto}</td>
         <td class="cell-right cell-bold">R$ ${fmt(parseN(it.precoUnit) * emAberto)}</td>
@@ -355,6 +356,7 @@ const openPrintBalanceWindow = (aggregatedItems, cliente, stats) => {
       <th>Descrição</th>
       <th style="width:90px;text-align:right">Preço Unit.</th>
       <th style="width:70px;text-align:center">Enviados</th>
+      <th style="width:70px;text-align:center">Retirados</th>
       <th style="width:70px;text-align:center">Pagos</th>
       <th style="width:70px;text-align:center">Aberto</th>
       <th style="width:105px;text-align:right">Subtotal</th>
@@ -384,6 +386,8 @@ export default function Consignados() {
   const [showNewAccountModal, setShowNewAccountModal] = useState(false);
   const [showNewBatchModal, setShowNewBatchModal] = useState(false);
   const [showNewPaymentModal, setShowNewPaymentModal] = useState(false);
+  const [withdrawBatch, setWithdrawBatch] = useState(null);
+  const [withdrawItems, setWithdrawItems] = useState([]);
 
   // Form states
   const [newClient, setNewClient] = useState({ nome: '', telefone: '', email: '', endereco: '', obs: '', tipoAcerto: 'integral', comissaoPct: '0' });
@@ -520,7 +524,7 @@ export default function Consignados() {
         // Devolver itens de todas as remessas
         for (const batch of account.batches) {
           for (const it of (batch.items || [])) {
-            const openQty = parseN(it.qtd) - parseN(it.qtdPago);
+            const openQty = parseN(it.qtd) - parseN(it.qtdPago) - parseN(it.qtdRetirado);
             if (openQty > 0) {
               await updateFtStock(it.indiceFt, -openQty); // Negativo devolve pro estoque
             }
@@ -755,7 +759,8 @@ export default function Consignados() {
       (batch.items || []).forEach(it => {
         const qTotal = parseN(it.qtd);
         const qPago = parseN(it.qtdPago);
-        const open = qTotal - qPago;
+        const qRetirado = parseN(it.qtdRetirado);
+        const open = qTotal - qPago - qRetirado;
         if (open > 0) {
           openItems.push({
             // Identificadores
@@ -932,14 +937,98 @@ export default function Consignados() {
       return sum + (batch.items || []).reduce((bsum, it) => bsum + (parseN(it.qtd) * parseN(it.precoUnit)), 0);
     }, 0);
     
+    const totalNetSent = (acc.batches || []).reduce((sum, batch) => {
+      return sum + (batch.items || []).reduce((bsum, it) => bsum + ((parseN(it.qtd) - parseN(it.qtdRetirado)) * parseN(it.precoUnit)), 0);
+    }, 0);
+
     const comissao = acc.cliente?.tipoAcerto === 'comissionado' ? parseN(acc.cliente?.comissaoPct) : 0;
     const repasseRate = (100 - comissao) / 100;
-    const totalExpected = totalSent * repasseRate;
+    const totalExpected = totalNetSent * repasseRate;
 
     const totalPaid = (acc.payments || []).reduce((sum, p) => sum + parseN(p.amount), 0);
     const balance = totalExpected - totalPaid;
 
     return { totalSent, totalPaid, balance };
+  };
+
+  const openWithdrawModal = (batch) => {
+    setWithdrawBatch(batch);
+    const items = (batch.items || []).map(it => {
+      const qTotal = parseN(it.qtd);
+      const qPago = parseN(it.qtdPago);
+      const qRetirado = parseN(it.qtdRetirado);
+      const maxWithdraw = qTotal - qPago - qRetirado;
+      return {
+        indiceFt: it.indiceFt,
+        nomePeca: it.nomePeca,
+        maxQtd: maxWithdraw,
+        withdrawQtd: ''
+      };
+    }).filter(it => it.maxQtd > 0);
+    
+    setWithdrawItems(items);
+  };
+
+  const updateWithdrawItem = (idx, value) => {
+    setWithdrawItems(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx] };
+      if (value === '') {
+        next[idx].withdrawQtd = '';
+      } else {
+        let val = parseN(value);
+        if (val < 0) val = 0;
+        if (val > next[idx].maxQtd) val = next[idx].maxQtd;
+        next[idx].withdrawQtd = val;
+      }
+      return next;
+    });
+  };
+
+  const handleSaveWithdraw = async () => {
+    const selectedToWithdraw = withdrawItems.filter(it => parseN(it.withdrawQtd) > 0);
+    if (selectedToWithdraw.length === 0) return alert("Selecione a quantidade de pelo menos 1 item para registrar a retirada.");
+
+    setLoading(true);
+    try {
+      const updatedBatches = JSON.parse(JSON.stringify(selectedAccount.batches || []));
+      const targetBatch = updatedBatches.find(b => b.id === withdrawBatch.id);
+      
+      if (!targetBatch) throw new Error("Remessa não encontrada.");
+
+      for (const withdrawIt of selectedToWithdraw) {
+        const qty = parseN(withdrawIt.withdrawQtd);
+        const targetItem = targetBatch.items.find(i => i.indiceFt === withdrawIt.indiceFt);
+        if (targetItem) {
+          targetItem.qtdRetirado = parseN(targetItem.qtdRetirado) + qty;
+          await updateFtStock(withdrawIt.indiceFt, -qty);
+        }
+      }
+
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      const resp = await fetch(`${SUPA_URL}/rest/v1/consignados?id=eq.${selectedAccount.id}`, {
+        method: 'PATCH',
+        headers: { 
+          'apikey': SUPA_KEY, 
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ batches: updatedBatches })
+      });
+
+      if (!resp.ok) throw new Error("Erro ao registrar retirada.");
+
+      setWithdrawBatch(null);
+      setWithdrawItems([]);
+      fetchData();
+      setSelectedAccount(prev => ({ ...prev, batches: updatedBatches }));
+      alert("Retirada registrada com sucesso! Os itens foram devolvidos ao estoque físico.");
+    } catch (e) {
+      alert(e.message);
+      setLoading(false);
+    }
   };
 
   // Views rendering
@@ -951,11 +1040,12 @@ export default function Consignados() {
     (selectedAccount.batches || []).forEach(batch => {
       (batch.items || []).forEach(it => {
         if (!aggregatedItems[it.indiceFt]) {
-          aggregatedItems[it.indiceFt] = { ...it, totalQtd: 0, totalPago: 0, totalValue: 0 };
+          aggregatedItems[it.indiceFt] = { ...it, totalQtd: 0, totalPago: 0, totalRetirado: 0, totalValue: 0 };
         }
         aggregatedItems[it.indiceFt].totalQtd += parseN(it.qtd);
         aggregatedItems[it.indiceFt].totalPago += parseN(it.qtdPago);
-        aggregatedItems[it.indiceFt].totalValue += parseN(it.qtd) * parseN(it.precoUnit);
+        aggregatedItems[it.indiceFt].totalRetirado += parseN(it.qtdRetirado);
+        aggregatedItems[it.indiceFt].totalValue += (parseN(it.qtd) - parseN(it.qtdRetirado)) * parseN(it.precoUnit);
       });
     });
 
@@ -1032,13 +1122,14 @@ export default function Consignados() {
                   <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                     <th style={{ padding: '0.5rem' }}>Item</th>
                     <th style={{ padding: '0.5rem', textAlign: 'center' }}>Enviados</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', color: '#3b82f6' }}>Retirados</th>
                     <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--success)' }}>Pagos</th>
                     <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--danger)' }}>Aberto</th>
                   </tr>
                 </thead>
                 <tbody>
                   {Object.values(aggregatedItems).map(it => {
-                    const emAberto = it.totalQtd - it.totalPago;
+                    const emAberto = it.totalQtd - it.totalPago - it.totalRetirado;
                     return (
                       <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <td style={{ padding: '0.75rem 0.5rem' }}>
@@ -1046,6 +1137,7 @@ export default function Consignados() {
                           {it.nomePeca}
                         </td>
                         <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', fontWeight: 'bold' }}>{it.totalQtd}</td>
+                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: '#3b82f6', fontWeight: 'bold' }}>{it.totalRetirado}</td>
                         <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--success)', fontWeight: 'bold' }}>{it.totalPago}</td>
                         <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: emAberto > 0 ? 'var(--danger)' : 'var(--text-muted)', fontWeight: 'bold' }}>{emAberto}</td>
                       </tr>
@@ -1115,6 +1207,9 @@ export default function Consignados() {
                       <button className="btn-outline btn-sm" onClick={() => openPrintBatchWindow(batch, selectedAccount.cliente)} title="Imprimir Guia da Remessa">
                         <Printer size={16} /> Imprimir
                       </button>
+                      <button className="btn-outline btn-sm" onClick={() => openWithdrawModal(batch)} style={{ borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }} title="Retirar Itens Devolvidos">
+                        ↩️ Retirar Itens
+                      </button>
                       <button className="btn-icon" onClick={() => handleDeleteBatch(batch.id)} title="Excluir Remessa inteira">
                         <Trash2 size={16} color="var(--danger)" />
                       </button>
@@ -1124,7 +1219,8 @@ export default function Consignados() {
                     {batch.items.map((it, i) => {
                       const qTotal = parseN(it.qtd);
                       const qPago = parseN(it.qtdPago);
-                      const open = qTotal - qPago;
+                      const qRetirado = parseN(it.qtdRetirado);
+                      const open = qTotal - qPago - qRetirado;
                       return (
                         <span key={i} style={{ 
                           background: open === 0 ? 'rgba(52, 211, 153, 0.1)' : 'var(--bg-secondary)', 
@@ -1135,7 +1231,7 @@ export default function Consignados() {
                         }}>
                           <strong>{qTotal}x</strong> {it.nomePeca} (R$ {fmt(it.precoUnit)}) 
                           <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: open === 0 ? 'var(--success)' : 'var(--text-muted)' }}>
-                            [{qPago} pagos / {open} abertos]
+                            [{qPago} pagos / {qRetirado} retirados / {open} abertos]
                           </span>
                         </span>
                       )
@@ -1758,6 +1854,72 @@ export default function Consignados() {
               <button className="btn-outline" onClick={() => setShowNewAccountModal(false)}>Cancelar</button>
               <button className="btn-primary" onClick={handleCreateAccount} disabled={loading}>{loading ? 'Salvando...' : 'Criar Conta'}</button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL RETIRADA DE ITENS */}
+      {withdrawBatch && (
+        <div className="modal-fullscreen">
+          <div className="modal-topbar">
+            <div className="modal-topbar-left">
+              <button className="btn-outline btn-sm" onClick={() => { setWithdrawBatch(null); setWithdrawItems([]); }}>✕ Cancelar</button>
+              <div>
+                <h2 className="modal-title">Retirar Itens Devolvidos</h2>
+                <p className="modal-sub">Insira a quantidade que está sendo retirada. Estes itens voltarão para o seu estoque físico.</p>
+              </div>
+            </div>
+            <div className="modal-topbar-right">
+              <button className="btn-primary" onClick={handleSaveWithdraw} disabled={loading} style={{ background: 'var(--accent-primary)' }}>
+                {loading ? 'Salvando...' : '↩️ Confirmar Retirada'}
+              </button>
+            </div>
+          </div>
+          <div className="modal-scroll-body" style={{ padding: '2rem' }}>
+            <div style={{ background: 'var(--bg-secondary)', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '2rem' }}>
+              <Calendar size={18} color="var(--primary)" />
+              <h4 style={{ margin: 0 }}>Remessa de {new Date(withdrawBatch.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</h4>
+            </div>
+
+            {withdrawItems.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem' }}>
+                <h3>Não há itens em aberto nesta remessa para retirar! 🎉</h3>
+              </div>
+            ) : (
+              <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+                    <th style={{ padding: '0.75rem' }}>ID</th>
+                    <th style={{ padding: '0.75rem' }}>Nome do Item</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center' }}>Saldo em Aberto</th>
+                    <th style={{ padding: '0.75rem', width: '200px' }}>Qtd a Retirar (Devolver ao Estoque)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {withdrawItems.map((it, idx) => {
+                    const active = parseN(it.withdrawQtd) > 0;
+                    return (
+                      <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: active ? 'rgba(59, 130, 246, 0.05)' : 'transparent' }}>
+                        <td style={{ padding: '0.75rem 0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
+                        <td style={{ padding: '0.75rem 0.5rem', fontWeight: active ? 'bold' : 'normal' }}>{it.nomePeca}</td>
+                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>{it.maxQtd}</td>
+                        <td style={{ padding: '0.5rem' }}>
+                          <input 
+                            type="number" 
+                            className="cell-input cell-qty" 
+                            style={{ borderColor: active ? 'var(--accent-primary)' : 'var(--border-color)', width: '100px' }}
+                            min="0" 
+                            max={it.maxQtd} 
+                            placeholder="0"
+                            value={it.withdrawQtd} 
+                            onChange={e => updateWithdrawItem(idx, e.target.value)} 
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
