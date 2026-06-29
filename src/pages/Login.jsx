@@ -12,19 +12,31 @@ const USER_MAP = {
 export default function Login() {
   const [usuario, setUsuario] = useState('');
   const [senha, setSenha] = useState('');
+  const [lembrar, setLembrar] = useState(false);
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // Carrega credenciais salvas se a opção Lembrar estiver ativa
+    const savedUsuario = localStorage.getItem('lume_usuario') || '';
+    const savedSenha = localStorage.getItem('lume_senha') || '';
+    const savedLembrar = localStorage.getItem('lume_lembrar') === 'true';
+
+    if (savedLembrar) {
+      setUsuario(savedUsuario);
+      setSenha(savedSenha);
+      setLembrar(true);
+    }
+
     try {
-      // Limpa chaves antigas e resíduos do Supabase para garantir login 100% limpo
+      // Limpa chaves antigas e resíduos do Supabase para garantir login 100% limpo (sem apagar lume_*)
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const key = localStorage.key(i);
-        if (key && (key.includes('supabase') || key.includes('am3d') || key.startsWith('sb-'))) {
+        if (key && (key.includes('supabase') || key.startsWith('sb-')) && !key.includes('lume_')) {
           localStorage.removeItem(key);
         }
       }
-      console.log("Login: Resíduos de sessão local limpos com sucesso.");
     } catch (e) {
       console.error("Erro ao limpar localStorage no Login:", e);
     }
@@ -56,6 +68,17 @@ export default function Login() {
       const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
       if (error) {
         setErro('Usuário ou senha incorretos: ' + error.message);
+      } else {
+        // Se logou com sucesso, salva ou remove credenciais
+        if (lembrar) {
+          localStorage.setItem('lume_usuario', usuario);
+          localStorage.setItem('lume_senha', senha);
+          localStorage.setItem('lume_lembrar', 'true');
+        } else {
+          localStorage.removeItem('lume_usuario');
+          localStorage.removeItem('lume_senha');
+          localStorage.setItem('lume_lembrar', 'false');
+        }
       }
     } catch (err) {
       console.error("Erro de execução no signInWithPassword:", err);
@@ -70,9 +93,11 @@ export default function Login() {
       <div className="login-bg-glow" />
       <div className="login-card">
         <div className="login-logo">
-          <img src="/logo.png" alt="AM3D Logo" />
-          <h1>AM3D</h1>
-          <p>Sistema de Gestão</p>
+          <div className="login-logo-fallback">
+            <span>L</span>
+          </div>
+          <h1>Lume</h1>
+          <p>Controle Integrado de Produção</p>
         </div>
 
         <form className="login-form" onSubmit={handleLogin}>
@@ -90,14 +115,36 @@ export default function Login() {
 
           <div className="login-field">
             <label>Senha</label>
-            <input
-              type="password"
-              placeholder="Digite sua senha"
-              value={senha}
-              onChange={e => setSenha(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
+            <div className="password-input-wrapper">
+              <input
+                type={mostrarSenha ? "text" : "password"}
+                placeholder="Digite sua senha"
+                value={senha}
+                onChange={e => setSenha(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+              <button 
+                type="button" 
+                className="toggle-password-btn" 
+                onClick={() => setMostrarSenha(prev => !prev)}
+                tabIndex="-1"
+                title={mostrarSenha ? "Ocultar Senha" : "Exibir Senha"}
+              >
+                {mostrarSenha ? '👁️' : '👁️‍🗨️'}
+              </button>
+            </div>
+          </div>
+
+          <div className="login-remember-container">
+            <label className="login-remember-label">
+              <input
+                type="checkbox"
+                checked={lembrar}
+                onChange={e => setLembrar(e.target.checked)}
+              />
+              <span>Lembrar minhas credenciais</span>
+            </label>
           </div>
 
           {erro && <div className="login-error">{erro}</div>}
@@ -107,7 +154,7 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="login-footer">AM3D Impressão 3D © 2025</div>
+        <div className="login-footer">Lume Controle © 2026</div>
       </div>
     </div>
   );
