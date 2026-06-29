@@ -93,7 +93,6 @@ export default function Login() {
       <div className="login-bg-glow" />
       <div className="login-card">
         <div className="login-logo">
-          <img src="/logo.png" alt="A&M 3D Logo" className="login-logo-img" />
           <h1 className="login-title">A&M 3D</h1>
           <p className="login-subtitle">Sistema Operacional</p>
         </div>
