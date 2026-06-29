@@ -19,9 +19,9 @@ export default function Login() {
 
   useEffect(() => {
     // Carrega credenciais salvas se a opção Lembrar estiver ativa
-    const savedUsuario = localStorage.getItem('lume_usuario') || '';
-    const savedSenha = localStorage.getItem('lume_senha') || '';
-    const savedLembrar = localStorage.getItem('lume_lembrar') === 'true';
+    const savedUsuario = localStorage.getItem('am3d_usuario') || localStorage.getItem('lume_usuario') || '';
+    const savedSenha = localStorage.getItem('am3d_senha') || localStorage.getItem('lume_senha') || '';
+    const savedLembrar = (localStorage.getItem('am3d_lembrar') || localStorage.getItem('lume_lembrar')) === 'true';
 
     if (savedLembrar) {
       setUsuario(savedUsuario);
@@ -30,10 +30,10 @@ export default function Login() {
     }
 
     try {
-      // Limpa chaves antigas e resíduos do Supabase para garantir login 100% limpo (sem apagar lume_*)
+      // Limpa chaves antigas e resíduos do Supabase para garantir login 100% limpo
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const key = localStorage.key(i);
-        if (key && (key.includes('supabase') || key.startsWith('sb-')) && !key.includes('lume_')) {
+        if (key && (key.includes('supabase') || key.startsWith('sb-')) && !key.includes('lume_') && !key.includes('am3d_')) {
           localStorage.removeItem(key);
         }
       }
@@ -71,13 +71,13 @@ export default function Login() {
       } else {
         // Se logou com sucesso, salva ou remove credenciais
         if (lembrar) {
-          localStorage.setItem('lume_usuario', usuario);
-          localStorage.setItem('lume_senha', senha);
-          localStorage.setItem('lume_lembrar', 'true');
+          localStorage.setItem('am3d_usuario', usuario);
+          localStorage.setItem('am3d_senha', senha);
+          localStorage.setItem('am3d_lembrar', 'true');
         } else {
-          localStorage.removeItem('lume_usuario');
-          localStorage.removeItem('lume_senha');
-          localStorage.setItem('lume_lembrar', 'false');
+          localStorage.removeItem('am3d_usuario');
+          localStorage.removeItem('am3d_senha');
+          localStorage.setItem('am3d_lembrar', 'false');
         }
       }
     } catch (err) {
@@ -93,11 +93,9 @@ export default function Login() {
       <div className="login-bg-glow" />
       <div className="login-card">
         <div className="login-logo">
-          <div className="login-logo-fallback">
-            <span>L</span>
-          </div>
-          <h1>Lume</h1>
-          <p>Controle Integrado de Produção</p>
+          <img src="/logo.png" alt="A&M 3D Logo" className="login-logo-img" />
+          <h1 className="login-title">A&M 3D</h1>
+          <p className="login-subtitle">Sistema Operacional</p>
         </div>
 
         <form className="login-form" onSubmit={handleLogin}>
@@ -154,7 +152,7 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="login-footer">Lume Controle © 2026</div>
+        <div className="login-footer">A&M 3D © 2026</div>
       </div>
     </div>
   );
