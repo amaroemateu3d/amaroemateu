@@ -111,7 +111,8 @@ export default function FichasTecnicas() {
     e.preventDefault();
     if (!newInsumo.nome.trim() || !newInsumo.valor) return;
     try {
-      const empId = profile?.empresa_id || 'a0d8e8fc-66de-4e31-8c4d-eb4044c3c3a9';
+      const empId = profile?.empresa_id;
+      if (!empId) return alert('Erro: empresa do usuário não identificada.');
       const { error } = await supabase
         .from('insumos_base')
         .insert({
@@ -199,16 +200,19 @@ export default function FichasTecnicas() {
         if (!lista.length) return alert('Nenhuma FT encontrada no arquivo.');
 
         setIsMigrating(true);
+        const empId = profile?.empresa_id;
+        if (!empId) { alert('Erro: empresa do usuário não identificada.'); setIsMigrating(false); return; }
         const inserts = lista.map(ft => ({
           id: ft.indiceFt || ft.id,
           name: ft.nomePeca || ft.name || 'Sem Nome',
           cost: ft._custoFinal || ft.cost || 0,
-          data: ft.data || ft
+          data: ft.data || ft,
+          empresa_id: empId
         }));
 
         const { error } = await supabase
           .from('fichas_tecnicas')
-          .upsert(inserts, { onConflict: 'id' });
+          .upsert(inserts, { onConflict: 'id,empresa_id' });
 
         if (error) { alert('Erro ao importar: ' + error.message); setIsMigrating(false); return; }
         alert(`✅ ${inserts.length} Fichas Técnicas importadas com sucesso!`);
@@ -342,11 +346,17 @@ export default function FichasTecnicas() {
           return novaLista;
         });
 
+        const empresaId = profile?.empresa_id;
+        if (!empresaId) {
+          alert('Erro crítico: empresa do usuário não identificada. Faça login novamente.');
+          return;
+        }
+
         const { error: saveError } = await supabase
           .from('fichas_tecnicas')
           .upsert(
-            { id: ftData.indiceFt, name: ftData.nomePeca, cost: ftData._custoFinal, data: ftData },
-            { onConflict: 'id' }
+            { id: ftData.indiceFt, name: ftData.nomePeca, cost: ftData._custoFinal, data: ftData, empresa_id: empresaId },
+            { onConflict: 'id,empresa_id' }
           );
 
         if (saveError) {
@@ -365,8 +375,8 @@ export default function FichasTecnicas() {
           await supabase
             .from('fichas_tecnicas')
             .upsert(
-              { id: kit.indiceFt, name: kit.nomePeca, cost: kit._custoFinal, data: kit },
-              { onConflict: 'id' }
+              { id: kit.indiceFt, name: kit.nomePeca, cost: kit._custoFinal, data: kit, empresa_id: empresaId },
+              { onConflict: 'id,empresa_id' }
             );
         }
       }
@@ -458,12 +468,13 @@ export default function FichasTecnicas() {
           return oldKit && oldKit.components?.length !== item.components?.length;
         });
 
+        const empresaIdDel = profile?.empresa_id;
         for (const kit of kitsParaAtualizar) {
           await supabase
             .from('fichas_tecnicas')
             .upsert(
-              { id: kit.indiceFt, name: kit.nomePeca, cost: kit._custoFinal, data: kit },
-              { onConflict: 'id' }
+              { id: kit.indiceFt, name: kit.nomePeca, cost: kit._custoFinal, data: kit, empresa_id: empresaIdDel },
+              { onConflict: 'id,empresa_id' }
             );
         }
       }
