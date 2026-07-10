@@ -392,7 +392,7 @@ const openPrintBalanceWindow = (aggregatedItems, cliente, stats, tenant = {}) =>
 };
 
 export default function Consignados() {
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [fts, setFts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -466,20 +466,22 @@ export default function Consignados() {
     try {
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const token = session?.access_token;
+      if (!token) { console.warn('updateFtStock [Consignados]: sem JWT, abortando'); return; }
       
       const getResp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${ftId}&select=estoque`, {
-        headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+        headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${token}` }
       });
       if (!getResp.ok) return;
       const data = await getResp.json();
-      const currentStock = data[0]?.estoque || 0;
-      const newStock = currentStock - delta;
+      const currentStock = data[0]?.estoque ?? 0;
+      const newStock = Math.max(0, currentStock - delta);
 
       await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${ftId}`, {
         method: 'PATCH',
         headers: { 
           'apikey': SUPA_KEY, 
-          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
           'Prefer': 'return=minimal'
         },

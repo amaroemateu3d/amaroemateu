@@ -162,7 +162,7 @@ export default function FichasTecnicas() {
       const { data, error } = await supabase
         .from('fichas_tecnicas')
         .select('*')
-        .order('id', { ascending: true });
+        .order('pk_id', { ascending: true });
 
       if (error) {
         console.error('[FichasTecnicas] Erro ao buscar FTs:', error);

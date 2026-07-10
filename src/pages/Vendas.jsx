@@ -215,7 +215,8 @@ export default function Vendas() {
     try {
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const token = session?.access_token || SUPA_KEY;
+      const token = session?.access_token;
+      if (!token) { console.warn('updateFtStock: sem JWT, abortando'); return; }
       
       // Busca estoque atual
       const getResp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${ftId}&select=estoque`, {
@@ -223,8 +224,8 @@ export default function Vendas() {
       });
       if (!getResp.ok) return;
       const data = await getResp.json();
-      const currentStock = data[0]?.estoque || 0;
-      const newStock = currentStock - delta; // Vendeu = diminui estoque
+      const currentStock = data[0]?.estoque ?? 0;
+      const newStock = Math.max(0, currentStock - delta); // nunca negativo
 
       await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${ftId}`, {
         method: 'PATCH',
