@@ -356,7 +356,7 @@ export default function Vendas() {
        
        const precoVenda = parseNumber(safeVal);
        const precoRank = precoVenda > 0 && aliquotasPerc < 1 ? (custosFixos / (1 - aliquotasPerc)).toFixed(2) : "";
-       const precoAnuncio = precoVenda > 0 ? (precoVenda / 0.6).toFixed(2) : "";
+       const precoAnuncio = precoVenda > 0 ? (precoVenda / 0.7).toFixed(2) : "";
 
        finalOps = { 
          ...currentOps, 
@@ -424,7 +424,7 @@ export default function Vendas() {
     
     const precoVenda = parseNumber(customData.precoVendaManual);
     const precoRank = precoVenda > 0 && aliquotasPerc < 1 ? (custosFixos / (1 - aliquotasPerc)).toFixed(2) : "";
-    const precoAnuncio = precoVenda > 0 ? (precoVenda / 0.6).toFixed(2) : "";
+    const precoAnuncio = precoVenda > 0 ? (precoVenda / 0.7).toFixed(2) : "";
 
     customData.precoAnuncio = precoAnuncio;
     customData.precoRankeamento = precoRank;
@@ -670,7 +670,7 @@ export default function Vendas() {
                          />
                          {channelFt.precoVendaManual && (
                            <div style={{ fontSize: '0.72rem', marginTop: '4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: 'var(--text-secondary)', lineHeight: '1.2' }}>
-                             <span title="Valor Sugerido de Anúncio (Venda / 0,60)">📢 Anúncio: <strong>R$ {String((parseNumber(channelFt.precoVendaManual) / 0.6).toFixed(2)).replace('.', ',')}</strong></span>
+                             <span title="Valor Sugerido de Anúncio (Venda / 0,70)">📢 Anúncio: <strong>R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</strong></span>
                              <span title="Valor de Rankeamento (Margem de Contribuição 0%)">🚀 Rank: <strong>R$ {(() => {
                                 const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(channelFt.taxaFixaVenda);
                                 const aliquotasPerc = (parseNumber(channelFt.impostosNF) + parseNumber(channelFt.taxaMLPerc)) / 100;
@@ -847,12 +847,12 @@ export default function Vendas() {
                                       type="text" 
                                       name="precoAnuncio" 
                                       className="has-prefix" 
-                                      value={editingOverride.customData.precoVendaManual ? String((parseNumber(editingOverride.customData.precoVendaManual) / 0.6).toFixed(2)).replace('.', ',') : '0,00'} 
+                                      value={editingOverride.customData.precoVendaManual ? String((parseNumber(editingOverride.customData.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',') : '0,00'} 
                                       disabled 
                                       style={{ background: 'var(--bg-primary)', opacity: 0.85, fontWeight: 'bold', color: 'var(--text-secondary)', cursor: 'not-allowed' }}
                                     />
                                   </div>
-                                  <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>Venda / 0,60 (Margem 40%)</span>
+                                  <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>Venda / 0,70 (Margem 30%)</span>
                                 </div>
 
                                 {/* 3. Valor de Rankeamento (Auto-calculado) */}
