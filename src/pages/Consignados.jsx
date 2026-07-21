@@ -596,19 +596,32 @@ export default function Consignados() {
   };
 
   const openBatchModal = () => {
+    const globalM = parseN(batchMarkup) > 0 ? parseN(batchMarkup) : 1;
     setNewBatchItems(fts.map(ft => {
       const lastPrice = getLastPriceForAccount(selectedAccount, ft.indiceFt);
+      const wasShipped = lastPrice !== null;
+      let precoUnit;
+      let itemMarkup;
+      if (wasShipped) {
+        precoUnit = lastPrice.toFixed(2);
+        // Estima o markup anterior (pode não ser exato se o custo mudou)
+        itemMarkup = parseN(ft._custoFinal) > 0 ? (lastPrice / parseN(ft._custoFinal)).toFixed(2) : globalM.toFixed(2);
+      } else if (ft.isOrcamento) {
+        precoUnit = (ft.precoSugerido || 0).toFixed(2);
+        itemMarkup = '1.00';
+      } else {
+        precoUnit = ((ft._custoFinal || 0) * globalM).toFixed(2);
+        itemMarkup = globalM.toFixed(2);
+      }
       return {
         indiceFt: ft.indiceFt,
         nomePeca: ft.nomePeca,
         custoBase: ft._custoFinal || 0,
-        precoUnit: lastPrice !== null 
-          ? lastPrice.toFixed(2) 
-          : ft.isOrcamento 
-            ? (ft.precoSugerido || 0).toFixed(2) 
-            : ((ft._custoFinal || 0) * parseN(batchMarkup)).toFixed(2),
-        qtd: '', // Use empty string for better UX
-        tempQtd: '', // Quantidade temporária
+        precoUnit,
+        itemMarkup,
+        wasShipped,
+        qtd: '',
+        tempQtd: '',
         qtdPago: 0,
         isOrcamento: ft.isOrcamento
       };
@@ -616,9 +629,7 @@ export default function Consignados() {
     setSearchTerm('');
     setModalSortField('id');
     setModalSortAsc(true);
-    // Formato YYYY-MM-DD para input date
     const today = new Date();
-    // Compensar timezone para garantir que pegamos a data local correta
     const offsetDate = new Date(today.getTime() - (today.getTimezoneOffset() * 60000));
     setNewBatchDate(offsetDate.toISOString().split('T')[0]);
     setShowNewBatchModal(true);
@@ -627,11 +638,19 @@ export default function Consignados() {
   const updateBatchItem = (idx, field, value) => {
     setNewBatchItems(prev => {
       const next = [...prev];
-      next[idx] = { ...next[idx] }; // Clone profundo para garantir re-render do React
+      next[idx] = { ...next[idx] };
       if (field === 'qtd') {
         next[idx][field] = value === '' ? '' : parseN(value);
       } else if (field === 'tempQtd') {
         next[idx][field] = value === '' ? '' : parseN(value);
+      } else if (field === 'itemMarkup') {
+        next[idx][field] = value;
+        // Recalcula o precoUnit a partir do markup individual (sem alterar markup global)
+        const m = parseN(value);
+        const custo = parseN(next[idx].custoBase);
+        if (m > 0 && custo > 0 && !next[idx].isOrcamento) {
+          next[idx].precoUnit = (custo * m).toFixed(2);
+        }
       } else {
         next[idx][field] = value;
       }
@@ -1363,6 +1382,7 @@ export default function Consignados() {
                               <th style={{ padding: '0.75rem' }}>ID</th>
                               <th style={{ padding: '0.75rem' }}>Nome</th>
                               <th style={{ padding: '0.75rem' }}>Preço de Custo</th>
+                              <th style={{ padding: '0.75rem', width: '100px' }} title="Markup individual do item (não afeta o Markup Global)">Markup</th>
                               <th style={{ padding: '0.75rem', width: '150px' }}>Preço de Venda (R$)</th>
                               {isComissionado && (
                                 <th style={{ padding: '0.75rem', width: '130px' }}>
@@ -1385,10 +1405,22 @@ export default function Consignados() {
                                 : pVenda - parseN(it.custoBase);
 
                               return (
-                                <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: 'rgba(124, 58, 237, 0.03)' }}>
-                                  <td style={{ padding: '0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
+                                <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: it.wasShipped ? 'rgba(52, 211, 153, 0.05)' : 'rgba(124, 58, 237, 0.03)' }}>
+                                  <td style={{ padding: '0.5rem' }}>
+                                    <span className="badge-sm">{it.indiceFt}</span>
+                                    {it.wasShipped && <span style={{ display: 'block', fontSize: '0.65rem', color: '#34d399', fontWeight: 'bold', marginTop: '2px' }}>📦 Já enviado</span>}
+                                  </td>
                                   <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{it.nomePeca}</td>
                                   <td style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>R$ {fmt(it.custoBase)}</td>
+                                  <td style={{ padding: '0.5rem' }}>
+                                    <input 
+                                      type="number" 
+                                      className="cell-input" 
+                                      value={it.itemMarkup} 
+                                      onChange={e => updateBatchItem(originalIdx, 'itemMarkup', e.target.value)}
+                                      style={{ width: '60px', background: it.wasShipped ? 'rgba(52,211,153,0.08)' : undefined }}
+                                    />
+                                  </td>
                                   <td style={{ padding: '0.5rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                       <span>R$</span>
@@ -1464,7 +1496,7 @@ export default function Consignados() {
                               fontSize: '0.9rem',
                               color: 'var(--text-primary)'
                             }}>
-                              <td style={{ padding: '0.75rem 0.5rem', color: 'var(--accent-primary)', fontSize: '0.8rem', letterSpacing: '0.5px' }} colSpan="3">
+                              <td style={{ padding: '0.75rem 0.5rem', color: 'var(--accent-primary)', fontSize: '0.8rem', letterSpacing: '0.5px' }} colSpan="4">
                                 📊 TOTAIS DA REMESSA
                               </td>
                               <td style={{ padding: '0.75rem 0.5rem' }}>
@@ -1493,7 +1525,23 @@ export default function Consignados() {
                     {/* Tabela 2: Produtos Disponíveis */}
                     <div className="card" style={{ padding: '1.5rem', borderRadius: '12px' }}>
                       <h3 style={{ marginBottom: '1rem' }}>Produtos Disponíveis</h3>
-                      
+
+                      {/* Banner: itens já enviados a este cliente */}
+                      {(() => {
+                        const jaEnviados = newBatchItems.filter(it => it.wasShipped && !parseN(it.qtd));
+                        if (jaEnviados.length === 0) return null;
+                        return (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', padding: '0.75rem 1rem', background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.25)', borderRadius: '8px', marginBottom: '1rem', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#34d399', whiteSpace: 'nowrap' }}>📦 Já enviados a este cliente:</span>
+                            {jaEnviados.map(it => (
+                              <span key={it.indiceFt} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: '6px', padding: '2px 8px', fontSize: '0.78rem', color: 'var(--text-primary)' }}>
+                                <strong>{it.indiceFt}</strong> {it.nomePeca} — último: <strong>R$ {fmt(it.precoUnit)}</strong>
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
+
                       <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ textAlign: 'left', background: 'var(--bg-secondary)' }}>
@@ -1514,6 +1562,9 @@ export default function Consignados() {
                               onClick={() => handleSortClick('custo')}
                             >
                               Preço de Custo{renderSortIndicator('custo')}
+                            </th>
+                            <th style={{ padding: '0.75rem', width: '100px', userSelect: 'none' }} title="Markup individual do item (não afeta o Global)">
+                              Markup
                             </th>
                             <th 
                               style={{ padding: '0.75rem', width: '150px', cursor: 'pointer', userSelect: 'none' }} 
