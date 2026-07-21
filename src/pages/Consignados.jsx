@@ -596,19 +596,30 @@ export default function Consignados() {
   };
 
   const openBatchModal = () => {
+    const globalM = parseN(batchMarkup) > 0 ? parseN(batchMarkup) : 1;
     setNewBatchItems(fts.map(ft => {
       const lastPrice = getLastPriceForAccount(selectedAccount, ft.indiceFt);
+      const custo = ft._custoFinal || 0;
+      let precoUnit, itemMarkup;
+      if (ft.isOrcamento) {
+        precoUnit = (ft.precoSugerido || 0).toFixed(2);
+        itemMarkup = '';
+      } else if (lastPrice !== null) {
+        precoUnit = lastPrice.toFixed(2);
+        // Deriva o markup a partir do último preço usado
+        itemMarkup = custo > 0 ? (lastPrice / custo).toFixed(2) : globalM.toFixed(2);
+      } else {
+        precoUnit = (custo * globalM).toFixed(2);
+        itemMarkup = globalM.toFixed(2);
+      }
       return {
         indiceFt: ft.indiceFt,
         nomePeca: ft.nomePeca,
-        custoBase: ft._custoFinal || 0,
-        precoUnit: lastPrice !== null 
-          ? lastPrice.toFixed(2) 
-          : ft.isOrcamento 
-            ? (ft.precoSugerido || 0).toFixed(2) 
-            : ((ft._custoFinal || 0) * parseN(batchMarkup)).toFixed(2),
-        qtd: '', // Use empty string for better UX
-        tempQtd: '', // Quantidade temporária
+        custoBase: custo,
+        precoUnit,
+        itemMarkup,
+        qtd: '',
+        tempQtd: '',
         qtdPago: 0,
         isOrcamento: ft.isOrcamento
       };
@@ -627,11 +638,19 @@ export default function Consignados() {
   const updateBatchItem = (idx, field, value) => {
     setNewBatchItems(prev => {
       const next = [...prev];
-      next[idx] = { ...next[idx] }; // Clone profundo para garantir re-render do React
+      next[idx] = { ...next[idx] };
       if (field === 'qtd') {
         next[idx][field] = value === '' ? '' : parseN(value);
       } else if (field === 'tempQtd') {
         next[idx][field] = value === '' ? '' : parseN(value);
+      } else if (field === 'itemMarkup') {
+        // Atualiza o markup individual e recalcula precoUnit automaticamente
+        next[idx].itemMarkup = value;
+        const m = parseN(value);
+        const custo = parseN(next[idx].custoBase);
+        if (m > 0 && custo > 0 && !next[idx].isOrcamento) {
+          next[idx].precoUnit = (custo * m).toFixed(2);
+        }
       } else {
         next[idx][field] = value;
       }
@@ -667,7 +686,8 @@ export default function Consignados() {
     if (m <= 0) return;
     setNewBatchItems(prev => prev.map(it => {
       if (it.isOrcamento) return it;
-      return { ...it, precoUnit: (it.custoBase * m).toFixed(2) };
+      // Reseta o markup individual de todos os itens para o global
+      return { ...it, itemMarkup: m.toFixed(2), precoUnit: (it.custoBase * m).toFixed(2) };
     }));
   };
 
@@ -1363,6 +1383,7 @@ export default function Consignados() {
                               <th style={{ padding: '0.75rem' }}>ID</th>
                               <th style={{ padding: '0.75rem' }}>Nome</th>
                               <th style={{ padding: '0.75rem' }}>Preço de Custo</th>
+                              <th style={{ padding: '0.75rem', width: '90px', textAlign: 'center' }} title="Markup aplicado neste item. Edite para usar um valor diferente do global.">Markup</th>
                               <th style={{ padding: '0.75rem', width: '150px' }}>Preço de Venda (R$)</th>
                               {isComissionado && (
                                 <th style={{ padding: '0.75rem', width: '130px' }}>
@@ -1389,6 +1410,23 @@ export default function Consignados() {
                                   <td style={{ padding: '0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
                                   <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{it.nomePeca}</td>
                                   <td style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>R$ {fmt(it.custoBase)}</td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                                    {!it.isOrcamento ? (
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>×</span>
+                                        <input
+                                          type="number"
+                                          step="0.1"
+                                          min="0.1"
+                                          className="cell-input"
+                                          value={it.itemMarkup}
+                                          onChange={e => updateBatchItem(originalIdx, 'itemMarkup', e.target.value)}
+                                          style={{ width: '55px', textAlign: 'center' }}
+                                          title="Markup deste item. Altere para sobrescrever o global."
+                                        />
+                                      </div>
+                                    ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>}
+                                  </td>
                                   <td style={{ padding: '0.5rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                       <span>R$</span>
@@ -1468,6 +1506,9 @@ export default function Consignados() {
                                 📊 TOTAIS DA REMESSA
                               </td>
                               <td style={{ padding: '0.75rem 0.5rem' }}>
+                                {/* Markup column empty */}
+                              </td>
+                              <td style={{ padding: '0.75rem 0.5rem' }}>
                                 {/* Preço de Venda column empty */}
                               </td>
                               {isComissionado && (
@@ -1514,6 +1555,9 @@ export default function Consignados() {
                               onClick={() => handleSortClick('custo')}
                             >
                               Preço de Custo{renderSortIndicator('custo')}
+                            </th>
+                            <th style={{ padding: '0.75rem', width: '90px', textAlign: 'center', userSelect: 'none' }} title="Markup aplicado neste item. Edite para usar um valor diferente do global.">
+                              Markup
                             </th>
                             <th 
                               style={{ padding: '0.75rem', width: '150px', cursor: 'pointer', userSelect: 'none' }} 
@@ -1571,6 +1615,23 @@ export default function Consignados() {
                                   <td style={{ padding: '0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
                                   <td style={{ padding: '0.5rem' }}>{it.nomePeca}</td>
                                   <td style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>R$ {fmt(it.custoBase)}</td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                                    {!it.isOrcamento ? (
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>×</span>
+                                        <input
+                                          type="number"
+                                          step="0.1"
+                                          min="0.1"
+                                          className="cell-input"
+                                          value={it.itemMarkup}
+                                          onChange={e => updateBatchItem(originalIdx, 'itemMarkup', e.target.value)}
+                                          style={{ width: '55px', textAlign: 'center' }}
+                                          title="Markup deste item. Altere para sobrescrever o global."
+                                        />
+                                      </div>
+                                    ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>}
+                                  </td>
                                   <td style={{ padding: '0.5rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                       <span>R$</span>
