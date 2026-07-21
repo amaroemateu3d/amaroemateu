@@ -1586,7 +1586,7 @@ export default function Consignados() {
                               if (modalSortField === 'id') {
                                   valA = a.indiceFt || '';
                                   valB = b.indiceFt || '';
-                                  return modalSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                                  return modalSortAsc ? valA.localeCompare(valB, undefined, { numeric: true }) : valB.localeCompare(valA, undefined, { numeric: true });
                               } else if (modalSortField === 'nome') {
                                   valA = a.nomePeca || '';
                                   valB = b.nomePeca || '';
