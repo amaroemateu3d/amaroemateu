@@ -70,8 +70,28 @@ export default function FichasTecnicas() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'fichas_tecnicas' },
-        () => {
-          fetchFichas();
+        (payload) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            if (payload.new && payload.new.data) {
+              setSavedFts(prev => {
+                const idx = prev.findIndex(f => f.indiceFt === payload.new.id);
+                if (idx >= 0) {
+                  const next = [...prev];
+                  next[idx] = payload.new.data;
+                  return next;
+                }
+                return [...prev, payload.new.data];
+              });
+            } else {
+              fetchFichas();
+            }
+          } else if (payload.eventType === 'DELETE') {
+            if (payload.old && payload.old.id) {
+              setSavedFts(prev => prev.filter(f => f.indiceFt !== payload.old.id));
+            } else {
+              fetchFichas();
+            }
+          }
         }
       )
       .subscribe();
@@ -311,39 +331,24 @@ export default function FichasTecnicas() {
       async () => {
         closeConfirm();
 
-        let novaLista = [];
-        setSavedFts(prev => {
-          const idx = prev.findIndex(item => item.indiceFt === inputs.indiceFt);
-          novaLista = [...prev];
-          if (idx >= 0) {
-            novaLista[idx] = ftData;
-          } else {
-            novaLista.push(ftData);
+        let novaLista = [...savedFts];
+        const idx = novaLista.findIndex(item => item.indiceFt === inputs.indiceFt);
+        if (idx >= 0) {
+          novaLista[idx] = ftData;
+        } else {
+          novaLista.push(ftData);
+        }
+        novaLista = novaLista.map(item => {
+          if (item.isKit && item.components && item.components.some(c => c.ftId === ftData.indiceFt || novaLista.some(f => f.indiceFt === c.ftId))) {
+            return recalculateKit(item, novaLista);
           }
-          novaLista = novaLista.map(item => {
-            if (item.isKit && item.components && item.components.some(c => c.ftId === ftData.indiceFt || novaLista.some(f => f.indiceFt === c.ftId))) {
-              return recalculateKit(item, novaLista);
-            }
-            return item;
-          });
-          setTimeout(() => {
-            setInputs(c => ({
-              ...c,
-              indiceFt: getNextFtId(novaLista),
-              nomePeca: '',
-              quantidade: 1,
-              pesoGramas: '',
-              tempoImpressao: '',
-              extraNome1: '', extraValor1: '',
-              extraNome2: '', extraValor2: '',
-              extraNome3: '', extraValor3: '',
-              medidaSemCaixa: '', pesoSemCaixa: '',
-              medidaComCaixa: '', pesoComCaixa: '',
-              isKit: false,
-              components: []
-            }));
-          }, 100);
-          return novaLista;
+          return item;
+        });
+
+        const updatedKits = novaLista.filter(item => {
+          if (!item.isKit) return false;
+          const oldKit = savedFts.find(k => k.indiceFt === item.indiceFt);
+          return !oldKit || oldKit._custoFinal !== item._custoFinal || oldKit.pesoGramas !== item.pesoGramas;
         });
 
         const empresaId = profile?.empresa_id;
@@ -365,12 +370,6 @@ export default function FichasTecnicas() {
           return;
         }
 
-        const updatedKits = novaLista.filter(item => {
-          if (!item.isKit) return false;
-          const oldKit = savedFts.find(k => k.indiceFt === item.indiceFt);
-          return !oldKit || oldKit._custoFinal !== item._custoFinal || oldKit.pesoGramas !== item.pesoGramas;
-        });
-
         for (const kit of updatedKits) {
           await supabase
             .from('fichas_tecnicas')
@@ -379,6 +378,26 @@ export default function FichasTecnicas() {
               { onConflict: 'id,empresa_id' }
             );
         }
+
+        // PESSIMISTIC UPDATE: Atualiza a UI só após o BD confirmar
+        setSavedFts(novaLista);
+        setTimeout(() => {
+          setInputs(c => ({
+            ...c,
+            indiceFt: getNextFtId(novaLista),
+            nomePeca: '',
+            quantidade: 1,
+            pesoGramas: '',
+            tempoImpressao: '',
+            extraNome1: '', extraValor1: '',
+            extraNome2: '', extraValor2: '',
+            extraNome3: '', extraValor3: '',
+            medidaSemCaixa: '', pesoSemCaixa: '',
+            medidaComCaixa: '', pesoComCaixa: '',
+            isKit: false,
+            components: []
+          }));
+        }, 100);
       }
     );
   };
@@ -436,19 +455,23 @@ export default function FichasTecnicas() {
       ],
       async () => {
         closeConfirm();
+        const empresaId = profile?.empresa_id;
+        
         let novaLista = [];
-        setSavedFts(prev => {
-          const filtrada = prev.filter(f => f.indiceFt !== id);
-          novaLista = filtrada.map(item => {
-            if (item.isKit && item.components && item.components.some(c => c.ftId === id)) {
-              const updatedComponents = item.components.filter(c => c.ftId !== id);
-              const updatedKit = { ...item, components: updatedComponents };
-              return recalculateKit(updatedKit, filtrada);
-            }
-            return item;
-          });
-          setInputs(c => ({...c, indiceFt: getNextFtId(novaLista)}));
-          return novaLista;
+        const filtrada = savedFts.filter(f => f.indiceFt !== id);
+        novaLista = filtrada.map(item => {
+          if (item.isKit && item.components && item.components.some(c => c.ftId === id)) {
+            const updatedComponents = item.components.filter(c => c.ftId !== id);
+            const updatedKit = { ...item, components: updatedComponents };
+            return recalculateKit(updatedKit, filtrada);
+          }
+          return item;
+        });
+
+        const kitsParaAtualizar = novaLista.filter(item => {
+          if (!item.isKit) return false;
+          const oldKit = savedFts.find(k => k.indiceFt === item.indiceFt);
+          return oldKit && oldKit.components?.length !== item.components?.length;
         });
 
         const { error: deleteError } = await supabase
@@ -462,21 +485,17 @@ export default function FichasTecnicas() {
           return;
         }
 
-        const kitsParaAtualizar = novaLista.filter(item => {
-          if (!item.isKit) return false;
-          const oldKit = savedFts.find(k => k.indiceFt === item.indiceFt);
-          return oldKit && oldKit.components?.length !== item.components?.length;
-        });
-
-        const empresaIdDel = profile?.empresa_id;
         for (const kit of kitsParaAtualizar) {
           await supabase
             .from('fichas_tecnicas')
             .upsert(
-              { id: kit.indiceFt, name: kit.nomePeca, cost: kit._custoFinal, data: kit, empresa_id: empresaIdDel },
+              { id: kit.indiceFt, name: kit.nomePeca, cost: kit._custoFinal, data: kit, empresa_id: empresaId },
               { onConflict: 'id,empresa_id' }
             );
         }
+        
+        setSavedFts(novaLista);
+        setInputs(c => ({...c, indiceFt: getNextFtId(novaLista)}));
       }
     );
   };
