@@ -404,6 +404,11 @@ export default function Consignados() {
   const [showNewPaymentModal, setShowNewPaymentModal] = useState(false);
   const [withdrawBatch, setWithdrawBatch] = useState(null);
   const [withdrawItems, setWithdrawItems] = useState([]);
+  
+  // Global withdraw states
+  const [showGlobalWithdrawModal, setShowGlobalWithdrawModal] = useState(false);
+  const [globalWithdrawItems, setGlobalWithdrawItems] = useState([]);
+  const [globalWithdrawSearch, setGlobalWithdrawSearch] = useState('');
 
   // Form states
   const [newClient, setNewClient] = useState({ nome: '', telefone: '', email: '', endereco: '', obs: '', tipoAcerto: 'integral', comissaoPct: '0' });
@@ -1069,6 +1074,119 @@ export default function Consignados() {
     }
   };
 
+  const openGlobalWithdrawModal = () => {
+    if (!selectedAccount) return;
+    const itemsMap = {};
+    (selectedAccount.batches || []).forEach(batch => {
+      (batch.items || []).forEach(it => {
+        const qTotal = parseN(it.qtd);
+        const qPago = parseN(it.qtdPago);
+        const qRetirado = parseN(it.qtdRetirado);
+        if (!itemsMap[it.indiceFt]) {
+          itemsMap[it.indiceFt] = {
+            indiceFt: it.indiceFt,
+            nomePeca: it.nomePeca,
+            totalQtd: 0,
+            totalPago: 0,
+            totalRetirado: 0
+          };
+        }
+        itemsMap[it.indiceFt].totalQtd += qTotal;
+        itemsMap[it.indiceFt].totalPago += qPago;
+        itemsMap[it.indiceFt].totalRetirado += qRetirado;
+      });
+    });
+
+    const items = Object.values(itemsMap)
+      .map(it => {
+        const maxWithdraw = it.totalQtd - it.totalPago - it.totalRetirado;
+        return {
+          ...it,
+          maxQtd: maxWithdraw,
+          withdrawQtd: ''
+        };
+      })
+      .filter(it => it.maxQtd > 0)
+      .sort((a, b) => String(a.indiceFt || '').localeCompare(String(b.indiceFt || ''), undefined, { numeric: true }));
+
+    setGlobalWithdrawItems(items);
+    setGlobalWithdrawSearch('');
+    setShowGlobalWithdrawModal(true);
+  };
+
+  const updateGlobalWithdrawItem = (indiceFt, value) => {
+    setGlobalWithdrawItems(prev => prev.map(it => {
+      if (it.indiceFt !== indiceFt) return it;
+      if (value === '') return { ...it, withdrawQtd: '' };
+      let val = parseN(value);
+      if (val < 0) val = 0;
+      if (val > it.maxQtd) val = it.maxQtd;
+      return { ...it, withdrawQtd: val };
+    }));
+  };
+
+  const handleSaveGlobalWithdraw = async () => {
+    const selectedToWithdraw = globalWithdrawItems.filter(it => parseN(it.withdrawQtd) > 0);
+    if (selectedToWithdraw.length === 0) return alert("Selecione a quantidade de pelo menos 1 item para registrar a retirada.");
+
+    setLoading(true);
+    try {
+      // Clonar batches e ordenar da remessa MAIS ANTIGA para a MAIS NOVA (FIFO)
+      const updatedBatches = JSON.parse(JSON.stringify(selectedAccount.batches || []));
+      updatedBatches.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+      for (const withdrawIt of selectedToWithdraw) {
+        let remainingToWithdraw = parseN(withdrawIt.withdrawQtd);
+        const ftId = withdrawIt.indiceFt;
+
+        for (const batch of updatedBatches) {
+          if (remainingToWithdraw <= 0) break;
+          const targetItem = (batch.items || []).find(i => i.indiceFt === ftId);
+          if (targetItem) {
+            const qTotal = parseN(targetItem.qtd);
+            const qPago = parseN(targetItem.qtdPago);
+            const qRetirado = parseN(targetItem.qtdRetirado);
+            const openInBatch = qTotal - qPago - qRetirado;
+
+            if (openInBatch > 0) {
+              const deduct = Math.min(remainingToWithdraw, openInBatch);
+              targetItem.qtdRetirado = qRetirado + deduct;
+              remainingToWithdraw -= deduct;
+            }
+          }
+        }
+
+        // Devolver a quantidade total retirada ao estoque físico (negativo devolve)
+        await updateFtStock(ftId, -parseN(withdrawIt.withdrawQtd));
+      }
+
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      const resp = await fetch(`${SUPA_URL}/rest/v1/consignados?id=eq.${selectedAccount.id}`, {
+        method: 'PATCH',
+        headers: { 
+          'apikey': SUPA_KEY, 
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ batches: updatedBatches })
+      });
+
+      if (!resp.ok) throw new Error("Erro ao registrar retirada.");
+
+      setShowGlobalWithdrawModal(false);
+      setGlobalWithdrawItems([]);
+      fetchData();
+      setSelectedAccount(prev => ({ ...prev, batches: updatedBatches }));
+      alert("Retirada registrada com sucesso! Os itens foram devolvidos ao estoque físico.");
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Views rendering
   if (selectedAccount) {
     const stats = calculateAccountStats(selectedAccount);
@@ -1146,6 +1264,9 @@ export default function Consignados() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0 }}>Extrato de Itens</h3>
               <div style={{ display: 'flex', gap: '10px' }}>
+                <button className="btn-outline btn-sm" onClick={openGlobalWithdrawModal} style={{ borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }} title="Retirar Itens Devolvidos pelo Cliente">
+                  ↩️ Retirar Itens
+                </button>
                 <button className="btn-outline btn-sm" onClick={() => openPrintBalanceWindow(aggregatedItems, selectedAccount.cliente, stats, profile?.tenants)} title="Imprimir Saldo em Aberto">
                   <Printer size={16} /> Saldo
                 </button>
@@ -1827,7 +1948,7 @@ export default function Consignados() {
           );
         })()}
 
-        {/* MODAL RETIRADA DE ITENS */}
+        {/* MODAL RETIRADA DE ITENS DE BATCH INDIVIDUAL */}
         {withdrawBatch && (() => {
           const dateObj = withdrawBatch.date ? new Date(withdrawBatch.date) : null;
           const dateLabel = dateObj && !isNaN(dateObj.getTime()) 
@@ -1899,6 +2020,95 @@ export default function Consignados() {
             </div>
           );
         })()}
+
+        {/* MODAL RETIRADA GLOBAL DE ITENS (FIFO) */}
+        {showGlobalWithdrawModal && (
+          <div className="modal-fullscreen">
+            <div className="modal-topbar">
+              <div className="modal-topbar-left">
+                <button className="btn-outline btn-sm" onClick={() => { setShowGlobalWithdrawModal(false); setGlobalWithdrawItems([]); }}>✕ Cancelar</button>
+                <div>
+                  <h2 className="modal-title">Retirar Itens do Consignado (Devolução ao Estoque)</h2>
+                  <p className="modal-sub">Selecione a quantidade de cada item que o cliente está devolvendo. O abatimento será feito automaticamente da remessa mais antiga para a mais nova.</p>
+                </div>
+              </div>
+              <div className="modal-topbar-right">
+                <button className="btn-primary" onClick={handleSaveGlobalWithdraw} disabled={loading} style={{ background: 'var(--accent-primary)' }}>
+                  {loading ? 'Salvando...' : '↩️ Confirmar Retirada'}
+                </button>
+              </div>
+            </div>
+            <div className="modal-scroll-body" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <input 
+                  type="text" 
+                  placeholder="🔍 Buscar por ID ou Nome do item..." 
+                  className="cell-input"
+                  value={globalWithdrawSearch}
+                  onChange={e => setGlobalWithdrawSearch(e.target.value)}
+                  style={{ width: '350px', padding: '0.6rem 1rem', fontSize: '0.95rem' }}
+                />
+                <button 
+                  type="button" 
+                  className="btn-outline btn-sm" 
+                  onClick={() => setGlobalWithdrawItems(prev => prev.map(it => ({ ...it, withdrawQtd: it.maxQtd })))}
+                  title="Preencher a retirada de todo o estoque em aberto do cliente"
+                >
+                  ⚡ Preencher Devolução Total
+                </button>
+              </div>
+
+              {globalWithdrawItems.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '3rem' }}>
+                  <h3>Não há nenhum item em aberto com este cliente para retirar! 🎉</h3>
+                </div>
+              ) : (
+                <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+                      <th style={{ padding: '0.75rem' }}>ID</th>
+                      <th style={{ padding: '0.75rem' }}>Nome do Item</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center' }}>Total Enviado</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--success)' }}>Já Pagos</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center', color: '#3b82f6' }}>Já Retirados</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--danger)' }}>Saldo em Aberto</th>
+                      <th style={{ padding: '0.75rem', width: '200px' }}>Qtd a Retirar (Devolver ao Estoque)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {globalWithdrawItems
+                      .filter(it => (it.nomePeca || '').toLowerCase().includes(globalWithdrawSearch.toLowerCase()) || (it.indiceFt || '').toLowerCase().includes(globalWithdrawSearch.toLowerCase()))
+                      .map((it) => {
+                        const active = parseN(it.withdrawQtd) > 0;
+                        return (
+                          <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: active ? 'rgba(59, 130, 246, 0.05)' : 'transparent' }}>
+                            <td style={{ padding: '0.75rem 0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
+                            <td style={{ padding: '0.75rem 0.5rem', fontWeight: active ? 'bold' : 'normal' }}>{it.nomePeca}</td>
+                            <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>{it.totalQtd}</td>
+                            <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--success)', fontWeight: 'bold' }}>{it.totalPago}</td>
+                            <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: '#3b82f6', fontWeight: 'bold' }}>{it.totalRetirado}</td>
+                            <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>{it.maxQtd}</td>
+                            <td style={{ padding: '0.5rem' }}>
+                              <input 
+                                type="number" 
+                                className="cell-input cell-qty" 
+                                style={{ borderColor: active ? 'var(--accent-primary)' : 'var(--border-color)', width: '100px' }}
+                                min="0" 
+                                max={it.maxQtd} 
+                                placeholder="0"
+                                value={it.withdrawQtd} 
+                                onChange={e => updateGlobalWithdrawItem(it.indiceFt, e.target.value)} 
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
     );
