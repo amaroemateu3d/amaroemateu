@@ -30,14 +30,15 @@ const INITIAL_STATE = {
 };
 
 const getNextFtId = (listaAtual) => {
-  if (!listaAtual) return 'FT-01';
-  for (let i = 1; i <= 150; i++) {
+  if (!listaAtual || listaAtual.length === 0) return 'FT-01';
+  const existingSet = new Set(listaAtual.map(item => item?.indiceFt).filter(Boolean));
+  for (let i = 1; i <= 9999; i++) {
      const id = `FT-${String(i).padStart(2, '0')}`;
-     if (!listaAtual.find(item => item.indiceFt === id)) {
+     if (!existingSet.has(id)) {
          return id;
      }
   }
-  return 'FT-151';
+  return 'FT-10000';
 };
 
 export default function FichasTecnicas() {
@@ -749,7 +750,7 @@ export default function FichasTecnicas() {
                 </tr>
               </thead>
               <tbody>
-                {[...filteredFts].sort((a, b) => a.indiceFt.localeCompare(b.indiceFt)).map(ft => (
+                {[...filteredFts].sort((a, b) => (a.indiceFt || '').localeCompare(b.indiceFt || '', undefined, { numeric: true })).map(ft => (
                   <tr key={ft.indiceFt}>
                     <td><span className="badge">{ft.indiceFt}</span></td>
                     <td style={{fontWeight: '600'}}>{ft.nomePeca}</td>

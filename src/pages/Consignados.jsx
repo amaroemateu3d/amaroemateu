@@ -284,7 +284,7 @@ const openPrintBatchWindow = (batch, cliente, tenant = {}) => {
   const accentColor = '#475569';
   const accentBg = '#F1F5F9';
 
-  const sortedItems = [...batch.items].sort((a, b) => String(a.indiceFt || '').localeCompare(String(b.indiceFt || '')));
+  const sortedItems = [...batch.items].sort((a, b) => String(a.indiceFt || '').localeCompare(String(b.indiceFt || ''), undefined, { numeric: true }));
   const itemsHtml = sortedItems.map((it, i) => `
     <tr class="${i % 2 === 0 ? 'row-even' : ''}">
       <td class="cell-center text-muted">${i + 1}</td>
@@ -339,7 +339,7 @@ const openPrintBatchWindow = (batch, cliente, tenant = {}) => {
 
 const openPrintBalanceWindow = (aggregatedItems, cliente, stats, tenant = {}) => {
   const openItems = Object.values(aggregatedItems).filter(it => (it.totalQtd - it.totalPago - it.totalRetirado) > 0);
-  openItems.sort((a, b) => String(a.indiceFt || '').localeCompare(String(b.indiceFt || '')));
+  openItems.sort((a, b) => String(a.indiceFt || '').localeCompare(String(b.indiceFt || ''), undefined, { numeric: true }));
   
   const accentColor = '#059669';
   const accentBg = '#D1FAE5';
@@ -447,6 +447,7 @@ export default function Consignados() {
 
       const ftsData = ftsResp.status === 'fulfilled' && ftsResp.value.ok ? await ftsResp.value.json() : [];
       const cleanFts = ftsData.map(r => r.data || r).filter(f => f && f.indiceFt);
+      cleanFts.sort((a, b) => String(a.indiceFt).localeCompare(String(b.indiceFt), undefined, { numeric: true }));
       
       const orcsData = orcsResp.status === 'fulfilled' && orcsResp.value.ok ? await orcsResp.value.json() : [];
       const cleanOrcs = orcsData.map(r => ({

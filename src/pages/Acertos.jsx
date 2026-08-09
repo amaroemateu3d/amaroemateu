@@ -239,6 +239,7 @@ export default function Acertos() {
 
       const ftsData = ftsResp.status === 'fulfilled' && ftsResp.value.ok ? await ftsResp.value.json() : [];
       const cleanFts = ftsData.map(r => r.data || r).filter(f => f && f.indiceFt);
+      cleanFts.sort((a, b) => String(a.indiceFt).localeCompare(String(b.indiceFt), undefined, { numeric: true }));
       
       const orcsData = orcsResp.status === 'fulfilled' && orcsResp.value.ok ? await orcsResp.value.json() : [];
       const cleanOrcs = orcsData.map(r => ({
@@ -298,7 +299,7 @@ export default function Acertos() {
         emAberto: it.totalQtd - it.totalPago
       }))
       .filter(it => it.emAberto > 0)
-      .sort((a, b) => String(a.indiceFt).localeCompare(String(b.indiceFt)));
+      .sort((a, b) => String(a.indiceFt).localeCompare(String(b.indiceFt), undefined, { numeric: true }));
   };
 
   const updateSaleQty = (ftId, maxQty, val) => {

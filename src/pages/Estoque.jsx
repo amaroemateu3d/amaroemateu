@@ -51,6 +51,7 @@ export default function Estoque() {
           nome: r.data?.nomePeca || 'Produto sem nome',
           estoque: r.estoque || 0
         }));
+        cleanFts.sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
         setFts(cleanFts);
       }
     } catch (e) {

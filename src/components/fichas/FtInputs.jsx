@@ -118,12 +118,19 @@ export default function FtInputs({ inputs, onChange, savedFts = [], onManageInsu
                   fontFamily: 'Outfit, sans-serif'
                 }}
               >
-                {Array.from({length: 150}, (_, i) => {
-                  const id = `FT-${String(i+1).padStart(2, '0')}`;
-                  const hasSaved = savedFts.find(f => f.indiceFt === id);
-                  const displayLabel = hasSaved ? `${id} - ${hasSaved.nomePeca}` : `${id} (Vazio)`;
-                  return <option key={id} value={id}>{displayLabel}</option>;
-                })}
+                {(() => {
+                  const maxSavedNum = savedFts.reduce((max, f) => {
+                    const num = parseInt(String(f?.indiceFt || '').replace(/[^\d]/g, ''), 10);
+                    return !isNaN(num) && num > max ? num : max;
+                  }, 150);
+                  const totalCount = Math.max(150, maxSavedNum + 5);
+                  return Array.from({length: totalCount}, (_, i) => {
+                    const id = `FT-${String(i+1).padStart(2, '0')}`;
+                    const hasSaved = savedFts.find(f => f.indiceFt === id);
+                    const displayLabel = hasSaved ? `${id} - ${hasSaved.nomePeca}` : `${id} (Vazio)`;
+                    return <option key={id} value={id}>{displayLabel}</option>;
+                  });
+                })()}
               </select>
             </div>
           </div>

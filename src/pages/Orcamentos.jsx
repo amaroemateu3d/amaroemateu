@@ -10,14 +10,15 @@ const INITIAL_STATE = {
 };
 
 const getNextOrcId = (listaAtual) => {
-  if (!listaAtual) return 'ORC-01';
-  for (let i = 1; i <= 150; i++) {
+  if (!listaAtual || listaAtual.length === 0) return 'ORC-01';
+  const existingSet = new Set(listaAtual.map(item => item?.id).filter(Boolean));
+  for (let i = 1; i <= 9999; i++) {
      const id = `ORC-${String(i).padStart(2, '0')}`;
-     if (!listaAtual.find(item => item.id === id)) {
+     if (!existingSet.has(id)) {
          return id;
      }
   }
-  return 'ORC-151';
+  return 'ORC-10000';
 };
 
 export default function Orcamentos() {
@@ -255,7 +256,7 @@ export default function Orcamentos() {
                 </tr>
               </thead>
               <tbody>
-                {[...filteredOrcs].sort((a, b) => a.id.localeCompare(b.id)).map(orc => (
+                {[...filteredOrcs].sort((a, b) => (a.id || '').localeCompare(b.id || '', undefined, { numeric: true })).map(orc => (
                   <tr key={orc.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                     <td style={{ padding: '1rem' }}>
                       <span style={{ background: '#FEF3C7', color: '#D97706', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem' }}>

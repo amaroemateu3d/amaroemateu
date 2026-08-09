@@ -146,7 +146,9 @@ export default function Vendas() {
       const overData = overResp.status === 'fulfilled' && overResp.value.ok ? await overResp.value.json() : [];
       const salesData = salesResp.status === 'fulfilled' && salesResp.value.ok ? await salesResp.value.json() : [];
 
-      setSavedFts(ftsData.map(r => ({ ...r.data, estoque: r.estoque })));
+      const cleanFts = ftsData.map(r => ({ ...r.data, estoque: r.estoque })).filter(f => f && f.indiceFt);
+      cleanFts.sort((a, b) => (a.indiceFt || '').localeCompare(b.indiceFt || '', undefined, { numeric: true }));
+      setSavedFts(cleanFts);
 
       const newDefaults = {};
       defData.forEach(d => { newDefaults[d.channel_id] = d.settings; });
@@ -648,7 +650,7 @@ export default function Vendas() {
                   const qtyB = getChannelQty(b.indiceFt);
                   if (qtyA > 0 && qtyB === 0) return -1;
                   if (qtyA === 0 && qtyB > 0) return 1;
-                  return a.indiceFt.localeCompare(b.indiceFt);
+                  return (a.indiceFt || '').localeCompare(b.indiceFt || '', undefined, { numeric: true });
                 }).map(baseFt => {
                   const channelFt = getFtWithOverrides(baseFt);
                   const res = getResultados(channelFt);

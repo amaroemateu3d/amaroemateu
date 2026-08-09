@@ -513,7 +513,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                         const qA = parseN(a.qtd) > 0 ? 1 : 0;
                         const qB = parseN(b.qtd) > 0 ? 1 : 0;
                         if (qA !== qB) return qB - qA;
-                        return String(a.indiceFt || '').localeCompare(String(b.indiceFt || ''));
+                        return String(a.indiceFt || '').localeCompare(String(b.indiceFt || ''), undefined, { numeric: true });
                       })
                       .map((it) => {
                         const originalIdx = itens.findIndex(original => original.indiceFt === it.indiceFt);
@@ -668,6 +668,7 @@ export default function Pedidos() {
       const ftsData = ftsResp.status === 'fulfilled' && ftsResp.value.ok ? await ftsResp.value.json() : [];
       // Mapeia garantindo que pegamos o objeto da FT (seja da coluna 'data' ou do root)
       const cleanFts = ftsData.map(r => r.data || r).filter(f => f && f.indiceFt);
+      cleanFts.sort((a, b) => String(a.indiceFt).localeCompare(String(b.indiceFt), undefined, { numeric: true }));
       
       const orcsData = orcsResp.status === 'fulfilled' && orcsResp.value.ok ? await orcsResp.value.json() : [];
       const cleanOrcs = orcsData.map(r => ({
