@@ -612,31 +612,36 @@ export default function Acertos() {
                       </div>
                     </div>
 
-                    <div className="item-action-controls">
-                      <div className="touch-qty-selector">
-                        <button 
-                          className="qty-btn minus" 
-                          onClick={() => adjustSaleQty(it.indiceFt, it.emAberto, -1)}
-                          disabled={selectedQty <= 0}
-                        >
-                          -
-                        </button>
-                        <input
-                          type="number"
-                          value={salesToRegister[it.indiceFt] ?? ''}
-                          placeholder="0"
-                          min="0"
-                          max={it.emAberto}
-                          onChange={(e) => updateSaleQty(it.indiceFt, it.emAberto, e.target.value)}
-                        />
-                        <button 
-                          className="qty-btn plus" 
-                          onClick={() => adjustSaleQty(it.indiceFt, it.emAberto, 1)}
-                          disabled={selectedQty >= it.emAberto}
-                        >
-                          +
-                        </button>
-                      </div>
+                      <div className="item-action-controls">
+                        {/* Nome visível próximo à quantidade para celular */}
+                        <div style={{ fontSize: '0.85rem', color: 'var(--acerto-primary)', fontWeight: '600', marginBottom: '0.25rem', textAlign: 'right', display: 'flex', gap: '4px', justifyContent: 'flex-end', width: '100%' }}>
+                          <span>{it.indiceFt} -</span>
+                          <span style={{color: 'var(--acerto-text-primary)'}}>{displayNome}</span>
+                        </div>
+                        <div className="touch-qty-selector">
+                          <button 
+                            className="qty-btn minus" 
+                            onClick={() => adjustSaleQty(it.indiceFt, it.emAberto, -1)}
+                            disabled={selectedQty <= 0}
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            value={salesToRegister[it.indiceFt] ?? ''}
+                            placeholder="0"
+                            min="0"
+                            max={it.emAberto}
+                            onChange={(e) => updateSaleQty(it.indiceFt, it.emAberto, e.target.value)}
+                          />
+                          <button 
+                            className="qty-btn plus" 
+                            onClick={() => adjustSaleQty(it.indiceFt, it.emAberto, 1)}
+                            disabled={selectedQty >= it.emAberto}
+                          >
+                            +
+                          </button>
+                        </div>
                       {selectedQty > 0 && (
                         <div className="item-subtotal-tag">
                           + R$ {fmt(subtotal)}
