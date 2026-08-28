@@ -76,16 +76,18 @@ export const getResultados = (inp) => {
   // Impostos incidem sobre o preço de venda real
   const percImposto = parseNumber(inp.impostosNF) / 100;
   const percPlataforma = parseNumber(inp.taxaMLPerc) / 100;
+  const percFrete = parseNumber(inp.custoEnvioPerc) / 100;
   
   const aliquotaImpostos = precoPraticado * percImposto;
   const aliquotaMLPerc = precoPraticado * percPlataforma;
+  const aliquotaFretePerc = precoPraticado * percFrete;
   
   // Taxa Plataforma Fixa NUNCA divide por lote, ela é por venda unitária (SKU)
   const taxaPlataformaFixaUnit = parseNumber(inp.taxaFixaVenda);
-  const aliquotaMarketplaceTotal = aliquotaMLPerc + taxaPlataformaFixaUnit;
+  const aliquotaMarketplaceTotal = aliquotaMLPerc + taxaPlataformaFixaUnit + aliquotaFretePerc;
 
   // Custo TOTAL do E-commerce por Peça Vendida:
-  const custoTotalVenda = custoFisicoUnit + custoExtrasUnit + taxaPlataformaFixaUnit + aliquotaImpostos + aliquotaMLPerc;
+  const custoTotalVenda = custoFisicoUnit + custoExtrasUnit + taxaPlataformaFixaUnit + aliquotaImpostos + aliquotaMLPerc + aliquotaFretePerc;
 
   // Lucro Real daquela venda (Apenas se o preço for maior que 0)
   const lucroLiquido = precoPraticado > 0 ? precoPraticado - custoTotalVenda : 0;
@@ -98,7 +100,7 @@ export const getResultados = (inp) => {
 
   // DRE Breakdowns (A pedido do usuário)
   const despesasProducao = custoFisicoUnit + parseNumber(inp.custoEmbalagem) + parseNumber(inp.custoExtra);
-  const despesasVenda = parseNumber(inp.custoEnvio) + taxaPlataformaFixaUnit + aliquotaImpostos + aliquotaMLPerc;
+  const despesasVenda = parseNumber(inp.custoEnvio) + taxaPlataformaFixaUnit + aliquotaImpostos + aliquotaMLPerc + aliquotaFretePerc;
 
   return {
     custoFisicoUnit,

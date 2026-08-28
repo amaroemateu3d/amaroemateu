@@ -354,7 +354,7 @@ export default function Vendas() {
        const tempFt = { ...channelFt, ...currentOps, precoVendaManual: safeVal };
        const res = getResultados(tempFt);
        const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(tempFt.taxaFixaVenda);
-       const aliquotasPerc = (parseNumber(tempFt.impostosNF) + parseNumber(tempFt.taxaMLPerc)) / 100;
+       const aliquotasPerc = (parseNumber(tempFt.impostosNF) + parseNumber(tempFt.taxaMLPerc) + parseNumber(tempFt.custoEnvioPerc)) / 100;
        
        const precoVenda = parseNumber(safeVal);
        const precoRank = precoVenda > 0 && aliquotasPerc < 1 ? (custosFixos / (1 - aliquotasPerc)).toFixed(2) : "";
@@ -388,7 +388,7 @@ export default function Vendas() {
   const getFtWithOverrides = (ftBase) => {
     const physicalFT = { ...ftBase };
     const defaults = channelDefaults[activeChannel] || {
-      custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0,
+      custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0, custoEnvioPerc: 0,
       taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0
     };
     const channelOps = overrides[activeChannel]?.[ftBase.indiceFt] || {};
@@ -413,16 +413,16 @@ export default function Vendas() {
 
   const _doSaveOverride = async () => {
     const { ftBase, customData } = editingOverride;
-    const keysToOverride = ['custoEmbalagem', 'custoExtra', 'custoEnvio', 'taxaFixaVenda', 'impostosNF', 'taxaMLPerc', 'precoVendaManual', 'precoAnuncio', 'precoRankeamento'];
+    const keysToOverride = ['custoEmbalagem', 'custoExtra', 'custoEnvio', 'custoEnvioPerc', 'taxaFixaVenda', 'impostosNF', 'taxaMLPerc', 'precoVendaManual', 'precoAnuncio', 'precoRankeamento'];
     const finalOps = {};
     const defaults = channelDefaults[activeChannel] || {
-      custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0,
+      custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0, custoEnvioPerc: 0,
       taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0
     };
 
     const res = getResultados(customData);
     const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(customData.taxaFixaVenda);
-    const aliquotasPerc = (parseNumber(customData.impostosNF) + parseNumber(customData.taxaMLPerc)) / 100;
+    const aliquotasPerc = (parseNumber(customData.impostosNF) + parseNumber(customData.taxaMLPerc) + parseNumber(customData.custoEnvioPerc)) / 100;
     
     const precoVenda = parseNumber(customData.precoVendaManual);
     const precoRank = precoVenda > 0 && aliquotasPerc < 1 ? (custosFixos / (1 - aliquotasPerc)).toFixed(2) : "";
@@ -506,7 +506,7 @@ export default function Vendas() {
 
   const openGlobalModal = () => {
     const baseline = {
-      custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0,
+      custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0, custoEnvioPerc: 0,
       taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0
     };
     const defaults = { ...baseline, ...(channelDefaults[activeChannel] || {}) };
@@ -785,10 +785,18 @@ export default function Vendas() {
                             </div>
                             
                             <div className="input-group">
-                              <label>Envio/Frete</label>
+                              <label>Envio/Frete Fixo</label>
                               <div className="input-wrapper">
                                 <span className="prefix">R$</span>
                                 <input type="text" name="custoEnvio" className="has-prefix" value={String(editingOverride.customData.custoEnvio ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" />
+                              </div>
+                            </div>
+                            
+                            <div className="input-group">
+                              <label>Frete %</label>
+                              <div className="input-wrapper">
+                                <span className="suffix">%</span>
+                                <input type="text" name="custoEnvioPerc" className="has-suffix" value={String(editingOverride.customData.custoEnvioPerc ?? '').replace('.', ',')} onChange={handleOverrideChange} placeholder="0,00" />
                               </div>
                             </div>
                             
@@ -869,7 +877,7 @@ export default function Vendas() {
                                       value={(() => {
                                         const res = getResultados(editingOverride.customData);
                                         const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(editingOverride.customData.taxaFixaVenda);
-                                        const aliquotasPerc = (parseNumber(editingOverride.customData.impostosNF) + parseNumber(editingOverride.customData.taxaMLPerc)) / 100;
+                                        const aliquotasPerc = (parseNumber(editingOverride.customData.impostosNF) + parseNumber(editingOverride.customData.taxaMLPerc) + parseNumber(editingOverride.customData.custoEnvioPerc)) / 100;
                                         const rankVal = aliquotasPerc < 1 ? custosFixos / (1 - aliquotasPerc) : 0;
                                         return String(rankVal.toFixed(2)).replace('.', ',');
                                       })()} 
@@ -908,6 +916,7 @@ export default function Vendas() {
                   <div className="input-group"><label>Embalagem Padrão</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="custoEmbalagem" className="has-prefix" value={String(globalFormData.custoEmbalagem ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
                   <div className="input-group"><label>Extras Padrão</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="custoExtra" className="has-prefix" value={String(globalFormData.custoExtra ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
                   <div className="input-group"><label>Envio/Frete Fixo</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="custoEnvio" className="has-prefix" value={String(globalFormData.custoEnvio ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
+                  <div className="input-group"><label>Frete %</label><div className="input-wrapper"><span className="suffix">%</span><input type="text" name="custoEnvioPerc" className="has-suffix" value={String(globalFormData.custoEnvioPerc ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
                   <div className="input-group"><label>Taxa Fixa Venda</label><div className="input-wrapper"><span className="prefix">R$</span><input type="text" name="taxaFixaVenda" className="has-prefix" value={String(globalFormData.taxaFixaVenda ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
                   <div className="input-group"><label>Nota Fiscal</label><div className="input-wrapper"><span className="suffix">%</span><input type="text" name="impostosNF" className="has-suffix" value={String(globalFormData.impostosNF ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
                   <div className="input-group"><label>Taxa Master Plataforma</label><div className="input-wrapper"><span className="suffix">%</span><input type="text" name="taxaMLPerc" className="has-suffix" value={String(globalFormData.taxaMLPerc ?? '').replace('.', ',')} onChange={handleGlobalChange} placeholder="0,00" /></div></div>
@@ -938,7 +947,7 @@ function MonthlyReportOverlay({ month, vendasMensal, savedFts, overrides, channe
   const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
   const getFtWithOverridesForReport = (ftBase, channelId) => {
     const physicalFT = { indiceFt: ftBase.indiceFt, nomePeca: ftBase.nomePeca, quantidade: ftBase.quantidade, pesoGramas: ftBase.pesoGramas, tempoImpressao: ftBase.tempoImpressao, precoKgMaterial: ftBase.precoKgMaterial, custoKwh: ftBase.custoKwh, custoDepreciacao: ftBase.custoDepreciacao, extraValor1: ftBase.extraValor1, extraValor2: ftBase.extraValor2, extraValor3: ftBase.extraValor3 };
-    const defaults = channelDefaults[channelId] || { custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0, taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0 };
+    const defaults = channelDefaults[channelId] || { custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0, custoEnvioPerc: 0, taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0 };
     const channelOps = overrides[channelId]?.[ftBase.indiceFt] || {};
     return { ...physicalFT, ...defaults, ...channelOps }; 
   };
