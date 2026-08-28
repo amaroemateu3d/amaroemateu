@@ -162,7 +162,7 @@
 
 .override-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 1.2rem;
 }
 
@@ -224,7 +224,7 @@
 
 /* Unified Modal Layout */
 .modal-content {
-  max-width: 850px; /* Mais largo para evitar rolagem vertical */
+  max-width: 1100px; /* Mais largo para evitar rolagem vertical */
   width: 95%;
 }
 
