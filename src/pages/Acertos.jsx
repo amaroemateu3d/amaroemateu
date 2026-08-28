@@ -29,6 +29,7 @@ export default function Acertos() {
   const [saving, setSaving] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [itemSearchTerm, setItemSearchTerm] = useState('');
   const [salesToRegister, setSalesToRegister] = useState({}); // { [ftId]: quantity }
   
   const [showReceiptModal, setShowReceiptModal] = useState(false);
@@ -583,15 +584,48 @@ export default function Acertos() {
             <span className="items-count-badge">{openItems.length} tipos de peça</span>
           </div>
 
-          {openItems.length === 0 ? (
-            <div className="all-settled-card">
-              <CheckCircle2 size={48} className="success-icon" />
-              <h3>Tudo em dia! 🎉</h3>
-              <p>Este cliente não possui nenhuma peça pendente de acerto no momento.</p>
+          {openItems.length > 0 && (
+            <div className="search-bar-container" style={{ margin: '1rem 0', background: 'var(--acerto-bg-input)' }}>
+              <Search size={18} className="search-icon" />
+              <input
+                type="text"
+                placeholder="Buscar peça por nome ou ID..."
+                value={itemSearchTerm}
+                onChange={(e) => setItemSearchTerm(e.target.value)}
+                style={{ color: 'var(--acerto-text-primary)' }}
+              />
             </div>
-          ) : (
-            <div className="acerto-items-list">
-              {openItems.map(it => {
+          )}
+
+          {(() => {
+            const filteredOpenItems = openItems.filter(it => {
+              if (!itemSearchTerm) return true;
+              const term = itemSearchTerm.toLowerCase();
+              const displayNome = (it.nomePeca || productNames[it.indiceFt] || 'Sem Nome').toLowerCase();
+              return displayNome.includes(term) || String(it.indiceFt).toLowerCase().includes(term);
+            });
+
+            if (openItems.length === 0) {
+              return (
+                <div className="all-settled-card">
+                  <CheckCircle2 size={48} className="success-icon" />
+                  <h3>Tudo em dia! 🎉</h3>
+                  <p>Este cliente não possui nenhuma peça pendente de acerto no momento.</p>
+                </div>
+              );
+            }
+
+            if (filteredOpenItems.length === 0) {
+              return (
+                <div className="empty-route-card">
+                  <p>Nenhuma peça encontrada para "{itemSearchTerm}".</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="acerto-items-list">
+                {filteredOpenItems.map(it => {
                 const selectedQty = salesToRegister[it.indiceFt] || 0;
                 const subtotal = selectedQty * parseN(it.precoUnit);
                 const displayNome = it.nomePeca || productNames[it.indiceFt] || 'Sem Nome';
@@ -651,8 +685,9 @@ export default function Acertos() {
                   </div>
                 );
               })}
-            </div>
-          )}
+              </div>
+            );
+          })()}
 
           {/* BARRA DE AÇÃO FLUTUANTE / RODAPÉ */}
           {currentTotalReceipt > 0 && (
