@@ -337,6 +337,66 @@ const openPrintBatchWindow = (batch, cliente, tenant = {}) => {
   win.document.close();
 };
 
+const openPrintExtractWindow = (aggregatedItems, cliente, stats, tenant = {}) => {
+  const allItems = Object.values(aggregatedItems);
+  allItems.sort((a, b) => String(a.indiceFt || '').localeCompare(String(b.indiceFt || ''), undefined, { numeric: true }));
+  
+  const accentColor = '#3b82f6';
+  const accentBg = '#DBEAFE';
+  const dateStr = new Date().toLocaleDateString('pt-BR');
+
+  const itemsHtml = allItems.length === 0 ? `
+    <tr><td colspan="9" class="cell-center text-muted" style="padding: 2rem;">Nenhum item enviado ainda.</td></tr>
+  ` : allItems.map((it, i) => {
+    const emAberto = it.totalQtd - it.totalPago - it.totalRetirado;
+    return `
+      <tr class="${i % 2 === 0 ? 'row-even' : ''}">
+        <td class="cell-center text-muted">${i + 1}</td>
+        <td class="cell-id">${it.indiceFt}</td>
+        <td class="cell-name">${it.nomePeca}</td>
+        <td class="cell-right text-muted">R$ ${fmt(parseN(it.precoUnit))}</td>
+        <td class="cell-center cell-bold">${it.totalQtd}</td>
+        <td class="cell-center" style="color: #3b82f6; font-weight: bold;">${it.totalRetirado}</td>
+        <td class="cell-center" style="color: #059669; font-weight: bold;">${it.totalPago}</td>
+        <td class="cell-center ${emAberto > 0 ? 'text-danger' : 'text-muted'}">${emAberto}</td>
+        <td class="cell-right cell-bold">R$ ${fmt(parseN(it.precoUnit) * emAberto)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const headersHtml = `
+    <tr>
+      <th style="width:30px">#</th>
+      <th style="width:60px">ID</th>
+      <th>Descrição</th>
+      <th style="width:90px;text-align:right">Preço Unit.</th>
+      <th style="width:70px;text-align:center">Enviados</th>
+      <th style="width:70px;text-align:center">Retirados</th>
+      <th style="width:70px;text-align:center">Pagos</th>
+      <th style="width:70px;text-align:center">Aberto</th>
+      <th style="width:105px;text-align:right">Subtotal</th>
+    </tr>
+  `;
+
+  const totalsHtml = `
+    <div style="display:flex;gap:1.5rem;justify-content:flex-end;">
+      <div class="total-box" style="background:#f1f5f9;border-color:#cbd5e1;">
+        <div class="total-label" style="color:#64748b">Total Pago</div>
+        <div class="total-value" style="color:#334155">R$ ${fmt(stats.totalPaid)}</div>
+      </div>
+      <div class="total-box">
+        <div class="total-label">Saldo Devedor</div>
+        <div class="total-value">R$ ${fmt(stats.balance)}</div>
+      </div>
+    </div>
+  `;
+
+  const html = getPrintTemplate('EXTRATO GERAL DE ITENS', 'CONSIGNADO', dateStr, accentColor, accentBg, cliente, itemsHtml, totalsHtml, '', '', headersHtml, tenant);
+  const win = window.open('', '_blank', 'width=960,height=780');
+  win.document.write(html);
+  win.document.close();
+};
+
 const openPrintBalanceWindow = (aggregatedItems, cliente, stats, tenant = {}) => {
   const openItems = Object.values(aggregatedItems).filter(it => (it.totalQtd - it.totalPago - it.totalRetirado) > 0);
   openItems.sort((a, b) => String(a.indiceFt || '').localeCompare(String(b.indiceFt || ''), undefined, { numeric: true }));
@@ -1405,8 +1465,11 @@ export default function Consignados() {
                 <button className="btn-outline btn-sm" onClick={openGlobalWithdrawModal} style={{ borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }} title="Retirar Itens Devolvidos pelo Cliente">
                   ↩️ Retirar Itens
                 </button>
-                <button className="btn-outline btn-sm" onClick={() => openPrintBalanceWindow(aggregatedItems, selectedAccount.cliente, stats, profile?.tenants)} title="Imprimir Saldo em Aberto">
-                  <Printer size={16} /> Saldo
+                <button className="btn-outline btn-sm" onClick={() => openPrintExtractWindow(aggregatedItems, selectedAccount.cliente, stats, profile?.tenants)} title="Imprimir Extrato Completo (Todos os itens)">
+                  <Printer size={16} /> Extrato Total
+                </button>
+                <button className="btn-outline btn-sm" onClick={() => openPrintBalanceWindow(aggregatedItems, selectedAccount.cliente, stats, profile?.tenants)} title="Imprimir Apenas Saldo em Aberto">
+                  <Printer size={16} /> Saldo Aberto
                 </button>
                 <button className="btn-primary btn-sm" onClick={openBatchModal}>+ Nova Remessa</button>
               </div>
