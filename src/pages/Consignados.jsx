@@ -119,9 +119,9 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
     .doc-date { font-size: 8.5pt; color: #64748B; margin-top: 4px; }
 
     /* ─ Dividers ─ */
-    .divider        { height: 1px; background: #E2E8F0; margin: 16px 0; }
+    .divider        { height: 1px; background: #E2E8F0; margin: 10px 0; }
     .divider-accent {
-      height: 2px; margin: 16px 0;
+      height: 2px; margin: 10px 0;
       background: linear-gradient(90deg, ${accentColor}66, transparent);
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
@@ -129,7 +129,7 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
     /* ─ Section label ─ */
     .section-label {
       font-size: 7pt; font-weight: 800; text-transform: uppercase;
-      letter-spacing: 1.5px; color: ${accentColor}; margin-bottom: 10px;
+      letter-spacing: 1.5px; color: ${accentColor}; margin-bottom: 6px;
       display: flex; align-items: center; gap: 8px;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
@@ -137,9 +137,9 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
 
     /* ─ Client card ─ */
     .client-card {
-      background: #F8FAFC; border-radius: 10px; border: 1px solid #E2E8F0;
-      padding: 14px 18px; display: grid; grid-template-columns: 1fr 1fr;
-      gap: 8px 24px; font-size: 9.5pt;
+      background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0;
+      padding: 8px 14px; display: grid; grid-template-columns: 1fr 1fr;
+      gap: 4px 24px; font-size: 8.5pt;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
     .client-field { display: flex; gap: 5px; }
@@ -149,8 +149,8 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
 
     .obs-box {
       background: #FFFBEB; border-left: 3px solid #FBBF24;
-      padding: 10px 14px; border-radius: 0 8px 8px 0;
-      font-size: 9pt; color: #92400E; margin-top: 4px;
+      padding: 8px 12px; border-radius: 0 8px 8px 0;
+      font-size: 8.5pt; color: #92400E; margin-top: 4px;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
 
@@ -158,10 +158,10 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
     table { width: 100%; border-collapse: collapse; margin-top: 4px; }
     thead tr { background: #1E293B; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     thead th {
-      padding: 9px 10px; color: #fff; font-size: 7.5pt;
-      font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; text-align: left;
+      padding: 6px 8px; color: #fff; font-size: 7pt;
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; text-align: left;
     }
-    tbody td { padding: 9px 10px; border-bottom: 1px solid #F1F5F9; font-size: 9.5pt; }
+    tbody td { padding: 4px 8px; border-bottom: 1px solid #F1F5F9; font-size: 8.5pt; }
     tbody tr.row-even { background: #F8FAFC; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 
     .cell-right  { text-align: right; }
@@ -170,17 +170,17 @@ const getPrintTemplate = (title, docNum, dateStr, accentColor, accentBg, clientD
     .cell-name   { font-weight: 500; }
     .text-muted  { color: #64748B; }
     .text-danger { color: #DC2626; font-weight: 700; }
-    .cell-id { font-weight: 700; color: #1E293B; font-size: 9.5pt; }
+    .cell-id { font-weight: 700; color: #1E293B; font-size: 8.5pt; }
 
     /* ─ Total ─ */
     .totals-wrap { display: flex; justify-content: flex-end; margin-top: 8px; gap: 10px; }
     .total-box {
-      background: ${accentBg}; border-radius: 10px; padding: 13px 22px;
-      text-align: right; min-width: 200px;
+      background: ${accentBg}; border-radius: 8px; padding: 8px 16px;
+      text-align: right; min-width: 160px;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
-    .total-label { font-size: 7.5pt; font-weight: 700; color: ${accentColor}; text-transform: uppercase; letter-spacing: 1px; }
-    .total-value { font-family: 'Outfit',sans-serif; font-size: 18pt; font-weight: 900; color: ${accentColor}; margin-top: 2px; }
+    .total-label { font-size: 7pt; font-weight: 700; color: ${accentColor}; text-transform: uppercase; letter-spacing: 1px; }
+    .total-value { font-family: 'Outfit',sans-serif; font-size: 14pt; font-weight: 900; color: ${accentColor}; margin-top: 2px; }
 
     /* ─ Assinatura ─ */
     .sign-section { margin-top: 26px; }
