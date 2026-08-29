@@ -265,18 +265,22 @@ export default function Acertos() {
   };
 
   const calculateAccountStats = (acc) => {
-    const totalSent = (acc.batches || []).reduce((sum, batch) => {
-      return sum + (batch.items || []).reduce((bsum, it) => bsum + (parseN(it.qtd) * parseN(it.precoUnit)), 0);
+    // Soma apenas os itens não retirados (qtd - qtdRetirado) × preço
+    const totalNetSent = (acc.batches || []).reduce((sum, batch) => {
+      return sum + (batch.items || []).reduce((bsum, it) => {
+        const liquido = parseN(it.qtd) - parseN(it.qtdRetirado);
+        return bsum + (Math.max(0, liquido) * parseN(it.precoUnit));
+      }, 0);
     }, 0);
-    
+
     const comissao = acc.cliente?.tipoAcerto === 'comissionado' ? parseN(acc.cliente?.comissaoPct) : 0;
     const repasseRate = (100 - comissao) / 100;
-    const totalExpected = totalSent * repasseRate;
+    const totalExpected = totalNetSent * repasseRate;
 
     const totalPaid = (acc.payments || []).reduce((sum, p) => sum + parseN(p.amount), 0);
     const balance = totalExpected - totalPaid;
 
-    return { totalSent, totalPaid, balance };
+    return { totalSent: totalNetSent, totalPaid, balance };
   };
 
   // Aggregating open items
@@ -286,18 +290,19 @@ export default function Acertos() {
     (acc.batches || []).forEach(batch => {
       (batch.items || []).forEach(it => {
         if (!aggregated[it.indiceFt]) {
-          aggregated[it.indiceFt] = { ...it, totalQtd: 0, totalPago: 0, totalValue: 0 };
+          aggregated[it.indiceFt] = { ...it, totalQtd: 0, totalPago: 0, totalRetirado: 0, totalValue: 0 };
         }
-        aggregated[it.indiceFt].totalQtd += parseN(it.qtd);
-        aggregated[it.indiceFt].totalPago += parseN(it.qtdPago);
-        aggregated[it.indiceFt].totalValue += parseN(it.qtd) * parseN(it.precoUnit);
+        aggregated[it.indiceFt].totalQtd     += parseN(it.qtd);
+        aggregated[it.indiceFt].totalPago    += parseN(it.qtdPago);
+        aggregated[it.indiceFt].totalRetirado += parseN(it.qtdRetirado); // ← contabiliza retiradas
+        aggregated[it.indiceFt].totalValue   += parseN(it.qtd) * parseN(it.precoUnit);
       });
     });
 
     return Object.values(aggregated)
       .map(it => ({
         ...it,
-        emAberto: it.totalQtd - it.totalPago
+        emAberto: it.totalQtd - it.totalPago - it.totalRetirado // ← subtrai retiradas
       }))
       .filter(it => it.emAberto > 0)
       .sort((a, b) => String(a.indiceFt).localeCompare(String(b.indiceFt), undefined, { numeric: true }));
@@ -362,9 +367,10 @@ export default function Acertos() {
 
           const item = (batch.items || []).find(it => it.indiceFt === ftId);
           if (item) {
-            const qTotal = parseN(item.qtd);
-            const qPago = parseN(item.qtdPago);
-            const open = qTotal - qPago;
+            const qTotal    = parseN(item.qtd);
+            const qPago     = parseN(item.qtdPago);
+            const qRetirado = parseN(item.qtdRetirado); // ← considera retiradas
+            const open = qTotal - qPago - qRetirado;
 
             if (open > 0) {
               const toAllocate = Math.min(open, remaining);
