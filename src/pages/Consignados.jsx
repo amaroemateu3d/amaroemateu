@@ -424,6 +424,13 @@ export default function Consignados() {
   const [modalSortField, setModalSortField] = useState('id');
   const [modalSortAsc, setModalSortAsc] = useState(true);
 
+  // Edit batch states
+  const [showEditBatchModal, setShowEditBatchModal] = useState(false);
+  const [editBatch, setEditBatch] = useState(null);
+  const [editBatchItems, setEditBatchItems] = useState([]);    // existing items (editable qty)
+  const [editBatchNewItems, setEditBatchNewItems] = useState([]); // new items to add
+  const [editBatchSearch, setEditBatchSearch] = useState('');
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -1196,6 +1203,128 @@ export default function Consignados() {
     }
   };
 
+  // ─── Edit Batch ───────────────────────────────────────────────────────────────
+  const openEditBatchModal = (batch) => {
+    setEditBatch(batch);
+
+    // Existing items: pre-fill with current qty and lock minimum at paid+withdrawn
+    const existing = (batch.items || []).map(it => ({
+      ...it,
+      originalQtd: parseN(it.qtd),
+      minQtd: parseN(it.qtdPago) + parseN(it.qtdRetirado),
+      editQtd: String(parseN(it.qtd)),
+    }));
+    setEditBatchItems(existing);
+
+    // New items: FTs/ORC not yet in this batch
+    const existingIds = new Set((batch.items || []).map(i => i.indiceFt));
+    const globalM = parseN(batchMarkup) > 0 ? parseN(batchMarkup) : 1;
+    const newAvailable = fts
+      .filter(ft => !existingIds.has(ft.indiceFt))
+      .map(ft => {
+        const lastPrice = getLastPriceForAccount(selectedAccount, ft.indiceFt);
+        const custo = ft._custoFinal || 0;
+        const precoUnit = ft.isOrcamento
+          ? String(ft.precoSugerido || 0)
+          : lastPrice !== null
+            ? lastPrice.toFixed(2)
+            : (custo * globalM).toFixed(2);
+        return {
+          indiceFt: ft.indiceFt,
+          nomePeca: ft.nomePeca,
+          custoBase: custo,
+          precoUnit,
+          addQtd: '',         // quantity the user wants to add
+          isOrcamento: ft.isOrcamento,
+        };
+      });
+    setEditBatchNewItems(newAvailable);
+    setEditBatchSearch('');
+    setShowEditBatchModal(true);
+  };
+
+  const updateEditExistingItem = (indiceFt, value) => {
+    setEditBatchItems(prev => prev.map(it => {
+      if (it.indiceFt !== indiceFt) return it;
+      return { ...it, editQtd: value };
+    }));
+  };
+
+  const updateEditNewItem = (indiceFt, value) => {
+    setEditBatchNewItems(prev => prev.map(it => {
+      if (it.indiceFt !== indiceFt) return it;
+      return { ...it, addQtd: value };
+    }));
+  };
+
+  const handleSaveEditBatch = async () => {
+    // Validate minimums for existing items
+    for (const it of editBatchItems) {
+      const q = parseN(it.editQtd);
+      if (q < it.minQtd) {
+        return alert(`Quantidade mínima para "${it.nomePeca}" é ${it.minQtd} (${it.minQtd} já pagos/retirados). Não é possível reduzir abaixo disso.`);
+      }
+    }
+
+    const addedNew = editBatchNewItems.filter(it => parseN(it.addQtd) > 0);
+    const hasChanges = editBatchItems.some(it => parseN(it.editQtd) !== it.originalQtd) || addedNew.length > 0;
+    if (!hasChanges) return alert('Nenhuma alteração detectada.');
+
+    setLoading(true);
+    try {
+      const updatedBatches = JSON.parse(JSON.stringify(selectedAccount.batches || []));
+      const targetBatch = updatedBatches.find(b => b.id === editBatch.id);
+      if (!targetBatch) throw new Error('Remessa não encontrada.');
+
+      // ── Update existing items + adjust stock ──
+      for (const it of editBatchItems) {
+        const newQtd = parseN(it.editQtd);
+        const delta = newQtd - it.originalQtd; // + → deduct stock, - → return to stock
+        const targetItem = targetBatch.items.find(i => i.indiceFt === it.indiceFt);
+        if (targetItem) targetItem.qtd = newQtd;
+        if (delta !== 0) await updateFtStock(it.indiceFt, delta);
+      }
+
+      // ── Add new items + deduct stock ──
+      for (const it of addedNew) {
+        const qty = parseN(it.addQtd);
+        targetBatch.items.push({
+          indiceFt: it.indiceFt,
+          nomePeca: it.nomePeca,
+          precoUnit: parseN(it.precoUnit),
+          qtd: qty,
+          qtdPago: 0,
+          qtdRetirado: 0,
+          isOrcamento: it.isOrcamento,
+        });
+        await updateFtStock(it.indiceFt, qty);
+      }
+
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const resp = await fetch(`${SUPA_URL}/rest/v1/consignados?id=eq.${selectedAccount.id}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPA_KEY,
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ batches: updatedBatches }),
+      });
+
+      if (!resp.ok) throw new Error('Erro ao salvar edição da remessa.');
+
+      setShowEditBatchModal(false);
+      setEditBatch(null);
+      fetchData();
+      setSelectedAccount(prev => ({ ...prev, batches: updatedBatches }));
+      alert('Remessa atualizada com sucesso! O estoque foi ajustado automaticamente.');
+    } catch (e) {
+      alert(e.message);
+      setLoading(false);
+    }
+  };
+
   // Views rendering
   if (selectedAccount) {
     const stats = calculateAccountStats(selectedAccount);
@@ -1374,6 +1503,9 @@ export default function Consignados() {
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button className="btn-outline btn-sm" onClick={() => openPrintBatchWindow(batch, selectedAccount.cliente, profile?.tenants)} title="Imprimir Guia da Remessa">
                         <Printer size={16} /> Imprimir
+                      </button>
+                      <button className="btn-outline btn-sm" onClick={() => openEditBatchModal(batch)} style={{ borderColor: '#f59e0b', color: '#f59e0b' }} title="Editar itens desta remessa">
+                        ✏️ Editar
                       </button>
                       <button className="btn-outline btn-sm" onClick={() => openWithdrawModal(batch)} style={{ borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }} title="Retirar Itens Devolvidos">
                         ↩️ Retirar Itens
@@ -2155,6 +2287,164 @@ export default function Consignados() {
             </div>
           </div>
         )}
+
+        {/* MODAL EDITAR REMESSA */}
+        {showEditBatchModal && editBatch && (() => {
+          const dateLabel = editBatch.date
+            ? new Date(editBatch.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+            : '';
+          const filteredNew = editBatchNewItems.filter(it =>
+            (it.nomePeca || '').toLowerCase().includes(editBatchSearch.toLowerCase()) ||
+            String(it.indiceFt || '').toLowerCase().includes(editBatchSearch.toLowerCase())
+          );
+          const hasNewAdded = editBatchNewItems.some(it => parseN(it.addQtd) > 0);
+          const hasExistingChanged = editBatchItems.some(it => parseN(it.editQtd) !== it.originalQtd);
+
+          return (
+            <div className="modal-fullscreen">
+              <div className="modal-topbar">
+                <div className="modal-topbar-left">
+                  <button className="btn-outline btn-sm" onClick={() => { setShowEditBatchModal(false); setEditBatch(null); }}>✕ Cancelar</button>
+                  <div>
+                    <h2 className="modal-title">✏️ Editar Remessa — {dateLabel}</h2>
+                    <p className="modal-sub">Ajuste quantidades ou adicione itens esquecidos. O estoque é corrigido automaticamente.</p>
+                  </div>
+                </div>
+                <div className="modal-topbar-right">
+                  <button className="btn-primary" onClick={handleSaveEditBatch} disabled={loading || (!hasNewAdded && !hasExistingChanged)}>
+                    {loading ? 'Salvando...' : '💾 Salvar Alterações'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="modal-scroll-body" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+
+                {/* ── Seção 1: Itens existentes ── */}
+                <div className="card" style={{ padding: '1.5rem' }}>
+                  <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    Itens da Remessa
+                    <span style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-muted)' }}>— altere as quantidades abaixo (mínimo = pagos + retirados)</span>
+                  </h3>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', background: 'var(--bg-secondary)', fontSize: '0.83rem', color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '0.6rem 0.75rem' }}>ID</th>
+                        <th style={{ padding: '0.6rem 0.75rem' }}>Produto</th>
+                        <th style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>Pagos</th>
+                        <th style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>Retirados</th>
+                        <th style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>Mínimo</th>
+                        <th style={{ padding: '0.6rem 0.75rem', width: '140px' }}>Qtd na Remessa</th>
+                        <th style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>Δ Alteração</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editBatchItems.map(it => {
+                        const current = parseN(it.editQtd);
+                        const delta = current - it.originalQtd;
+                        const isValid = current >= it.minQtd;
+                        return (
+                          <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: delta !== 0 ? 'rgba(245,158,11,0.04)' : 'transparent' }}>
+                            <td style={{ padding: '0.6rem 0.75rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
+                            <td style={{ padding: '0.6rem 0.75rem', fontWeight: 500 }}>{it.nomePeca}</td>
+                            <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: 'var(--success)', fontWeight: 'bold' }}>{parseN(it.qtdPago)}</td>
+                            <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: '#3b82f6', fontWeight: 'bold' }}>{parseN(it.qtdRetirado)}</td>
+                            <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>≥ {it.minQtd}</td>
+                            <td style={{ padding: '0.4rem 0.75rem' }}>
+                              <input
+                                type="number"
+                                className="cell-input cell-qty"
+                                min={it.minQtd}
+                                value={it.editQtd}
+                                style={{ borderColor: !isValid ? 'var(--danger)' : delta !== 0 ? '#f59e0b' : 'var(--border-color)', width: '90px' }}
+                                onChange={e => updateEditExistingItem(it.indiceFt, e.target.value)}
+                              />
+                            </td>
+                            <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>
+                              {delta === 0 ? (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
+                              ) : (
+                                <span style={{ fontWeight: 'bold', color: delta > 0 ? '#f59e0b' : 'var(--success)', fontSize: '0.9rem' }}>
+                                  {delta > 0 ? `+${delta} ▼ estoque` : `${delta} ▲ estoque`}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* ── Seção 2: Adicionar novos itens ── */}
+                <div className="card" style={{ padding: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+                    <h3 style={{ margin: 0 }}>
+                      Adicionar Novos Itens
+                      {hasNewAdded && (
+                        <span style={{ marginLeft: '10px', fontSize: '0.82rem', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', padding: '2px 10px', borderRadius: '12px', fontWeight: 700 }}>
+                          {editBatchNewItems.filter(it => parseN(it.addQtd) > 0).length} item(s) a adicionar
+                        </span>
+                      )}
+                    </h3>
+                    <input
+                      type="text"
+                      placeholder="🔍 Buscar por nome ou ID..."
+                      value={editBatchSearch}
+                      onChange={e => setEditBatchSearch(e.target.value)}
+                      style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', width: '300px' }}
+                    />
+                  </div>
+
+                  {filteredNew.length === 0 ? (
+                    <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Todos os produtos já estão nesta remessa, ou nenhum resultado para a busca.</p>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', background: 'var(--bg-secondary)', fontSize: '0.83rem', color: 'var(--text-muted)' }}>
+                          <th style={{ padding: '0.6rem 0.75rem' }}>ID</th>
+                          <th style={{ padding: '0.6rem 0.75rem' }}>Produto</th>
+                          <th style={{ padding: '0.6rem 0.75rem' }}>Preço Unit.</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '180px' }}>Qtd a Adicionar</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredNew.map(it => {
+                          const qty = parseN(it.addQtd);
+                          const active = qty > 0;
+                          return (
+                            <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: active ? 'rgba(245,158,11,0.05)' : 'transparent' }}>
+                              <td style={{ padding: '0.6rem 0.75rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
+                              <td style={{ padding: '0.6rem 0.75rem', fontWeight: active ? 600 : 400 }}>{it.nomePeca}</td>
+                              <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)' }}>R$ {fmt(parseN(it.precoUnit))}</td>
+                              <td style={{ padding: '0.4rem 0.75rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <input
+                                    type="number"
+                                    className="cell-input cell-qty"
+                                    min="0"
+                                    placeholder="0"
+                                    value={it.addQtd}
+                                    style={{ borderColor: active ? '#f59e0b' : 'var(--border-color)', width: '80px' }}
+                                    onChange={e => updateEditNewItem(it.indiceFt, e.target.value)}
+                                  />
+                                  {active && (
+                                    <span style={{ fontSize: '0.78rem', color: '#f59e0b', fontWeight: 700 }}>
+                                      +{qty} → ▼ estoque
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       </div>
     );
