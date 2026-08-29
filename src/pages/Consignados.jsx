@@ -798,36 +798,44 @@ export default function Consignados() {
   };
 
   const openPaymentModal = () => {
-    const openItems = [];
+    const allItems = [];
     (selectedAccount.batches || []).forEach((batch) => {
       (batch.items || []).forEach(it => {
         const qTotal = parseN(it.qtd);
         const qPago = parseN(it.qtdPago);
         const qRetirado = parseN(it.qtdRetirado);
         const open = qTotal - qPago - qRetirado;
-        if (open > 0) {
-          openItems.push({
+
+        // Inclui itens em aberto E itens com retirada (para exibição como referência)
+        if (open > 0 || qRetirado > 0) {
+          allItems.push({
             // Identificadores
             batchId: batch.id,
             batchDate: batch.date,
             indiceFt: it.indiceFt,
             nomePeca: it.nomePeca,
-            
+
             // Valores financeiros e qtd
             precoUnit: parseN(it.precoUnit),
             maxQtd: open,
-            
+            qtdTotal: qTotal,
+            qtdPago: qPago,
+            qtdRetirado: qRetirado,
+
             // Estado temporário
             payQtd: '', // string vazia para facilitar input numérico
-            
+
+            // Flag: item totalmente retirado (sem saldo a pagar)
+            isRetired: open === 0 && qRetirado > 0,
+
             // Chave global no array
-            globalIndex: openItems.length
+            globalIndex: allItems.length
           });
         }
       });
     });
 
-    setItemsToPay(openItems);
+    setItemsToPay(allItems);
     setPaymentObs('');
     setShowNewPaymentModal(true);
   };
@@ -850,7 +858,7 @@ export default function Consignados() {
   };
 
   const handleSavePayment = async () => {
-    const selectedToPay = itemsToPay.filter(it => parseN(it.payQtd) > 0);
+    const selectedToPay = itemsToPay.filter(it => parseN(it.payQtd) > 0 && !it.isRetired);
     if (selectedToPay.length === 0) return alert("Selecione a quantidade de pelo menos 1 item para registrar o pagamento.");
 
     setLoading(true);
@@ -1833,7 +1841,7 @@ export default function Consignados() {
         {showNewPaymentModal && (() => {
           const comissaoPct = selectedAccount.cliente?.tipoAcerto === 'comissionado' ? parseN(selectedAccount.cliente?.comissaoPct) : 0;
           const repasseRate = (100 - comissaoPct) / 100;
-          const grossTotal = itemsToPay.reduce((sum, it) => sum + (parseN(it.payQtd) * parseN(it.precoUnit)), 0);
+          const grossTotal = itemsToPay.filter(it => !it.isRetired).reduce((sum, it) => sum + (parseN(it.payQtd) * parseN(it.precoUnit)), 0);
           const netTotal = grossTotal * repasseRate;
           return (
             <div className="modal-fullscreen">
@@ -1884,64 +1892,101 @@ export default function Consignados() {
                       />
                     </div>
                     
-                    {Object.entries(groupedItemsToPay).sort((a, b) => new Date(a[1].date) - new Date(b[1].date)).map(([batchId, batchData]) => (
-                      <div key={batchId} style={{ marginBottom: '2.5rem', border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
-                        <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <Calendar size={18} color="var(--primary)" />
-                          <h4 style={{ margin: 0 }}>Remessa de {new Date(batchData.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</h4>
+                    {Object.entries(groupedItemsToPay).sort((a, b) => new Date(a[1].date) - new Date(b[1].date)).map(([batchId, batchData]) => {
+                      const hasRetired = batchData.items.some(it => it.isRetired);
+                      const hasOpen = batchData.items.some(it => !it.isRetired);
+                      return (
+                        <div key={batchId} style={{ marginBottom: '2.5rem', border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                          <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <Calendar size={18} color="var(--primary)" />
+                              <h4 style={{ margin: 0 }}>Remessa de {new Date(batchData.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</h4>
+                            </div>
+                            {hasRetired && (
+                              <span style={{ fontSize: '0.78rem', background: 'rgba(59,130,246,0.12)', color: '#3b82f6', padding: '3px 10px', borderRadius: '12px', fontWeight: '700', border: '1px solid rgba(59,130,246,0.25)' }}>
+                                ↩️ Possui itens retirados
+                              </span>
+                            )}
+                          </div>
+                          <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)', background: '#f8fafc' }}>
+                                <th style={{ padding: '0.75rem' }}>ID</th>
+                                <th style={{ padding: '0.75rem' }}>Nome do Item</th>
+                                <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--text-muted)' }}>Enviados</th>
+                                <th style={{ padding: '0.75rem', textAlign: 'center', color: '#3b82f6' }}>↩ Retirados</th>
+                                <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--danger)' }}>Em Aberto</th>
+                                <th style={{ padding: '0.75rem', width: '150px' }}>Preço Unit.</th>
+                                <th style={{ padding: '0.75rem', width: '120px' }}>Qtd Pagando</th>
+                                <th style={{ padding: '0.75rem', textAlign: 'right', width: '150px' }}>Subtotal (R$)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {batchData.items.map((it) => {
+                                const preco = parseN(it.precoUnit);
+
+                                // ── Item totalmente retirado: exibe como referência (somente leitura) ──
+                                if (it.isRetired) {
+                                  return (
+                                    <tr key={it.globalIndex} style={{ borderBottom: '1px solid var(--border-color)', background: 'rgba(59,130,246,0.04)', opacity: 0.75 }}>
+                                      <td style={{ padding: '0.75rem 0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
+                                      <td style={{ padding: '0.75rem 0.5rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>{it.nomePeca}</td>
+                                      <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>{it.qtdTotal}</td>
+                                      <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: '#3b82f6', fontWeight: 'bold' }}>{it.qtdRetirado}</td>
+                                      <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>0</td>
+                                      <td colSpan={3} style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
+                                        <span style={{ fontSize: '0.78rem', background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '3px 10px', borderRadius: '12px', fontWeight: '700' }}>
+                                          ↩️ Totalmente Retirado — sem saldo a pagar
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+
+                                // ── Item em aberto: exibe com input de quantidade ──
+                                const active = parseN(it.payQtd) > 0;
+                                const sub = parseN(it.payQtd) * preco * repasseRate;
+                                return (
+                                  <tr key={it.globalIndex} style={{ borderBottom: '1px solid var(--border-color)', background: active ? 'rgba(52, 211, 153, 0.05)' : 'transparent' }}>
+                                    <td style={{ padding: '0.75rem 0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
+                                    <td style={{ padding: '0.75rem 0.5rem', fontWeight: active ? 'bold' : 'normal' }}>{it.nomePeca}</td>
+                                    <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>{it.qtdTotal}</td>
+                                    <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: it.qtdRetirado > 0 ? '#3b82f6' : 'var(--text-muted)', fontWeight: it.qtdRetirado > 0 ? 'bold' : 'normal' }}>
+                                      {it.qtdRetirado > 0 ? it.qtdRetirado : '—'}
+                                    </td>
+                                    <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>{it.maxQtd}</td>
+                                    <td style={{ padding: '0.75rem 0.5rem' }}>
+                                      {selectedAccount.cliente?.tipoAcerto === 'comissionado' ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                          <span style={{ textDecoration: 'line-through', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Bruto: R$ {fmt(preco)}</span>
+                                          <span style={{ fontWeight: '600', color: 'var(--success)', fontSize: '0.9rem' }}>Líq: R$ {fmt(preco * repasseRate)}</span>
+                                        </div>
+                                      ) : (
+                                        <span>R$ {fmt(preco)}</span>
+                                      )}
+                                    </td>
+                                    <td style={{ padding: '0.5rem' }}>
+                                      <input
+                                        type="number"
+                                        className="cell-input cell-qty"
+                                        style={{ borderColor: active ? 'var(--success)' : 'var(--border-color)' }}
+                                        min="0"
+                                        max={it.maxQtd}
+                                        value={it.payQtd}
+                                        onChange={e => updatePayItem(it.globalIndex, e.target.value)}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', fontWeight: active ? 'bold' : 'normal', color: active ? 'var(--success)' : 'inherit' }}>
+                                      R$ {fmt(sub)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
-                        <table className="items-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                          <thead>
-                            <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
-                              <th style={{ padding: '0.75rem' }}>ID</th>
-                              <th style={{ padding: '0.75rem' }}>Nome do Item</th>
-                              <th style={{ padding: '0.75rem', textAlign: 'center' }}>Em Aberto</th>
-                              <th style={{ padding: '0.75rem', width: '150px' }}>Preço Unit.</th>
-                              <th style={{ padding: '0.75rem', width: '120px' }}>Qtd Pagando</th>
-                              <th style={{ padding: '0.75rem', textAlign: 'right', width: '150px' }}>Subtotal (R$)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {batchData.items.map((it) => {
-                              const active = parseN(it.payQtd) > 0;
-                              const preco = parseN(it.precoUnit);
-                              const sub = parseN(it.payQtd) * preco * repasseRate;
-                              return (
-                                <tr key={it.globalIndex} style={{ borderBottom: '1px solid var(--border-color)', background: active ? 'rgba(52, 211, 153, 0.05)' : 'transparent' }}>
-                                  <td style={{ padding: '0.75rem 0.5rem' }}><span className="badge-sm">{it.indiceFt}</span></td>
-                                  <td style={{ padding: '0.75rem 0.5rem', fontWeight: active ? 'bold' : 'normal' }}>{it.nomePeca}</td>
-                                  <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>{it.maxQtd}</td>
-                                  <td style={{ padding: '0.75rem 0.5rem' }}>
-                                    {selectedAccount.cliente?.tipoAcerto === 'comissionado' ? (
-                                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                        <span style={{ textDecoration: 'line-through', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Bruto: R$ {fmt(preco)}</span>
-                                        <span style={{ fontWeight: '600', color: 'var(--success)', fontSize: '0.9rem' }}>Líq: R$ {fmt(preco * repasseRate)}</span>
-                                      </div>
-                                    ) : (
-                                      <span>R$ {fmt(preco)}</span>
-                                    )}
-                                  </td>
-                                  <td style={{ padding: '0.5rem' }}>
-                                    <input 
-                                      type="number" 
-                                      className="cell-input cell-qty" 
-                                      style={{ borderColor: active ? 'var(--success)' : 'var(--border-color)' }}
-                                      min="0" 
-                                      max={it.maxQtd} 
-                                      value={it.payQtd} 
-                                      onChange={e => updatePayItem(it.globalIndex, e.target.value)} 
-                                    />
-                                  </td>
-                                  <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', fontWeight: active ? 'bold' : 'normal', color: active ? 'var(--success)' : 'inherit' }}>
-                                    R$ {fmt(sub)}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </>
                 )}
               </div>
