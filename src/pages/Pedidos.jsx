@@ -5,6 +5,81 @@ import { Loader } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import './Pedidos.css';
 import ConfirmModal from '../components/ConfirmModal';
+import FtInputs from '../components/fichas/FtInputs';
+import FtResults from '../components/fichas/FtResults';
+import { getResultados } from '../utils/financeCalculators';
+
+const INITIAL_FT_STATE = {
+  indiceFt: '',
+  nomePeca: 'Novo Produto Customizado',
+  quantidade: 1,
+  pesoGramas: 50,
+  tempoImpressao: '01:30', 
+  precoKgMaterial: 120, 
+  custoKwh: 0.95, 
+  custoDepreciacao: 0.50,
+  extraNome1: '', extraValor1: '',
+  extraNome2: '', extraValor2: '',
+  extraNome3: '', extraValor3: '',
+  medidaSemCaixa: '',
+  pesoSemCaixa: '',
+  medidaComCaixa: '',
+  pesoComCaixa: '',
+};
+
+// Subcomponent: Custom Product Modal
+function CustomQuoteProductModal({ onClose, onSave }) {
+  const [inputs, setInputs] = useState({ ...INITIAL_FT_STATE, indiceFt: `CUST-${Date.now().toString().slice(-4)}` });
+
+  const handleChange = (e) => {
+    let { name, value } = e.target;
+    if (typeof value === 'string' && (name.startsWith('preco') || name.startsWith('custo') || name.startsWith('peso') || name.startsWith('extraValor'))) {
+      value = value.replace(',', '.');
+    }
+    setInputs(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSave = () => {
+    if (!inputs.nomePeca) return alert("O Nome da peça não pode estar vazio.");
+    onSave(inputs);
+  };
+
+  const results = getResultados(inputs);
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 9999 }}>
+      <div className="modal-content" style={{ maxWidth: '1000px', width: '95%' }}>
+        <div className="modal-header">
+          <h2>Novo Produto Customizado</h2>
+          <button className="btn-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          <p style={{marginBottom: '1rem', color: 'var(--text-muted)'}}>
+            Os itens criados aqui serão salvos com custo unitário e preço ajustável, sem poluir suas Fichas Técnicas.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            <div>
+              <FtInputs 
+                inputs={inputs} 
+                onChange={handleChange} 
+                savedFts={[]}
+                onManageInsumos={() => {}}
+                onSelectInsumoClick={() => {}}
+              />
+            </div>
+            <div>
+              <FtResults inputs={inputs} results={results} />
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" onClick={handleSave}>Salvar Produto</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = (n) => Number(n || 0).toFixed(2);
@@ -331,6 +406,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
   const [markup, setMarkup] = useState('3');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [showCustomModal, setShowCustomModal] = useState(false);
   const [itens, setItens] = useState(() => {
     // Inicializa todos os itens disponíveis (FTs)
     // Se estiver editando, preenche com os valores já salvos anteriormente
@@ -354,6 +430,46 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
       };
     });
   });
+
+  const handleSaveCustomProduct = async (customInputs) => {
+    const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    const dbRecord = {
+      id: customInputs.indiceFt,
+      name: customInputs.nomePeca,
+      data: customInputs
+    };
+
+    try {
+      await fetch(`${SUPA_URL}/rest/v1/orcamentos_rapidos`, {
+        method: 'POST',
+        headers: { 
+          'apikey': SUPA_KEY, 
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify(dbRecord)
+      });
+      
+      const results = getResultados(customInputs);
+      const precoFinal = parseN(customInputs.precoVendaManual) || results.precoPraticado || (results.custoFisicoUnit * 3) || 0;
+      
+      setItens(prev => [{
+        indiceFt: customInputs.indiceFt,
+        nomePeca: customInputs.nomePeca,
+        custoBase: results.custoFisicoUnit,
+        precoUnit: precoFinal.toFixed(2),
+        qtd: 1, // Add 1 automatically
+        isOrcamento: true
+      }, ...prev]);
+      
+      setShowCustomModal(false);
+    } catch (err) {
+      alert("Erro ao salvar produto customizado.");
+    }
+  };
 
 
 
@@ -470,20 +586,25 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
 
           {/* ── Seção 3: Tabela de Itens ── */}
           <section className="modal-section card span-full">
-            <div className="section-header-flex" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem'}}>
+            <div className="section-header-flex" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem'}}>
               <h3 className="section-heading" style={{marginBottom: 0}}>
                 <span className="section-num">3</span> Itens do Pedido
                 {fts.length === 0 && <span className="no-fts-warn"> — Nenhum item cadastrado ainda.</span>}
               </h3>
               
-              <div className="search-box-wrap" style={{width: '300px'}}>
-                <input 
-                  type="text" 
-                  placeholder="🔍 Buscar produto por nome ou ID..." 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{width: '100%', padding: '0.6rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)'}}
-                />
+              <div style={{display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap'}}>
+                <button className="btn-secondary btn-sm" onClick={() => setShowCustomModal(true)} style={{ padding: '0.6rem 1rem', height: '100%', borderRadius: '8px' }}>
+                  + Novo Produto Customizado
+                </button>
+                <div className="search-box-wrap" style={{width: '300px'}}>
+                  <input 
+                    type="text" 
+                    placeholder="🔍 Buscar produto por nome ou ID..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    style={{width: '100%', padding: '0.6rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)'}}
+                  />
+                </div>
               </div>
             </div>
 
@@ -608,6 +729,12 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
           <button className="btn-primary" onClick={handleSave}>💾 Salvar Pedido</button>
         </div>
       </div>
+      {showCustomModal && (
+        <CustomQuoteProductModal 
+          onClose={() => setShowCustomModal(false)}
+          onSave={handleSaveCustomProduct}
+        />
+      )}
     </div>
   );
 }

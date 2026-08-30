@@ -82,10 +82,7 @@ export default function AppLayout() {
             <span>Cadastro de FTs</span>
           </NavLink>
 
-          <NavLink to="/orcamentos" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
-            <Calculator size={20} />
-            <span>Orçamentos</span>
-          </NavLink>
+
 
           <NavLink to="/estoque" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
             <Package size={20} />
