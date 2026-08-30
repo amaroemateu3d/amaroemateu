@@ -84,7 +84,7 @@ const ExtraRow = ({ index, inputs, onChange, showLabels, onSelectInsumoClick }) 
   );
 };
 
-export default function FtInputs({ inputs, onChange, savedFts = [], onManageInsumos, onSelectInsumoClick }) {
+export default function FtInputs({ inputs, onChange, savedFts = [], onManageInsumos, onSelectInsumoClick, isCustomProduct = false }) {
   
   const commonProps = { inputs, onChange };
 
@@ -102,36 +102,55 @@ export default function FtInputs({ inputs, onChange, savedFts = [], onManageInsu
           <div className="input-group">
             <label>Índice (ID)</label>
             <div className="input-wrapper">
-              <select 
-                name="indiceFt" 
-                value={inputs.indiceFt} 
-                onChange={onChange}
-                style={{
-                  width: '100%',
-                  padding: '0.8rem',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border-color)',
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                  fontSize: '1rem',
-                  fontWeight: 'bold',
-                  fontFamily: 'Outfit, sans-serif'
-                }}
-              >
-                {(() => {
-                  const maxSavedNum = savedFts.reduce((max, f) => {
-                    const num = parseInt(String(f?.indiceFt || '').replace(/[^\d]/g, ''), 10);
-                    return !isNaN(num) && num > max ? num : max;
-                  }, 150);
-                  const totalCount = Math.max(150, maxSavedNum + 5);
-                  return Array.from({length: totalCount}, (_, i) => {
-                    const id = `FT-${String(i+1).padStart(2, '0')}`;
-                    const hasSaved = savedFts.find(f => f.indiceFt === id);
-                    const displayLabel = hasSaved ? `${id} - ${hasSaved.nomePeca}` : `${id} (Vazio)`;
-                    return <option key={id} value={id}>{displayLabel}</option>;
-                  });
-                })()}
-              </select>
+              {isCustomProduct ? (
+                <input 
+                  type="text" 
+                  value={inputs.indiceFt} 
+                  readOnly 
+                  style={{
+                    width: '100%',
+                    padding: '0.8rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-surface-hover)',
+                    color: 'var(--text-muted)',
+                    fontSize: '1rem',
+                    fontWeight: 'bold',
+                    fontFamily: 'Outfit, sans-serif'
+                  }}
+                />
+              ) : (
+                <select 
+                  name="indiceFt" 
+                  value={inputs.indiceFt} 
+                  onChange={onChange}
+                  style={{
+                    width: '100%',
+                    padding: '0.8rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    fontSize: '1rem',
+                    fontWeight: 'bold',
+                    fontFamily: 'Outfit, sans-serif'
+                  }}
+                >
+                  {(() => {
+                    const maxSavedNum = savedFts.reduce((max, f) => {
+                      const num = parseInt(String(f?.indiceFt || '').replace(/[^\d]/g, ''), 10);
+                      return !isNaN(num) && num > max ? num : max;
+                    }, 150);
+                    const totalCount = Math.max(150, maxSavedNum + 5);
+                    return Array.from({length: totalCount}, (_, i) => {
+                      const id = `FT-${String(i+1).padStart(2, '0')}`;
+                      const hasSaved = savedFts.find(f => f.indiceFt === id);
+                      const displayLabel = hasSaved ? `${id} - ${hasSaved.nomePeca}` : `${id} (Vazio)`;
+                      return <option key={id} value={id}>{displayLabel}</option>;
+                    });
+                  })()}
+                </select>
+              )}
             </div>
           </div>
           <div className="input-group" style={{gridColumn: 'span 2'}}>

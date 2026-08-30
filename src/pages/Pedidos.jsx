@@ -29,7 +29,7 @@ const INITIAL_FT_STATE = {
 
 // Subcomponent: Custom Product Modal
 function CustomQuoteProductModal({ onClose, onSave }) {
-  const [inputs, setInputs] = useState({ ...INITIAL_FT_STATE, indiceFt: `CUST-${Date.now().toString().slice(-4)}` });
+  const [inputs, setInputs] = useState({ ...INITIAL_FT_STATE, indiceFt: `CFT-${Date.now().toString().slice(-4)}` });
 
   const handleChange = (e) => {
     let { name, value } = e.target;
@@ -50,12 +50,12 @@ function CustomQuoteProductModal({ onClose, onSave }) {
     <div className="modal-overlay" style={{ zIndex: 9999 }}>
       <div className="modal-content" style={{ maxWidth: '1000px', width: '95%' }}>
         <div className="modal-header">
-          <h2>Novo Produto Customizado</h2>
+          <h2>Novo Produto Customizado (CFT)</h2>
           <button className="btn-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
           <p style={{marginBottom: '1rem', color: 'var(--text-muted)'}}>
-            Os itens criados aqui serão salvos com custo unitário e preço ajustável, sem poluir suas Fichas Técnicas.
+            Os itens criados aqui serão salvos com custo unitário e preço ajustável, sem poluir suas Fichas Técnicas (prefixo CFT).
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
             <div>
@@ -65,6 +65,7 @@ function CustomQuoteProductModal({ onClose, onSave }) {
                 savedFts={[]}
                 onManageInsumos={() => {}}
                 onSelectInsumoClick={() => {}}
+                isCustomProduct={true}
               />
             </div>
             <div>
@@ -74,7 +75,7 @@ function CustomQuoteProductModal({ onClose, onSave }) {
         </div>
         <div className="modal-footer">
           <button className="btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn-primary" onClick={handleSave}>Salvar Produto</button>
+          <button className="btn-primary" onClick={handleSave}>Salvar CFT</button>
         </div>
       </div>
     </div>
