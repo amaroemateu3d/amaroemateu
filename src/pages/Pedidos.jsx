@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getUnitProductionTime, formatTime } from '../utils/financeCalculators';
 import { supabase } from '../supabaseClient';
 import { Loader } from 'lucide-react';
@@ -28,8 +28,18 @@ const INITIAL_FT_STATE = {
 };
 
 // Subcomponent: Custom Product Modal
-function CustomQuoteProductModal({ onClose, onSave }) {
-  const [inputs, setInputs] = useState({ ...INITIAL_FT_STATE, indiceFt: `CFT-${Date.now().toString().slice(-4)}` });
+function CustomQuoteProductModal({ onClose, onSave, fts = [] }) {
+  const nextId = useMemo(() => {
+    const cftNumbers = fts
+      .filter(f => f.indiceFt && f.indiceFt.startsWith('CFT-'))
+      .map(f => parseInt(f.indiceFt.replace('CFT-', ''), 10))
+      .filter(n => !isNaN(n));
+      
+    const max = cftNumbers.length > 0 ? Math.max(...cftNumbers) : 0;
+    return `CFT-${String(max + 1).padStart(2, '0')}`;
+  }, [fts]);
+
+  const [inputs, setInputs] = useState({ ...INITIAL_FT_STATE, indiceFt: nextId });
 
   const handleChange = (e) => {
     let { name, value } = e.target;
@@ -734,6 +744,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
         <CustomQuoteProductModal 
           onClose={() => setShowCustomModal(false)}
           onSave={handleSaveCustomProduct}
+          fts={fts}
         />
       )}
     </div>
