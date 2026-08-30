@@ -1,116 +1,477 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { Loader } from 'lucide-react';
+import { Loader, Printer, Trash2, Edit2, FileText, CheckCircle, XCircle, Plus } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import FtInputs from '../components/fichas/FtInputs';
+import FtResults from '../components/fichas/FtResults';
+import { getResultados } from '../utils/financeCalculators';
+import ConfirmModal from '../components/ConfirmModal';
+import './Pedidos.css'; 
 
-const INITIAL_STATE = {
-  id: '',
-  name: '',
-  price: '',
-  description: ''
+// --- Helpers ---
+const fmt = (n) => Number(n || 0).toFixed(2);
+const parseN = (v) => {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return v;
+  const clean = String(v).replace(/\s/g, '').replace(',', '.');
+  const n = parseFloat(clean);
+  return isNaN(n) ? 0 : n;
 };
 
-const getNextOrcId = (listaAtual) => {
-  if (!listaAtual || listaAtual.length === 0) return 'ORC-01';
-  const existingSet = new Set(listaAtual.map(item => item?.id).filter(Boolean));
-  for (let i = 1; i <= 9999; i++) {
-     const id = `ORC-${String(i).padStart(2, '0')}`;
-     if (!existingSet.has(id)) {
-         return id;
-     }
-  }
-  return 'ORC-10000';
+const BLANK_CLIENTE = {
+  nome: '',
+  telefone: '',
+  email: '',
+  endereco: '',
+  obs: '',
 };
+
+const INITIAL_FT_STATE = {
+  indiceFt: '',
+  nomePeca: 'Novo Item Orçamento',
+  quantidade: 1,
+  pesoGramas: 50,
+  tempoImpressao: '01:30', 
+  precoKgMaterial: 120, 
+  custoKwh: 0.95, 
+  custoDepreciacao: 0.50,
+  extraNome1: '', extraValor1: '',
+  extraNome2: '', extraValor2: '',
+  extraNome3: '', extraValor3: '',
+  medidaSemCaixa: '',
+  pesoSemCaixa: '',
+  medidaComCaixa: '',
+  pesoComCaixa: '',
+};
+
+// --- PRINT FUNCTION ---
+const openPrintOrcamento = (orcamento, tenant = {}) => {
+  const total = orcamento.items.reduce((s, it) => s + parseN(it.precoUnit) * parseN(it.qtd), 0);
+  const label = 'ORÇAMENTO';
+  const dateStr = new Date(orcamento.created_at).toLocaleDateString('pt-BR');
+  const accentColor = '#3b82f6';
+  const accentBg    = '#DBEAFE';
+
+  const itensRows = orcamento.items.map((it, i) => `
+    <tr class="${i % 2 === 0 ? 'row-even' : ''}">
+      <td class="cell-center text-muted">${i + 1}</td>
+      <td class="cell-id">${it.indiceFt || 'CUST'}</td>
+      <td class="cell-name">${it.nomePeca}</td>
+      <td class="cell-right text-muted">R$ ${fmt(it.precoUnit)}</td>
+      <td class="cell-center cell-bold">${it.qtd}</td>
+      <td class="cell-right cell-bold">R$ ${fmt(parseN(it.precoUnit) * parseN(it.qtd))}</td>
+    </tr>
+  `).join('');
+
+  const logoHtml = tenant.logo_url 
+    ? `<img class="logo-img" src="${tenant.logo_url}" alt="Logo" onerror="this.style.display='none'; document.getElementById('lf').style.display='flex';"/>`
+    : `<img class="logo-img" src="${window.location.origin}/logo.png" alt="Logo" onerror="this.style.display='none'; document.getElementById('lf').style.display='flex';"/>`;
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <title>${label} - ${tenant.name || 'AM3D'}</title>
+  <style>
+    @page { size: A4; margin: 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 10pt; color: #1E293B; background: #fff; }
+    .page { padding: 1.4cm 2cm; display: flex; flex-direction: column; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .logo-img { max-height: 80px; max-width: 170px; object-fit: contain; }
+    .doc-badge { display: inline-block; padding: 5px 14px; background: ${accentBg}; color: ${accentColor}; font-size: 10pt; font-weight: bold; border-radius: 20px; margin-bottom: 6px; }
+    .divider { height: 1px; background: #E2E8F0; margin: 10px 0; }
+    .section-label { font-size: 8pt; font-weight: bold; text-transform: uppercase; color: ${accentColor}; margin-bottom: 6px; }
+    .client-card { background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; padding: 10px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; font-size: 9pt; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    thead tr { background: #1E293B; color: #fff; }
+    thead th { padding: 8px; font-size: 8pt; text-align: left; }
+    tbody td { padding: 8px; border-bottom: 1px solid #F1F5F9; font-size: 9pt; }
+    .cell-right { text-align: right; }
+    .cell-center { text-align: center; }
+    .totals-wrap { display: flex; justify-content: flex-end; margin-top: 10px; }
+    .total-box { background: ${accentBg}; border-radius: 8px; padding: 10px 20px; text-align: right; }
+    .total-label { font-size: 8pt; font-weight: bold; color: ${accentColor}; text-transform: uppercase; }
+    .total-value { font-size: 16pt; font-weight: bold; color: ${accentColor}; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      ${logoHtml}
+      <div style="text-align: right;">
+        <div class="doc-badge">${label}</div>
+        <div style="font-size: 9pt; color: #64748B;">📅 ${dateStr}</div>
+      </div>
+    </div>
+    <div class="section-label">Dados do Cliente</div>
+    <div class="client-card">
+      <div><strong>Nome:</strong> ${orcamento.client_data.nome || '—'}</div>
+      <div><strong>Telefone:</strong> ${orcamento.client_data.telefone || '—'}</div>
+      <div><strong>E-mail:</strong> ${orcamento.client_data.email || '—'}</div>
+      <div><strong>Endereço:</strong> ${orcamento.client_data.endereco || '—'}</div>
+      ${orcamento.client_data.obs ? `<div style="grid-column: 1 / -1; margin-top: 8px;"><strong>Obs:</strong> ${orcamento.client_data.obs}</div>` : ''}
+    </div>
+    <div class="divider"></div>
+    <div class="section-label">Itens do Orçamento</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:30px">#</th>
+          <th style="width:70px">Ref</th>
+          <th>Descrição</th>
+          <th style="width:90px;text-align:right">Preço Unit.</th>
+          <th style="width:50px;text-align:center">Qtd</th>
+          <th style="width:105px;text-align:right">Subtotal</th>
+        </tr>
+      </thead>
+      <tbody>${itensRows}</tbody>
+    </table>
+    <div class="totals-wrap">
+      <div class="total-box">
+        <div class="total-label">Total do Orçamento</div>
+        <div class="total-value">R$ ${fmt(total)}</div>
+      </div>
+    </div>
+  </div>
+  <script>window.onload = () => { window.print(); }</script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank', 'width=960,height=780');
+  win.document.write(html);
+  win.document.close();
+};
+
+
+// --- COMPONENTS ---
+
+function CustomQuoteProductModal({ onClose, onSave }) {
+  const [inputs, setInputs] = useState({ ...INITIAL_FT_STATE, indiceFt: `CUST-${Date.now().toString().slice(-4)}` });
+
+  const handleChange = (e) => {
+    let { name, value } = e.target;
+    if (typeof value === 'string' && (name.startsWith('preco') || name.startsWith('custo') || name.startsWith('peso') || name.startsWith('extraValor'))) {
+      value = value.replace(',', '.');
+    }
+    setInputs(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSave = () => {
+    if (!inputs.nomePeca) return alert("O Nome da peça não pode estar vazio.");
+    onSave(inputs);
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" style={{ maxWidth: '1000px', width: '95%' }}>
+        <div className="modal-header">
+          <h2>Novo Produto Customizado (Orçamento)</h2>
+          <button className="btn-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          <p style={{marginBottom: '1rem', color: 'var(--text-muted)'}}>
+            Os itens criados aqui serão salvos apenas para orçamentos e não misturam com suas Fichas Técnicas originais.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            <div>
+              <FtInputs 
+                inputs={inputs} 
+                onChange={handleChange} 
+                savedFts={[]}
+                onManageInsumos={() => {}}
+                onSelectInsumoClick={() => {}}
+              />
+            </div>
+            <div>
+              <FtResults inputs={inputs} />
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" onClick={handleSave}>Salvar Produto</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function ModalOrcamento({ fts, customProducts, onSave, onCancel, initialData }) {
+  const [cliente, setCliente] = useState(initialData?.client_data || { ...BLANK_CLIENTE });
+  const [items, setItems] = useState(initialData?.items || []);
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleClientChange = (e) => {
+    const { name, value } = e.target;
+    setCliente(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddItem = (e) => {
+    const val = e.target.value;
+    if (!val) return;
+    
+    // Check if it's FT or Custom
+    let found = fts.find(f => f.indiceFt === val);
+    let preco = 0;
+    let isCustom = false;
+
+    if (found) {
+      preco = parseN(found.data?.precoVendaManual) || parseN(found.data?.precoPraticado) || 0;
+    } else {
+      found = customProducts.find(c => c.id === val);
+      if (found) {
+        preco = parseN(found.data?.precoVendaManual) || parseN(found.data?.precoPraticado) || 0;
+        isCustom = true;
+      }
+    }
+
+    if (found) {
+      setItems(prev => [...prev, {
+        indiceFt: isCustom ? found.id : found.indiceFt,
+        nomePeca: isCustom ? found.name : found.nomePeca,
+        qtd: 1,
+        precoUnit: preco
+      }]);
+    }
+    e.target.value = '';
+  };
+
+  const handleItemChange = (index, field, value) => {
+    setItems(prev => {
+      const next = [...prev];
+      next[index][field] = value;
+      return next;
+    });
+  };
+
+  const handleRemoveItem = (index) => {
+    setItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSaveCustomProduct = async (customInputs) => {
+    // Save to orcamentos_rapidos
+    const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    const dbRecord = {
+      id: customInputs.indiceFt,
+      name: customInputs.nomePeca,
+      data: customInputs
+    };
+
+    try {
+      await fetch(`${SUPA_URL}/rest/v1/orcamentos_rapidos`, {
+        method: 'POST',
+        headers: { 
+          'apikey': SUPA_KEY, 
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify(dbRecord)
+      });
+      
+      const precoFinal = parseN(customInputs.precoVendaManual) || getResultados(customInputs).precoPraticado || 0;
+      setItems(prev => [...prev, {
+        indiceFt: customInputs.indiceFt,
+        nomePeca: customInputs.nomePeca,
+        qtd: customInputs.quantidade,
+        precoUnit: precoFinal
+      }]);
+      setShowCustomModal(false);
+      // We should ideally refresh customProducts here, but since we add directly to items, it's fine.
+    } catch (err) {
+      alert("Erro ao salvar produto customizado.");
+    }
+  };
+
+  const handleSaveOrcamento = async () => {
+    if (!cliente.nome) return alert('Preencha o nome do cliente.');
+    if (items.length === 0) return alert('Adicione pelo menos um item.');
+    setIsSaving(true);
+    await onSave({ cliente, items, id: initialData?.id });
+    setIsSaving(false);
+  };
+
+  const totalGeral = items.reduce((s, it) => s + parseN(it.precoUnit) * parseN(it.qtd), 0);
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" style={{ maxWidth: '800px' }}>
+        <div className="modal-header">
+          <h2>{initialData ? 'Editar Orçamento' : 'Novo Orçamento'}</h2>
+          <button className="btn-close" onClick={onCancel}>×</button>
+        </div>
+        <div className="modal-body">
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Nome do Cliente</label>
+              <input type="text" name="nome" value={cliente.nome} onChange={handleClientChange} />
+            </div>
+            <div className="form-group">
+              <label>Telefone</label>
+              <input type="text" name="telefone" value={cliente.telefone} onChange={handleClientChange} />
+            </div>
+            <div className="form-group">
+              <label>E-mail</label>
+              <input type="text" name="email" value={cliente.email} onChange={handleClientChange} />
+            </div>
+            <div className="form-group">
+              <label>Endereço</label>
+              <input type="text" name="endereco" value={cliente.endereco} onChange={handleClientChange} />
+            </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label>Observações</label>
+              <input type="text" name="obs" value={cliente.obs} onChange={handleClientChange} />
+            </div>
+          </div>
+
+          <div style={{ marginTop: '24px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ fontSize: '1.1rem', color: 'var(--text-primary)' }}>Itens do Orçamento</h3>
+            <button className="btn-secondary btn-sm" onClick={() => setShowCustomModal(true)}>
+              <Plus size={16} style={{marginRight: '6px'}}/> Novo Produto Customizado
+            </button>
+          </div>
+          
+          <div className="form-group">
+            <select onChange={handleAddItem} value="">
+              <option value="">+ Selecionar Produto Existente...</option>
+              <optgroup label="Fichas Técnicas">
+                {fts.map(ft => (
+                  <option key={ft.indiceFt} value={ft.indiceFt}>{ft.indiceFt} - {ft.nomePeca}</option>
+                ))}
+              </optgroup>
+              {customProducts.length > 0 && (
+                <optgroup label="Produtos de Orçamentos">
+                  {customProducts.map(cp => (
+                    <option key={cp.id} value={cp.id}>{cp.id} - {cp.name}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+
+          <div className="items-table-wrapper" style={{ marginTop: '16px', maxHeight: '300px', overflowY: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Ref</th>
+                  <th>Descrição</th>
+                  <th style={{width: '90px'}}>R$ Unit.</th>
+                  <th style={{width: '70px'}}>Qtd</th>
+                  <th style={{width: '90px'}}>Subtotal</th>
+                  <th style={{width: '40px'}}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.length === 0 && <tr><td colSpan="6" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Nenhum item adicionado.</td></tr>}
+                {items.map((it, idx) => {
+                  const subtot = parseN(it.precoUnit) * parseN(it.qtd);
+                  return (
+                    <tr key={idx}>
+                      <td>{it.indiceFt}</td>
+                      <td>{it.nomePeca}</td>
+                      <td>
+                        <input type="number" step="0.01" className="input-sm" value={it.precoUnit} onChange={(e) => handleItemChange(idx, 'precoUnit', e.target.value)} />
+                      </td>
+                      <td>
+                        <input type="number" className="input-sm" value={it.qtd} onChange={(e) => handleItemChange(idx, 'qtd', e.target.value)} />
+                      </td>
+                      <td style={{fontWeight: 'bold', color: 'var(--accent-primary)'}}>
+                        R$ {fmt(subtot)}
+                      </td>
+                      <td>
+                        <button className="btn-icon danger" onClick={() => handleRemoveItem(idx)}><Trash2 size={16} /></button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          
+          <div style={{ marginTop: '16px', textAlign: 'right', fontSize: '1.2rem', fontWeight: 'bold' }}>
+            Total: R$ {fmt(totalGeral)}
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn-secondary" onClick={onCancel}>Cancelar</button>
+          <button className="btn-primary" onClick={handleSaveOrcamento} disabled={isSaving}>
+            {isSaving ? 'Salvando...' : 'Salvar Orçamento'}
+          </button>
+        </div>
+      </div>
+
+      {showCustomModal && (
+        <CustomQuoteProductModal 
+          onClose={() => setShowCustomModal(false)}
+          onSave={handleSaveCustomProduct}
+        />
+      )}
+    </div>
+  );
+}
 
 export default function Orcamentos() {
-  const [savedOrcs, setSavedOrcs] = useState([]);
+  const { profile } = useAuth();
+  const [orcamentos, setOrcamentos] = useState([]);
+  const [fts, setFts] = useState([]);
+  const [customProducts, setCustomProducts] = useState([]);
   const [loadingDb, setLoadingDb] = useState(true);
-  const [inputs, setInputs] = useState({ ...INITIAL_STATE });
-  const [searchTerm, setSearchTerm] = useState('');
+  
+  const [showModal, setShowModal] = useState(false);
+  const [editingOrcamento, setEditingOrcamento] = useState(null);
+
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'save', title: '', details: [], onConfirm: null });
+  const closeConfirm = () => setConfirmModal(m => ({ ...m, isOpen: false }));
 
   useEffect(() => {
-    fetchOrcamentos();
+    fetchData();
   }, []);
 
-  const fetchOrcamentos = async () => {
+  const fetchData = async () => {
     setLoadingDb(true);
     try {
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      
-      const rawResp = await fetch(`${SUPA_URL}/rest/v1/orcamentos_rapidos?select=*&order=id.asc`, {
-        headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
-      });
-      
-      if (rawResp.ok) {
-        const data = await rawResp.json();
-        setSavedOrcs(data);
-        setInputs(prev => ({ ...prev, id: getNextOrcId(data) }));
+      const headers = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
+
+      const [ordersResp, ftsResp, customResp] = await Promise.all([
+        fetch(`${SUPA_URL}/rest/v1/orders?select=*&order=created_at.desc`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=id,name,data&order=name.asc`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/orcamentos_rapidos?select=*&order=name.asc`, { headers })
+      ]);
+
+      if (ordersResp.ok) {
+        const data = await ordersResp.json();
+        setOrcamentos(data.filter(o => o.client_data?.tipo === 'orcamento'));
+      }
+      if (ftsResp.ok) {
+        const data = await ftsResp.json();
+        setFts(data.map(d => ({ indiceFt: d.data?.indiceFt || d.id, nomePeca: d.name, data: d.data })));
+      }
+      if (customResp.ok) {
+        setCustomProducts(await customResp.json());
       }
     } catch (e) {
-      console.error("Erro ao buscar orçamentos:", e);
+      console.error(e);
     } finally {
       setLoadingDb(false);
     }
   };
 
-  const handleChange = (e) => {
-    let { name, value } = e.target;
-    
-    if (name === "id") {
-      const orcExistente = savedOrcs.find(o => o.id === value);
-      if (orcExistente) {
-        if (window.confirm(`O orçamento ${value} já possui dados salvos ("${orcExistente.name}"). Deseja carregar os dados para edição?`)) {
-          setInputs({
-            id: orcExistente.id,
-            name: orcExistente.name,
-            price: orcExistente.data?.price || '',
-            description: orcExistente.data?.description || ''
-          });
-          return;
-        }
-      }
-    }
-
-    if (name === "price" && typeof value === 'string') {
-      value = value.replace(',', '.');
-    }
-
-    setInputs(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleSave = async () => {
-    if (!inputs.id.trim()) return alert("O ID não pode estar vazio.");
-    if (!inputs.name.trim()) return alert("O Nome não pode estar vazio.");
+  const handleSaveOrcamento = async ({ cliente, items, id }) => {
+    const total = items.reduce((s, it) => s + parseN(it.precoUnit) * parseN(it.qtd), 0);
     
     const dbRecord = {
-      id: inputs.id,
-      name: inputs.name,
-      data: {
-        price: inputs.price ? parseFloat(inputs.price) : 0,
-        description: inputs.description
-      }
+      client_data: { ...cliente, tipo: 'orcamento' },
+      items,
+      total,
+      status: 'pending' 
     };
-
-    setSavedOrcs(prev => {
-      const idx = prev.findIndex(item => item.id === inputs.id);
-      let novaLista = [...prev];
-
-      if (idx >= 0) {
-        novaLista[idx] = dbRecord;
-      } else {
-        novaLista.push(dbRecord);
-      }
-
-      setTimeout(() => {
-        setInputs({
-          id: getNextOrcId(novaLista),
-          name: '',
-          price: '',
-          description: ''
-        });
-      }, 100);
-      return novaLista;
-    });
 
     const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
     const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -118,157 +479,144 @@ export default function Orcamentos() {
       'apikey': SUPA_KEY, 
       'Authorization': `Bearer ${SUPA_KEY}`,
       'Content-Type': 'application/json',
-      'Prefer': 'resolution=merge-duplicates'
+      'Prefer': 'return=representation'
     };
-    
-    await fetch(`${SUPA_URL}/rest/v1/orcamentos_rapidos`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(dbRecord)
-    });
-  };
 
-  const handleEdit = (orc) => {
-    setInputs({
-      id: orc.id,
-      name: orc.name,
-      price: orc.data?.price || '',
-      description: orc.data?.description || ''
-    });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+    let url = `${SUPA_URL}/rest/v1/orders`;
+    let method = 'POST';
 
-  const handleDelete = async (id) => {
-    if(window.confirm(`Tem certeza que deseja excluir o orçamento ${id}?`)) {
-      setSavedOrcs(prev => {
-        const nova = prev.filter(o => o.id !== id);
-        setInputs(c => ({...c, id: getNextOrcId(nova)}));
-        return nova;
-      });
-      
-      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
-      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      await fetch(`${SUPA_URL}/rest/v1/orcamentos_rapidos?id=eq.${id}`, {
-        method: 'DELETE',
-        headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
-      });
+    if (id) {
+      url += `?id=eq.${id}`;
+      method = 'PATCH';
+    }
+
+    try {
+      const resp = await fetch(url, { method, headers, body: JSON.stringify(dbRecord) });
+      if (!resp.ok) throw new Error('Erro ao salvar');
+      await fetchData();
+      setShowModal(false);
+      setEditingOrcamento(null);
+    } catch (e) {
+      alert(e.message);
     }
   };
 
-  const filteredOrcs = savedOrcs.filter(o => {
-    const nome = o.name ? String(o.name).toLowerCase() : "";
-    const id = o.id ? String(o.id).toLowerCase() : "";
-    const search = searchTerm.toLowerCase();
-    return nome.includes(search) || id.includes(search);
-  });
+  const handleFaturar = (orc) => {
+    setConfirmModal({
+      isOpen: true,
+      type: 'save',
+      title: 'Faturar Orçamento (Aprovar)',
+      details: ['Ao faturar este orçamento, ele será convertido em um Pedido de Venda aprovado (Pago) e entrará no Resumo financeiro. Confirmar?'],
+      onConfirm: async () => {
+        closeConfirm();
+        const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+        const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const dbRecord = {
+          client_data: { ...orc.client_data, tipo: 'pedido' },
+          status: 'paid',
+          payment_date: new Date().toISOString().split('T')[0]
+        };
+        await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${orc.id}`, {
+          method: 'PATCH',
+          headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(dbRecord)
+        });
+        await fetchData();
+        alert('Orçamento faturado com sucesso! Agora ele consta como um Pedido na tela de Pedidos e Resumo.');
+      }
+    });
+  };
+
+  const handleRecusar = async (orc) => {
+    if (!window.confirm('Tem certeza que deseja marcar este orçamento como Recusado?')) return;
+    const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${orc.id}`, {
+      method: 'PATCH',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'rejected' })
+    });
+    fetchData();
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Excluir este orçamento definitivamente?')) return;
+    const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${id}`, {
+      method: 'DELETE',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+    });
+    fetchData();
+  };
 
   return (
-    <div className="page-wrapper">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
+    <div className="page-wrapper pedidos-page">
+      <div className="page-header">
         <div>
-          <h1 className="page-title">Orçamentos Rápidos</h1>
-          <p className="page-description">Cadastre itens personalizados ou avulsos que não são Fichas Técnicas (FTs) padrão, para usá-los diretamente nos Pedidos.</p>
+          <h1 className="page-title">Orçamentos</h1>
+          <p className="page-description">Crie orçamentos rápidos, cadastre clientes e aprove pedidos para o financeiro.</p>
         </div>
-        <button className="btn-primary" onClick={handleSave}>💾 Salvar Orçamento</button>
-      </div>
-      
-      <div className="card" style={{ marginBottom: '2.5rem' }}>
-        <h3 style={{ marginBottom: '1.5rem', color: 'var(--text-primary)' }}>Novo Orçamento</h3>
-        <div className="form-grid-2">
-          <div className="form-group">
-            <label>ID do Orçamento</label>
-            <input 
-              name="id" 
-              value={inputs.id} 
-              onChange={handleChange} 
-              placeholder="Ex: ORC-01" 
-            />
-          </div>
-          <div className="form-group">
-            <label>Nome do Item / Serviço</label>
-            <input 
-              name="name" 
-              value={inputs.name} 
-              onChange={handleChange} 
-              placeholder="Ex: Troféu Personalizado Acrílico" 
-            />
-          </div>
-          <div className="form-group">
-            <label>Preço de Venda Sugerido (R$)</label>
-            <input 
-              name="price" 
-              type="number"
-              step="0.01"
-              value={inputs.price} 
-              onChange={handleChange} 
-              placeholder="Ex: 150.00" 
-            />
-          </div>
-          <div className="form-group">
-            <label>Descrição / Observações</label>
-            <input 
-              name="description" 
-              value={inputs.description} 
-              onChange={handleChange} 
-              placeholder="Ex: Inclui pintura manual dourada" 
-            />
-          </div>
-        </div>
+        <button className="btn-primary" onClick={() => { setEditingOrcamento(null); setShowModal(true); }}>
+          + Novo Orçamento
+        </button>
       </div>
 
       <div className="card">
-        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem'}}>
-          <h3 style={{color: 'var(--text-primary)', margin: 0}}>
-            📋 Orçamentos Salvos
-          </h3>
-          
-          <div className="search-bar" style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-primary)', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-             <span style={{ marginRight: '0.5rem' }}>🔍</span>
-             <input 
-               type="text" 
-               placeholder="Buscar por nome ou ID..." 
-               value={searchTerm} 
-               onChange={(e) => setSearchTerm(e.target.value)}
-               style={{ border: 'none', background: 'transparent', outline: 'none', color: 'var(--text-primary)' }}
-             />
-          </div>
-        </div>
-        
         {loadingDb ? (
-          <div style={{textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)'}}>
-             <Loader size={40} className="spinner" color="var(--primary)" style={{marginBottom: '1rem'}} />
-             <p>Carregando orçamentos...</p>
+          <div style={{ padding: '3rem', textAlign: 'center' }}>
+            <Loader className="spinner" size={40} style={{ margin: '0 auto', color: 'var(--accent-primary)' }} />
           </div>
-        ) : filteredOrcs.length === 0 ? (
-          <div style={{textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)'}}>
-            <p>Nenhum orçamento encontrado.</p>
+        ) : orcamentos.length === 0 ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+            Nenhum orçamento pendente.
           </div>
         ) : (
           <div className="table-responsive">
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <table className="data-table">
               <thead>
-                <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                  <th style={{ padding: '1rem' }}>ID</th>
-                  <th style={{ padding: '1rem' }}>Nome</th>
-                  <th style={{ padding: '1rem' }}>Preço</th>
-                  <th style={{ padding: '1rem' }}>Descrição</th>
-                  <th style={{ padding: '1rem', textAlign: 'right' }}>Ações</th>
+                <tr>
+                  <th>Data</th>
+                  <th>Cliente</th>
+                  <th>Itens</th>
+                  <th>Total</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {[...filteredOrcs].sort((a, b) => (a.id || '').localeCompare(b.id || '', undefined, { numeric: true })).map(orc => (
-                  <tr key={orc.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <td style={{ padding: '1rem' }}>
-                      <span style={{ background: '#FEF3C7', color: '#D97706', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                        {orc.id}
-                      </span>
+                {orcamentos.map(orc => (
+                  <tr key={orc.id}>
+                    <td>{new Date(orc.created_at).toLocaleDateString('pt-BR')}</td>
+                    <td style={{ fontWeight: '600' }}>{orc.client_data?.nome}</td>
+                    <td>{orc.items?.map(i => `${i.qtd}x ${i.nomePeca}`).join(', ')}</td>
+                    <td style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>R$ {fmt(orc.total)}</td>
+                    <td>
+                      {orc.status === 'pending' && <span className="badge" style={{background: '#FEF3C7', color: '#D97706'}}>Pendente</span>}
+                      {orc.status === 'rejected' && <span className="badge" style={{background: '#FEE2E2', color: '#DC2626'}}>Recusado</span>}
                     </td>
-                    <td style={{ padding: '1rem', fontWeight: '600', color: 'var(--text-primary)' }}>{orc.name}</td>
-                    <td style={{ padding: '1rem', color: 'var(--text-primary)' }}>R$ {orc.data?.price ? parseFloat(orc.data.price).toFixed(2) : '0.00'}</td>
-                    <td style={{ padding: '1rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{orc.data?.description || '—'}</td>
-                    <td style={{ padding: '1rem', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                      <button onClick={() => handleEdit(orc)} style={{color: 'var(--accent-primary)', fontWeight: 'bold', background: 'none', border: 'none', cursor: 'pointer'}}>✏️ Editar</button>
-                      <button onClick={() => handleDelete(orc.id)} style={{color: 'var(--danger)', fontWeight: 'bold', background: 'none', border: 'none', cursor: 'pointer'}}>🗑️</button>
+                    <td style={{ textAlign: 'right' }}>
+                      <div className="action-buttons" style={{ justifyContent: 'flex-end' }}>
+                        {orc.status === 'pending' && (
+                          <>
+                            <button className="btn-icon" onClick={() => handleFaturar(orc)} title="Faturar (Aprovar) e gerar pedido">
+                              <CheckCircle size={18} color="#059669" />
+                            </button>
+                            <button className="btn-icon" onClick={() => handleRecusar(orc)} title="Recusar Orçamento">
+                              <XCircle size={18} color="#DC2626" />
+                            </button>
+                          </>
+                        )}
+                        <button className="btn-icon" onClick={() => openPrintOrcamento(orc, profile?.tenants)} title="Imprimir Orçamento">
+                          <Printer size={18} />
+                        </button>
+                        <button className="btn-icon" onClick={() => { setEditingOrcamento(orc); setShowModal(true); }} title="Editar">
+                          <Edit2 size={18} />
+                        </button>
+                        <button className="btn-icon danger" onClick={() => handleDelete(orc.id)} title="Excluir">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -277,6 +625,25 @@ export default function Orcamentos() {
           </div>
         )}
       </div>
+
+      {showModal && (
+        <ModalOrcamento
+          fts={fts}
+          customProducts={customProducts}
+          onSave={handleSaveOrcamento}
+          onCancel={() => { setShowModal(false); setEditingOrcamento(null); }}
+          initialData={editingOrcamento}
+        />
+      )}
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        type={confirmModal.type}
+        title={confirmModal.title}
+        details={confirmModal.details}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }
