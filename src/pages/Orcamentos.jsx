@@ -299,110 +299,110 @@ function ModalOrcamento({ fts, customProducts, onSave, onCancel, initialData }) 
   const totalGeral = items.reduce((s, it) => s + parseN(it.precoUnit) * parseN(it.qtd), 0);
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '800px' }}>
-        <div className="modal-header">
-          <h2>{initialData ? 'Editar Orçamento' : 'Novo Orçamento'}</h2>
-          <button className="btn-close" onClick={onCancel}>×</button>
-        </div>
-        <div className="modal-body">
-          <div className="form-grid">
-            <div className="form-group">
-              <label>Nome do Cliente</label>
-              <input type="text" name="nome" value={cliente.nome} onChange={handleClientChange} />
-            </div>
-            <div className="form-group">
-              <label>Telefone</label>
-              <input type="text" name="telefone" value={cliente.telefone} onChange={handleClientChange} />
-            </div>
-            <div className="form-group">
-              <label>E-mail</label>
-              <input type="text" name="email" value={cliente.email} onChange={handleClientChange} />
-            </div>
-            <div className="form-group">
-              <label>Endereço</label>
-              <input type="text" name="endereco" value={cliente.endereco} onChange={handleClientChange} />
-            </div>
-            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-              <label>Observações</label>
-              <input type="text" name="obs" value={cliente.obs} onChange={handleClientChange} />
-            </div>
-          </div>
-
-          <div style={{ marginTop: '24px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontSize: '1.1rem', color: 'var(--text-primary)' }}>Itens do Orçamento</h3>
-            <button className="btn-secondary btn-sm" onClick={() => setShowCustomModal(true)}>
-              <Plus size={16} style={{marginRight: '6px'}}/> Novo Produto Customizado
-            </button>
-          </div>
-          
+    <div className="card orcamento-form-card" style={{ padding: '24px', animation: 'fadeIn 0.3s' }}>
+      <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
+        <h2 style={{ margin: 0, color: 'var(--text-primary)' }}>{initialData ? 'Editar Orçamento' : 'Novo Orçamento'}</h2>
+        <button className="btn-secondary btn-sm" onClick={onCancel}>Voltar para Lista</button>
+      </div>
+      <div className="card-body">
+        <div className="form-grid">
           <div className="form-group">
-            <select onChange={handleAddItem} value="">
-              <option value="">+ Selecionar Produto Existente...</option>
-              <optgroup label="Fichas Técnicas">
-                {fts.map(ft => (
-                  <option key={ft.indiceFt} value={ft.indiceFt}>{ft.indiceFt} - {ft.nomePeca}</option>
-                ))}
-              </optgroup>
-              {customProducts.length > 0 && (
-                <optgroup label="Produtos de Orçamentos">
-                  {customProducts.map(cp => (
-                    <option key={cp.id} value={cp.id}>{cp.id} - {cp.name}</option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+            <label>Nome do Cliente</label>
+            <input type="text" name="nome" value={cliente.nome} onChange={handleClientChange} />
           </div>
-
-          <div className="items-table-wrapper" style={{ marginTop: '16px', maxHeight: '300px', overflowY: 'auto' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Ref</th>
-                  <th>Descrição</th>
-                  <th style={{width: '90px'}}>R$ Unit.</th>
-                  <th style={{width: '70px'}}>Qtd</th>
-                  <th style={{width: '90px'}}>Subtotal</th>
-                  <th style={{width: '40px'}}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.length === 0 && <tr><td colSpan="6" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Nenhum item adicionado.</td></tr>}
-                {items.map((it, idx) => {
-                  const subtot = parseN(it.precoUnit) * parseN(it.qtd);
-                  return (
-                    <tr key={idx}>
-                      <td>{it.indiceFt}</td>
-                      <td>{it.nomePeca}</td>
-                      <td>
-                        <input type="number" step="0.01" className="input-sm" value={it.precoUnit} onChange={(e) => handleItemChange(idx, 'precoUnit', e.target.value)} />
-                      </td>
-                      <td>
-                        <input type="number" className="input-sm" value={it.qtd} onChange={(e) => handleItemChange(idx, 'qtd', e.target.value)} />
-                      </td>
-                      <td style={{fontWeight: 'bold', color: 'var(--accent-primary)'}}>
-                        R$ {fmt(subtot)}
-                      </td>
-                      <td>
-                        <button className="btn-icon danger" onClick={() => handleRemoveItem(idx)}><Trash2 size={16} /></button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="form-group">
+            <label>Telefone</label>
+            <input type="text" name="telefone" value={cliente.telefone} onChange={handleClientChange} />
           </div>
-          
-          <div style={{ marginTop: '16px', textAlign: 'right', fontSize: '1.2rem', fontWeight: 'bold' }}>
-            Total: R$ {fmt(totalGeral)}
+          <div className="form-group">
+            <label>E-mail</label>
+            <input type="text" name="email" value={cliente.email} onChange={handleClientChange} />
+          </div>
+          <div className="form-group">
+            <label>Endereço</label>
+            <input type="text" name="endereco" value={cliente.endereco} onChange={handleClientChange} />
+          </div>
+          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <label>Observações</label>
+            <input type="text" name="obs" value={cliente.obs} onChange={handleClientChange} />
           </div>
         </div>
-        <div className="modal-footer">
-          <button className="btn-secondary" onClick={onCancel}>Cancelar</button>
-          <button className="btn-primary" onClick={handleSaveOrcamento} disabled={isSaving}>
-            {isSaving ? 'Salvando...' : 'Salvar Orçamento'}
+
+        <div style={{ marginTop: '32px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+          <h3 style={{ fontSize: '1.2rem', color: 'var(--text-primary)', margin: 0 }}>Itens do Orçamento</h3>
+          <button className="btn-secondary btn-sm" onClick={() => setShowCustomModal(true)}>
+            <Plus size={16} style={{marginRight: '6px'}}/> Novo Produto Customizado
           </button>
         </div>
+        
+        <div className="form-group" style={{ maxWidth: '400px' }}>
+          <select onChange={handleAddItem} value="">
+            <option value="">+ Selecionar Produto Existente...</option>
+            <optgroup label="Fichas Técnicas">
+              {fts.map(ft => (
+                <option key={ft.indiceFt} value={ft.indiceFt}>{ft.indiceFt} - {ft.nomePeca}</option>
+              ))}
+            </optgroup>
+            {customProducts.length > 0 && (
+              <optgroup label="Produtos de Orçamentos">
+                {customProducts.map(cp => (
+                  <option key={cp.id} value={cp.id}>{cp.id} - {cp.name}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        </div>
+
+        <div className="items-table-wrapper" style={{ marginTop: '20px' }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Ref</th>
+                <th>Descrição</th>
+                <th style={{width: '120px'}}>R$ Unit.</th>
+                <th style={{width: '100px'}}>Qtd</th>
+                <th style={{width: '120px'}}>Subtotal</th>
+                <th style={{width: '60px', textAlign: 'center'}}>Remover</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.length === 0 && <tr><td colSpan="6" style={{textAlign: 'center', padding: '2rem', color: 'var(--text-muted)'}}>Nenhum item adicionado ao orçamento.</td></tr>}
+              {items.map((it, idx) => {
+                const subtot = parseN(it.precoUnit) * parseN(it.qtd);
+                return (
+                  <tr key={idx}>
+                    <td style={{fontWeight: 'bold', color: 'var(--text-secondary)'}}>{it.indiceFt}</td>
+                    <td>{it.nomePeca}</td>
+                    <td>
+                      <input type="number" step="0.01" className="input-sm" style={{width: '100%'}} value={it.precoUnit} onChange={(e) => handleItemChange(idx, 'precoUnit', e.target.value)} />
+                    </td>
+                    <td>
+                      <input type="number" className="input-sm" style={{width: '100%'}} value={it.qtd} onChange={(e) => handleItemChange(idx, 'qtd', e.target.value)} />
+                    </td>
+                    <td style={{fontWeight: 'bold', color: 'var(--accent-primary)', fontSize: '1.1rem'}}>
+                      R$ {fmt(subtot)}
+                    </td>
+                    <td style={{textAlign: 'center'}}>
+                      <button className="btn-icon danger" onClick={() => handleRemoveItem(idx)}><Trash2 size={18} /></button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        
+        <div style={{ marginTop: '24px', padding: '16px', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '24px' }}>
+          <div style={{ fontSize: '1.4rem', color: 'var(--text-primary)' }}>
+            Total: <strong style={{ color: 'var(--accent-primary)', fontSize: '1.8rem' }}>R$ {fmt(totalGeral)}</strong>
+          </div>
+        </div>
+      </div>
+      <div className="card-footer" style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+        <button className="btn-secondary" onClick={onCancel} style={{ padding: '10px 24px' }}>Cancelar</button>
+        <button className="btn-primary" onClick={handleSaveOrcamento} disabled={isSaving} style={{ padding: '10px 32px', fontSize: '1.1rem' }}>
+          {isSaving ? 'Salvando...' : 'Salvar Orçamento'}
+        </button>
       </div>
 
       {showCustomModal && (
@@ -552,81 +552,7 @@ export default function Orcamentos() {
 
   return (
     <div className="page-wrapper pedidos-page">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Orçamentos</h1>
-          <p className="page-description">Crie orçamentos rápidos, cadastre clientes e aprove pedidos para o financeiro.</p>
-        </div>
-        <button className="btn-primary" onClick={() => { setEditingOrcamento(null); setShowModal(true); }}>
-          + Novo Orçamento
-        </button>
-      </div>
-
-      <div className="card">
-        {loadingDb ? (
-          <div style={{ padding: '3rem', textAlign: 'center' }}>
-            <Loader className="spinner" size={40} style={{ margin: '0 auto', color: 'var(--accent-primary)' }} />
-          </div>
-        ) : orcamentos.length === 0 ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-            Nenhum orçamento pendente.
-          </div>
-        ) : (
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Cliente</th>
-                  <th>Itens</th>
-                  <th>Total</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orcamentos.map(orc => (
-                  <tr key={orc.id}>
-                    <td>{new Date(orc.created_at).toLocaleDateString('pt-BR')}</td>
-                    <td style={{ fontWeight: '600' }}>{orc.client_data?.nome}</td>
-                    <td>{orc.items?.map(i => `${i.qtd}x ${i.nomePeca}`).join(', ')}</td>
-                    <td style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>R$ {fmt(orc.total)}</td>
-                    <td>
-                      {orc.status === 'pending' && <span className="badge" style={{background: '#FEF3C7', color: '#D97706'}}>Pendente</span>}
-                      {orc.status === 'rejected' && <span className="badge" style={{background: '#FEE2E2', color: '#DC2626'}}>Recusado</span>}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div className="action-buttons" style={{ justifyContent: 'flex-end' }}>
-                        {orc.status === 'pending' && (
-                          <>
-                            <button className="btn-icon" onClick={() => handleFaturar(orc)} title="Faturar (Aprovar) e gerar pedido">
-                              <CheckCircle size={18} color="#059669" />
-                            </button>
-                            <button className="btn-icon" onClick={() => handleRecusar(orc)} title="Recusar Orçamento">
-                              <XCircle size={18} color="#DC2626" />
-                            </button>
-                          </>
-                        )}
-                        <button className="btn-icon" onClick={() => openPrintOrcamento(orc, profile?.tenants)} title="Imprimir Orçamento">
-                          <Printer size={18} />
-                        </button>
-                        <button className="btn-icon" onClick={() => { setEditingOrcamento(orc); setShowModal(true); }} title="Editar">
-                          <Edit2 size={18} />
-                        </button>
-                        <button className="btn-icon danger" onClick={() => handleDelete(orc.id)} title="Excluir">
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {showModal && (
+      {showModal ? (
         <ModalOrcamento
           fts={fts}
           customProducts={customProducts}
@@ -634,6 +560,82 @@ export default function Orcamentos() {
           onCancel={() => { setShowModal(false); setEditingOrcamento(null); }}
           initialData={editingOrcamento}
         />
+      ) : (
+        <>
+          <div className="page-header">
+            <div>
+              <h1 className="page-title">Orçamentos</h1>
+              <p className="page-description">Crie orçamentos rápidos, cadastre clientes e aprove pedidos para o financeiro.</p>
+            </div>
+            <button className="btn-primary" onClick={() => { setEditingOrcamento(null); setShowModal(true); }}>
+              + Novo Orçamento
+            </button>
+          </div>
+
+          <div className="card">
+            {loadingDb ? (
+              <div style={{ padding: '3rem', textAlign: 'center' }}>
+                <Loader className="spinner" size={40} style={{ margin: '0 auto', color: 'var(--accent-primary)' }} />
+              </div>
+            ) : orcamentos.length === 0 ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                Nenhum orçamento pendente.
+              </div>
+            ) : (
+              <div className="table-responsive">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Cliente</th>
+                      <th>Itens</th>
+                      <th>Total</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orcamentos.map(orc => (
+                      <tr key={orc.id}>
+                        <td>{new Date(orc.created_at).toLocaleDateString('pt-BR')}</td>
+                        <td style={{ fontWeight: '600' }}>{orc.client_data?.nome}</td>
+                        <td>{orc.items?.map(i => `${i.qtd}x ${i.nomePeca}`).join(', ')}</td>
+                        <td style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>R$ {fmt(orc.total)}</td>
+                        <td>
+                          {orc.status === 'pending' && <span className="badge" style={{background: '#FEF3C7', color: '#D97706'}}>Pendente</span>}
+                          {orc.status === 'rejected' && <span className="badge" style={{background: '#FEE2E2', color: '#DC2626'}}>Recusado</span>}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div className="action-buttons" style={{ justifyContent: 'flex-end' }}>
+                            {orc.status === 'pending' && (
+                              <>
+                                <button className="btn-icon" onClick={() => handleFaturar(orc)} title="Faturar (Aprovar) e gerar pedido">
+                                  <CheckCircle size={18} color="#059669" />
+                                </button>
+                                <button className="btn-icon" onClick={() => handleRecusar(orc)} title="Recusar Orçamento">
+                                  <XCircle size={18} color="#DC2626" />
+                                </button>
+                              </>
+                            )}
+                            <button className="btn-icon" onClick={() => openPrintOrcamento(orc, profile?.tenants)} title="Imprimir Orçamento">
+                              <Printer size={18} />
+                            </button>
+                            <button className="btn-icon" onClick={() => { setEditingOrcamento(orc); setShowModal(true); }} title="Editar">
+                              <Edit2 size={18} />
+                            </button>
+                            <button className="btn-icon danger" onClick={() => handleDelete(orc.id)} title="Excluir">
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       <ConfirmModal
