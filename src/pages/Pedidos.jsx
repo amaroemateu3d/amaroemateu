@@ -28,16 +28,19 @@ const INITIAL_FT_STATE = {
 };
 
 // Subcomponent: Custom Product Modal
-function CustomQuoteProductModal({ onClose, onSave, fts = [] }) {
+function CustomQuoteProductModal({ onClose, onSave, fts = [], currentItens = [] }) {
   const nextId = useMemo(() => {
-    const cftNumbers = fts
-      .filter(f => f.indiceFt && f.indiceFt.startsWith('CFT-'))
-      .map(f => parseInt(f.indiceFt.replace('CFT-', ''), 10))
+    const list1 = fts.map(f => f.indiceFt);
+    const list2 = currentItens.map(f => f.indiceFt);
+    const all = [...list1, ...list2];
+    const cftNumbers = all
+      .filter(id => id && id.startsWith('CFT-'))
+      .map(id => parseInt(id.replace('CFT-', ''), 10))
       .filter(n => !isNaN(n));
       
     const max = cftNumbers.length > 0 ? Math.max(...cftNumbers) : 0;
     return `CFT-${String(max + 1).padStart(2, '0')}`;
-  }, [fts]);
+  }, [fts, currentItens]);
 
   const [inputs, setInputs] = useState({ ...INITIAL_FT_STATE, indiceFt: nextId });
 
@@ -421,53 +424,42 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
   const [itens, setItens] = useState(() => {
     if (!Array.isArray(fts)) return [];
     
-    // 1. Agrupar itens do pedido caso haja duplicatas (ex: lançados repetidas vezes no Orçamento)
-    const groupedSavedItems = {};
+    const finalItems = [];
+
+    // 1. Inserir todos os itens salvos do pedido (mantendo duplicatas intactas e atribuindo um _uid)
     if (initialData?.itens) {
-      initialData.itens.forEach(it => {
-        if (!groupedSavedItems[it.indiceFt]) {
-          groupedSavedItems[it.indiceFt] = { ...it, qtd: parseN(it.qtd) };
-        } else {
-          groupedSavedItems[it.indiceFt].qtd += parseN(it.qtd);
-        }
-      });
-    }
-
-    // 2. Mapear FTs
-    const mapped = fts.map(ft => {
-      const savedItem = groupedSavedItems[ft.indiceFt];
-      let defaultPreco;
-      if (ft.isOrcamento) {
-        defaultPreco = ft.precoSugerido ? ft.precoSugerido.toFixed(2) : "0.00";
-      } else {
-        defaultPreco = ((ft._custoFinal || 0) * 3).toFixed(2);
-      }
-
-      return {
-        indiceFt: ft.indiceFt,
-        nomePeca: ft.nomePeca || 'Sem Nome',
-        custoBase: ft._custoFinal || 0,
-        precoUnit: savedItem ? savedItem.precoUnit : defaultPreco,
-        qtd: savedItem ? savedItem.qtd : 0,
-        isOrcamento: ft.isOrcamento
-      };
-    });
-
-    // 3. Adicionar itens do pedido que não estão nas FTs
-    Object.values(groupedSavedItems).forEach(savedItem => {
-      if (!mapped.find(it => it.indiceFt === savedItem.indiceFt)) {
-        mapped.unshift({
+      initialData.itens.forEach(savedItem => {
+        finalItems.push({
+          _uid: Math.random().toString(36).substring(2, 9),
           indiceFt: savedItem.indiceFt,
           nomePeca: savedItem.nomePeca || 'Item Excluído',
           custoBase: savedItem.custoBase || 0,
           precoUnit: savedItem.precoUnit || 0,
           qtd: savedItem.qtd || 0,
-          isOrcamento: savedItem.isOrcamento || true
+          isOrcamento: savedItem.isOrcamento || true,
+          _isSaved: true
+        });
+      });
+    }
+
+    // 2. Inserir as FTs que AINDA NÃO ESTÃO no pedido (para que o usuário possa adicioná-las)
+    fts.forEach(ft => {
+      const alreadyHasThisFt = finalItems.some(it => it.indiceFt === ft.indiceFt);
+      if (!alreadyHasThisFt) {
+        let defaultPreco = ft.isOrcamento ? (ft.precoSugerido ? ft.precoSugerido.toFixed(2) : "0.00") : ((ft._custoFinal || 0) * 3).toFixed(2);
+        finalItems.push({
+          _uid: Math.random().toString(36).substring(2, 9),
+          indiceFt: ft.indiceFt,
+          nomePeca: ft.nomePeca || 'Sem Nome',
+          custoBase: ft._custoFinal || 0,
+          precoUnit: defaultPreco,
+          qtd: 0,
+          isOrcamento: ft.isOrcamento
         });
       }
     });
 
-    return mapped;
+    return finalItems;
   });
 
   const handleSaveCustomProduct = async (customInputs) => {
@@ -676,7 +668,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                         return String(a.indiceFt || '').localeCompare(String(b.indiceFt || ''), undefined, { numeric: true });
                       })
                       .map((it) => {
-                        const originalIdx = itens.findIndex(original => original.indiceFt === it.indiceFt);
+                        const originalIdx = itens.findIndex(original => original._uid === it._uid);
                         const qty = parseN(it.qtd);
                         const preco = parseN(it.precoUnit);
                         const sub = preco * qty;
@@ -690,7 +682,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                         const tempoUnit = ftOriginal ? getUnitProductionTime(ftOriginal) : 0;
 
                         return (
-                          <tr key={it.indiceFt || Math.random()} className={active ? 'row-active' : ''}>
+                          <tr key={it._uid || Math.random()} className={active ? 'row-active' : ''}>
                             <td>
                               <span className="badge-sm" style={it.isOrcamento ? { background: '#FEF3C7', color: '#D97706' } : {}}>
                                 {it.indiceFt}
