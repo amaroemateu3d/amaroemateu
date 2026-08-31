@@ -768,14 +768,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                                 onChange={e => updateItem(originalIdx, 'precoUnit', e.target.value)}
                               />
                             </td>
-                            <td>
-                              <input
-                                type="number"
-                                className="cell-input cell-qty"
-                                value={it.qtd}
-                                onChange={e => updateItem(originalIdx, 'qtd', e.target.value)}
-                              />
-                            </td>
+                            <td>{active ? <input type='number' className='cell-input cell-qty' value={it.qtd} onChange={e => updateItem(originalIdx, 'qtd', e.target.value)} title='Digite 0 para remover' /> : <button className='btn-primary' style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '4px', background: 'var(--accent-primary)', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => updateItem(originalIdx, 'qtd', 1)}>+ Adicionar</button>}</td>
                             <td style={{ textAlign: 'right' }} className={active ? 'subtotal-active' : ''}>
                               {active ? `R$ ${fmt(sub)}` : '—'}
                             </td>
