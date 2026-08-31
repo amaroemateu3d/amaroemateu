@@ -419,11 +419,23 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [itens, setItens] = useState(() => {
-    // Inicializa todos os itens disponíveis (FTs)
     if (!Array.isArray(fts)) return [];
     
+    // 1. Agrupar itens do pedido caso haja duplicatas (ex: lançados repetidas vezes no Orçamento)
+    const groupedSavedItems = {};
+    if (initialData?.itens) {
+      initialData.itens.forEach(it => {
+        if (!groupedSavedItems[it.indiceFt]) {
+          groupedSavedItems[it.indiceFt] = { ...it, qtd: parseN(it.qtd) };
+        } else {
+          groupedSavedItems[it.indiceFt].qtd += parseN(it.qtd);
+        }
+      });
+    }
+
+    // 2. Mapear FTs
     const mapped = fts.map(ft => {
-      const savedItem = initialData?.itens?.find(it => it.indiceFt === ft.indiceFt);
+      const savedItem = groupedSavedItems[ft.indiceFt];
       let defaultPreco;
       if (ft.isOrcamento) {
         defaultPreco = ft.precoSugerido ? ft.precoSugerido.toFixed(2) : "0.00";
@@ -441,21 +453,19 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
       };
     });
 
-    // Se estiver editando, garante que itens do pedido que não estão mais na lista de FTs também apareçam!
-    if (initialData?.itens) {
-      initialData.itens.forEach(savedItem => {
-        if (!mapped.find(it => it.indiceFt === savedItem.indiceFt)) {
-          mapped.unshift({
-            indiceFt: savedItem.indiceFt,
-            nomePeca: savedItem.nomePeca || 'Item Excluído',
-            custoBase: savedItem.custoBase || 0,
-            precoUnit: savedItem.precoUnit || 0,
-            qtd: savedItem.qtd || 0,
-            isOrcamento: savedItem.isOrcamento || true
-          });
-        }
-      });
-    }
+    // 3. Adicionar itens do pedido que não estão nas FTs
+    Object.values(groupedSavedItems).forEach(savedItem => {
+      if (!mapped.find(it => it.indiceFt === savedItem.indiceFt)) {
+        mapped.unshift({
+          indiceFt: savedItem.indiceFt,
+          nomePeca: savedItem.nomePeca || 'Item Excluído',
+          custoBase: savedItem.custoBase || 0,
+          precoUnit: savedItem.precoUnit || 0,
+          qtd: savedItem.qtd || 0,
+          isOrcamento: savedItem.isOrcamento || true
+        });
+      }
+    });
 
     return mapped;
   });
