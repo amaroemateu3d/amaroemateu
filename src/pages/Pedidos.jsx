@@ -458,7 +458,8 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
           custoBase: ft._custoFinal || 0,
           precoUnit: defaultPreco,
           qtd: 0,
-          isOrcamento: ft.isOrcamento
+          isOrcamento: ft.isOrcamento,
+          _rawOrcData: ft._rawOrcData
         });
       }
     });
