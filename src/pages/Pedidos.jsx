@@ -689,6 +689,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                       <th>Nome</th>
                       <th>Custo Prod.</th>
                       <th>Tempo Unit.</th>
+                      <th style={{ width: 90, textAlign: 'center' }}>Margem (x)</th>
                       <th style={{ width: 120 }}>Preço Unit. (R$)</th>
                       <th style={{ width: 80, textAlign: 'center' }}>Qtd</th>
                       <th style={{ textAlign: 'right' }}>Subtotal</th>
@@ -761,14 +762,37 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                               </td>
                             <td className="cost-cell">R$ {fmt(custoBase)}</td>
                             <td className="cost-cell">{formatTime(tempoUnit)}</td>
-                            <td>
-                              <input
-                                type="number"
-                                className="cell-input"
-                                value={it.precoUnit}
-                                onChange={e => updateItem(originalIdx, 'precoUnit', e.target.value)}
-                              />
-                            </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  className="cell-input"
+                                  style={{ width: "60px", textAlign: "center" }}
+                                  value={it.margemRaw ?? (custoBase > 0 ? (preco / custoBase).toFixed(2) : "0.00")}
+                                  onChange={e => {
+                                    const raw = e.target.value;
+                                    const m = parseFloat(raw) || 0;
+                                    setItens(prev => {
+                                      const next = [...prev];
+                                      next[originalIdx] = { ...next[originalIdx], precoUnit: (custoBase * m).toFixed(2), margemRaw: raw };
+                                      return next;
+                                    });
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  className="cell-input"
+                                  value={it.precoUnit}
+                                  onChange={e => {
+                                    setItens(prev => {
+                                      const next = [...prev];
+                                      next[originalIdx] = { ...next[originalIdx], precoUnit: e.target.value, margemRaw: undefined };
+                                      return next;
+                                    });
+                                  }}
+                                />
+                              </td>
                             <td>{active ? <input type='number' className='cell-input cell-qty' value={it.qtd} onChange={e => updateItem(originalIdx, 'qtd', e.target.value)} title='Digite 0 para remover' /> : <button className='btn-primary' style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '4px', background: 'var(--accent-primary)', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => updateItem(originalIdx, 'qtd', 1)}>+ Adicionar</button>}</td>
                             <td style={{ textAlign: 'right' }} className={active ? 'subtotal-active' : ''}>
                               {active ? `R$ ${fmt(sub)}` : '—'}
