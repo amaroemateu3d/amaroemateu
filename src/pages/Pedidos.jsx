@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getUnitProductionTime, formatTime } from '../utils/financeCalculators';
 import { supabase } from '../supabaseClient';
-import { Loader } from 'lucide-react';
+import { Loader, Edit2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import './Pedidos.css';
 import ConfirmModal from '../components/ConfirmModal';
@@ -28,8 +28,9 @@ const INITIAL_FT_STATE = {
 };
 
 // Subcomponent: Custom Product Modal
-function CustomQuoteProductModal({ onClose, onSave, fts = [], currentItens = [] }) {
+function CustomQuoteProductModal({ onClose, onSave, fts = [], currentItens = [], initialData = null, editUid = null }) {
   const nextId = useMemo(() => {
+    if (initialData?.indiceFt) return initialData.indiceFt;
     const list1 = fts.map(f => f.indiceFt);
     const list2 = currentItens.map(f => f.indiceFt);
     const all = [...list1, ...list2];
@@ -40,9 +41,9 @@ function CustomQuoteProductModal({ onClose, onSave, fts = [], currentItens = [] 
       
     const max = cftNumbers.length > 0 ? Math.max(...cftNumbers) : 0;
     return `CFT-${String(max + 1).padStart(2, '0')}`;
-  }, [fts, currentItens]);
+  }, [fts, currentItens, initialData]);
 
-  const [inputs, setInputs] = useState({ ...INITIAL_FT_STATE, indiceFt: nextId });
+  const [inputs, setInputs] = useState(initialData || { ...INITIAL_FT_STATE, indiceFt: nextId });
 
   const handleChange = (e) => {
     let { name, value } = e.target;
@@ -54,7 +55,7 @@ function CustomQuoteProductModal({ onClose, onSave, fts = [], currentItens = [] 
 
   const handleSave = () => {
     if (!inputs.nomePeca) return alert("O Nome da peça não pode estar vazio.");
-    onSave(inputs);
+    onSave(inputs, editUid);
   };
 
   const results = getResultados(inputs);
@@ -421,6 +422,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [showCustomModal, setShowCustomModal] = useState(false);
+  const [editingCft, setEditingCft] = useState(null);
   const [itens, setItens] = useState(() => {
     if (!Array.isArray(fts)) return [];
     
@@ -462,7 +464,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
     return finalItems;
   });
 
-  const handleSaveCustomProduct = async (customInputs) => {
+  const handleSaveCustomProduct = async (customInputs, editUid = null) => {
     const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
     const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
     
@@ -487,16 +489,29 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
       const results = getResultados(customInputs);
       const precoFinal = parseN(customInputs.precoVendaManual) || results.precoPraticado || (results.custoFisicoUnit * 3) || 0;
       
-      setItens(prev => [{
-        indiceFt: customInputs.indiceFt,
-        nomePeca: customInputs.nomePeca,
-        custoBase: results.custoFisicoUnit,
-        precoUnit: precoFinal.toFixed(2),
-        qtd: 1, // Add 1 automatically
-        isOrcamento: true
-      }, ...prev]);
+      if (editUid) {
+        setItens(prev => prev.map(it => it._uid === editUid ? {
+          ...it,
+          nomePeca: customInputs.nomePeca,
+          custoBase: results.custoFisicoUnit,
+          precoUnit: precoFinal.toFixed(2),
+          _rawOrcData: customInputs
+        } : it));
+      } else {
+        setItens(prev => [{
+          _uid: Math.random().toString(36).substring(2, 9),
+          indiceFt: customInputs.indiceFt,
+          nomePeca: customInputs.nomePeca,
+          custoBase: results.custoFisicoUnit,
+          precoUnit: precoFinal.toFixed(2),
+          qtd: 1, // Add 1 automatically
+          isOrcamento: true,
+          _rawOrcData: customInputs
+        }, ...prev]);
+      }
       
       setShowCustomModal(false);
+      setEditingCft(null);
     } catch (err) {
       alert("Erro ao salvar produto customizado.");
     }
@@ -688,7 +703,24 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                                 {it.indiceFt}
                               </span>
                             </td>
-                            <td>{it.nomePeca}</td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {it.nomePeca}
+                                  {it.indiceFt?.startsWith('CFT-') && it._rawOrcData && (
+                                    <button 
+                                      className="btn-icon" 
+                                      title="Editar Custos do Produto Customizado"
+                                      onClick={() => {
+                                        setEditingCft(it);
+                                        setShowCustomModal(true);
+                                      }}
+                                      style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--accent-primary)' }}
+                                    >
+                                      <Edit2 size={14} />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
                             <td className="cost-cell">R$ {fmt(custoBase)}</td>
                             <td className="cost-cell">{formatTime(tempoUnit)}</td>
                             <td>
@@ -762,9 +794,12 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
       </div>
       {showCustomModal && (
         <CustomQuoteProductModal 
-          onClose={() => setShowCustomModal(false)}
+          onClose={() => { setShowCustomModal(false); setEditingCft(null); }}
           onSave={handleSaveCustomProduct}
           fts={fts}
+          currentItens={itens}
+          initialData={editingCft ? editingCft._rawOrcData : null}
+          editUid={editingCft ? editingCft._uid : null}
         />
       )}
     </div>
@@ -835,7 +870,8 @@ export default function Pedidos() {
         nomePeca: r.name,
         _custoFinal: 0,
         isOrcamento: true,
-        precoSugerido: r.data?.price || 0
+        precoSugerido: r.data?.price || 0,
+        _rawOrcData: r.data
       }));
 
       setFts([...cleanFts, ...cleanOrcs]);
