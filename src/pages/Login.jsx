@@ -79,6 +79,9 @@ export default function Login() {
           localStorage.removeItem('am3d_senha');
           localStorage.setItem('am3d_lembrar', 'false');
         }
+        
+        // Força o reload da página para garantir que o AuthContext pegue a sessão e não trave (simula o F5)
+        window.location.href = '/';
       }
     } catch (err) {
       console.error("Erro de execução no signInWithPassword:", err);
