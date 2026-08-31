@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getUnitProductionTime, formatTime } from '../utils/financeCalculators';
 import { supabase } from '../supabaseClient';
-import { Loader, Edit2 } from 'lucide-react';
+import { Loader, Edit2, Trash2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import './Pedidos.css';
 import ConfirmModal from '../components/ConfirmModal';
@@ -466,6 +466,29 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
     return finalItems;
   });
 
+  const handleDeleteCft = async (it) => {
+    if (!window.confirm(`Deseja realmente excluir o customizado "${it.nomePeca}" permanentemente do sistema?`)) return;
+
+    const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    try {
+      // Remove do banco de dados (tabela orcamentos_rapidos)
+      await fetch(`${SUPA_URL}/rest/v1/orcamentos_rapidos?id=eq.${it.indiceFt}`, {
+        method: 'DELETE',
+        headers: { 
+          'apikey': SUPA_KEY, 
+          'Authorization': `Bearer ${SUPA_KEY}`
+        }
+      });
+      
+      // Remove da tabela na tela atual
+      setItens(prev => prev.filter(row => row._uid !== it._uid));
+    } catch (err) {
+      alert("Erro ao excluir produto customizado.");
+    }
+  };
+
   const handleSaveCustomProduct = async (customInputs, editUid = null) => {
     const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
     const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -711,17 +734,27 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                   {it.nomePeca}
                                   {it.indiceFt?.startsWith('CFT-') && it._rawOrcData && (
-                                    <button 
-                                      className="btn-icon" 
-                                      title="Editar Custos do Produto Customizado"
-                                      onClick={() => {
-                                        setEditingCft(it);
-                                        setShowCustomModal(true);
-                                      }}
-                                      style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--accent-primary)' }}
-                                    >
-                                      <Edit2 size={14} />
-                                    </button>
+                                    <>
+                                      <button 
+                                        className="btn-icon" 
+                                        title="Editar Custos do Produto Customizado"
+                                        onClick={() => {
+                                          setEditingCft(it);
+                                          setShowCustomModal(true);
+                                        }}
+                                        style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--accent-primary)' }}
+                                      >
+                                        <Edit2 size={14} />
+                                      </button>
+                                      <button 
+                                        className="btn-icon" 
+                                        title="Excluir Produto Customizado"
+                                        onClick={() => handleDeleteCft(it)}
+                                        style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#EF4444' }}
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </>
                                   )}
                                 </div>
                               </td>
