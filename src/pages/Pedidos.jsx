@@ -431,6 +431,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
     // 1. Inserir todos os itens salvos do pedido (mantendo duplicatas intactas e atribuindo um _uid)
     if (initialData?.itens) {
       initialData.itens.forEach(savedItem => {
+        const originalFt = fts.find(f => f.indiceFt === savedItem.indiceFt);
         finalItems.push({
           _uid: Math.random().toString(36).substring(2, 9),
           indiceFt: savedItem.indiceFt,
@@ -439,6 +440,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
           precoUnit: savedItem.precoUnit || 0,
           qtd: savedItem.qtd || 0,
           isOrcamento: savedItem.isOrcamento || true,
+          _rawOrcData: savedItem._rawOrcData || (originalFt ? originalFt._rawOrcData : null),
           _isSaved: true
         });
       });
@@ -694,7 +696,9 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                         
                         // Busca a FT original para pegar o tempo
                         const ftOriginal = Array.isArray(fts) ? fts.find(f => f.indiceFt === it.indiceFt) : null;
-                        const tempoUnit = ftOriginal ? getUnitProductionTime(ftOriginal) : 0;
+                        const orcData = it._rawOrcData || (ftOriginal ? ftOriginal._rawOrcData : null);
+                        const timeSource = orcData || ftOriginal;
+                        const tempoUnit = timeSource ? getUnitProductionTime(timeSource) : 0;
 
                         return (
                           <tr key={it._uid || Math.random()} className={active ? 'row-active' : ''}>
