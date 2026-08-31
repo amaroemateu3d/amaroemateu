@@ -420,9 +420,9 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [itens, setItens] = useState(() => {
     // Inicializa todos os itens disponíveis (FTs)
-    // Se estiver editando, preenche com os valores já salvos anteriormente
     if (!Array.isArray(fts)) return [];
-    return fts.map(ft => {
+    
+    const mapped = fts.map(ft => {
       const savedItem = initialData?.itens?.find(it => it.indiceFt === ft.indiceFt);
       let defaultPreco;
       if (ft.isOrcamento) {
@@ -440,6 +440,24 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
         isOrcamento: ft.isOrcamento
       };
     });
+
+    // Se estiver editando, garante que itens do pedido que não estão mais na lista de FTs também apareçam!
+    if (initialData?.itens) {
+      initialData.itens.forEach(savedItem => {
+        if (!mapped.find(it => it.indiceFt === savedItem.indiceFt)) {
+          mapped.unshift({
+            indiceFt: savedItem.indiceFt,
+            nomePeca: savedItem.nomePeca || 'Item Excluído',
+            custoBase: savedItem.custoBase || 0,
+            precoUnit: savedItem.precoUnit || 0,
+            qtd: savedItem.qtd || 0,
+            isOrcamento: savedItem.isOrcamento || true
+          });
+        }
+      });
+    }
+
+    return mapped;
   });
 
   const handleSaveCustomProduct = async (customInputs) => {
