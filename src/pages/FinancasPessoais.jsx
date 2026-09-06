@@ -256,7 +256,7 @@ function ParcelasModal({ emprestimo, onClose, onUpdate }) {
     const s = calcStatus(p);
     if (s === "pago") return <span className="fp-badge fp-badge-green"><CheckCircle size={11} /> Pago</span>;
     if (s === "atrasado") return <span className="fp-badge fp-badge-red"><AlertCircle size={11} /> Atrasado</span>;
-    return <span className="fp-badge fp-badge-orange">A vencer</span>;
+    return <span className="fp-badge fp-badge-orange">Pendente</span>;
   };
 
   return (
@@ -265,7 +265,7 @@ function ParcelasModal({ emprestimo, onClose, onUpdate }) {
         <div style={{display:"flex",gap:"1rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
           <span className="fp-badge fp-badge-green">{pagas} pagas</span>
           {atrasadas > 0 && <span className="fp-badge fp-badge-red">{atrasadas} atrasadas</span>}
-          <span className="fp-badge fp-badge-orange">{pendentes} a vencer</span>
+          <span className="fp-badge fp-badge-orange">{pendentes} pendentes</span>
           <span className="fp-badge">{pct}% concluido</span>
         </div>
         <div className="fp-progress-wrap" style={{width:"100%",height:10}}><div className="fp-progress-bar" style={{width:`${pct}%`}} /></div>
@@ -324,7 +324,7 @@ function Emprestimos() {
     (parc || []).forEach(p => {
       if (!resumo[p.emprestimo_id]) resumo[p.emprestimo_id] = { pagas:0, total:0, atrasadas:0, pendentes:0, proximaVenc:null, valorParcela:0 };
       resumo[p.emprestimo_id].total++;
-      resumo[p.emprestimo_id].valorParcela = p.valor_parcela;
+      if (!resumo[p.emprestimo_id].valorParcela) resumo[p.emprestimo_id].valorParcela = parseFloat(p.valor_parcela) || 0;
       if (p.status === "pago") resumo[p.emprestimo_id].pagas++;
       else if (p.status !== "pago" && p.data_vencimento < new Date().toISOString().split("T")[0]) resumo[p.emprestimo_id].atrasadas++;
       else {
@@ -379,17 +379,18 @@ function Emprestimos() {
   };
 
   // Totais gerais
+  const totalFinanciado = emprestimos.reduce((s, e) => s + parseN(e.valor_total_financiado), 0);
+  const ativos = emprestimos.filter(e => e.status === "ativo").length;
   const totalMensal = emprestimos.filter(e => e.status === "ativo").reduce((s, e) => {
     const r = parcelas[e.id];
-    return s + (r ? parseN(r.valorParcela) : 0);
+    return s + parseN(r ? r.valorParcela : 0);
   }, 0);
-  const totalFinanciado = emprestimos.reduce((s, e) => s + parseN(e.valor_total_financiado), 0);
   const totalAberto = emprestimos.reduce((s, e) => {
     const r = parcelas[e.id];
     if (!r) return s;
-    return s + (parseN(r.valorParcela) * (r.total - r.pagas));
+    const restantes = r.total - r.pagas;
+    return s + (parseN(r.valorParcela) * restantes);
   }, 0);
-  const ativos = emprestimos.filter(e => e.status === "ativo").length;
 
   const diasAteVencer = (d) => {
     if (!d) return null;
