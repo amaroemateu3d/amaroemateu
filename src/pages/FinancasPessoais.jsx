@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient";
 import { PlusCircle, TrendingUp, TrendingDown, CreditCard, X, Trash2, AlertCircle, CheckCircle, ChevronDown, ChevronRight, Calendar } from "lucide-react";
 import "./FinancasPessoais.css";
 
-const CATEGORIAS_SAIDA = ["Mercado","Gasolina","Sem Parar","Escola / Filhos","Saude","Lazer","Contas Fixas","Vestuario","Restaurante","Outros"];
+const CATEGORIAS_SAIDA = ["Gastos fixos", "Escola", "Carros", "Mercado", "Vestuario", "Lazer"];
 const CATEGORIAS_ENTRADA = ["Salario","Freelance","Aluguel","Investimento","Outros"];
 const fmt = (v) => Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = () => new Date().toISOString().split("T")[0];
@@ -77,7 +77,7 @@ function Entradas() {
       </div>
       {loading ? <p className="fp-loading">Carregando...</p> : (
         <table className="fp-table">
-          <thead><tr><th>Data</th><th>Descricao</th><th>Categoria</th><th>Observacao</th><th style={{textAlign:"right"}}>Valor</th><th></th></tr></thead>
+          <thead><tr><th>Vencimento</th><th>Descricao</th><th>Categoria</th><th>Observacao</th><th style={{textAlign:"right"}}>Valor</th><th></th></tr></thead>
           <tbody>
             {listaDoMes.length === 0 && <tr><td colSpan={6} style={{textAlign:"center",color:"#888",padding:"2rem"}}>Nenhuma entrada neste mes.</td></tr>}
             {listaDoMes.map((e) => (
@@ -97,7 +97,7 @@ function Entradas() {
           <div className="fp-form-grid">
             <label>Descricao *<input className="fp-input" value={form.descricao} onChange={(e) => setForm((p) => ({ ...p, descricao: e.target.value }))} placeholder="Ex: Salario Dezembro" /></label>
             <label>Valor (R$) *<input className="fp-input" type="number" value={form.valor} onChange={(e) => setForm((p) => ({ ...p, valor: e.target.value }))} /></label>
-            <label>Data *<input className="fp-input" type="date" value={form.data} onChange={(e) => setForm((p) => ({ ...p, data: e.target.value }))} /></label>
+            <label> Vencimento * <input className="fp-input" type="date" value={form.data} onChange={(e) => setForm((p) => ({ ...p, data: e.target.value }))} /></label>
             <label>Categoria<select className="fp-input" value={form.categoria} onChange={(e) => setForm((p) => ({ ...p, categoria: e.target.value }))}>{CATEGORIAS_ENTRADA.map((c) => <option key={c}>{c}</option>)}</select></label>
             <label style={{gridColumn:"1 / -1"}}>Observacao<input className="fp-input" value={form.observacao} onChange={(e) => setForm((p) => ({ ...p, observacao: e.target.value }))} placeholder="Opcional" /></label>
           </div>
@@ -117,7 +117,7 @@ function Entradas() {
 function Saidas() {
   const [saidas, setSaidas] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ descricao: "", valor: "", data: today(), categoria: "Contas Fixas" });
+  const [form, setForm] = useState({ descricao: "", valor: "", data: today(), categoria: "Gastos fixos" });
   const [recorrente, setRecorrente] = useState(false);
   const [qtdMeses, setQtdMeses] = useState(12);
   const [jaPago, setJaPago] = useState(false);
@@ -175,7 +175,7 @@ function Saidas() {
       await supabase.from("pessoal_saidas").insert([{ ...form, valor: val > 0 ? val : null, pago: jaPago, grupo_id }]);
     }
     
-    setForm({ descricao: "", valor: "", data: today(), categoria: "Contas Fixas" });
+    setForm({ descricao: "", valor: "", data: today(), categoria: "Gastos fixos" });
     setRecorrente(false);
     setQtdMeses(12);
     setJaPago(false);
@@ -250,9 +250,7 @@ function Saidas() {
               {CATEGORIAS_SAIDA.map(c => <option key={c}>{c}</option>)}
             </select>
           </label>
-          <label style={{width: "130px", fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 500}}>
-            Data *
-            <input className="fp-input" type="date" value={form.data} onChange={e => setForm(p => ({...p, data: e.target.value}))} />
+          <label style={{width: "130px", fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 500}}> Vencimento * <input className="fp-input" type="date" value={form.data} onChange={e => setForm(p => ({...p, data: e.target.value}))} />
           </label>
           <div style={{display: "flex", flexDirection: "column", gap: "8px", alignItems: "center"}}>
             <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 600, cursor: "pointer" }}>
