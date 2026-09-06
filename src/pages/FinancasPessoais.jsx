@@ -214,15 +214,6 @@ function ParcelasModal({ emprestimo, onClose, onUpdate }) {
       .select("*")
       .eq("emprestimo_id", emprestimo.id)
       .order("numero_parcela");
-    // Atualiza atrasadas
-    const hoje = today();
-    const updates = (data || []).filter(p => p.status === "pendente" && p.data_vencimento < hoje);
-    if (updates.length > 0) {
-      await supabase.from("emprestimo_parcelas")
-        .update({ status: "atrasado" })
-        .in("id", updates.map(p => p.id));
-      updates.forEach(p => { p.status = "atrasado"; });
-    }
     setParcelas(data || []);
     setLoading(false);
   }, [emprestimo.id]);
@@ -248,16 +239,21 @@ function ParcelasModal({ emprestimo, onClose, onUpdate }) {
   };
 
   const pagas = parcelas.filter(p => p.status === "pago").length;
-  const atrasadas = parcelas.filter(p => p.status === "atrasado").length;
-  const pendentes = parcelas.filter(p => p.status === "pendente").length;
+  const hojeCalc = today();
+  const calcSt = (p) => p.status === "pago" ? "pago" : (p.data_vencimento < hojeCalc ? "atrasado" : "pendente");
+  const atrasadas = parcelas.filter(p => calcSt(p) === "atrasado").length;
+  const pendentes = parcelas.filter(p => calcSt(p) === "pendente").length;
   const pct = parcelas.length > 0 ? Math.round((pagas / parcelas.length) * 100) : 0;
 
   const listaFiltrada = filtro === "todas" ? parcelas :
     filtro === "pagas" ? parcelas.filter(p => p.status === "pago") :
-    filtro === "atrasadas" ? parcelas.filter(p => p.status === "atrasado") :
-    parcelas.filter(p => p.status === "pendente");
+    filtro === "atrasadas" ? parcelas.filter(p => calcSt(p) === "atrasado") :
+    parcelas.filter(p => calcSt(p) === "pendente");
 
-  const statusBadge = (s) => {
+  const hoje = today();
+  const calcStatus = (p) => p.status === "pago" ? "pago" : (p.data_vencimento < hoje ? "atrasado" : "pendente");
+  const statusBadge = (p) => {
+    const s = calcStatus(p);
     if (s === "pago") return <span className="fp-badge fp-badge-green"><CheckCircle size={11} /> Pago</span>;
     if (s === "atrasado") return <span className="fp-badge fp-badge-red"><AlertCircle size={11} /> Atrasado</span>;
     return <span className="fp-badge fp-badge-orange">A vencer</span>;
@@ -289,14 +285,14 @@ function ParcelasModal({ emprestimo, onClose, onUpdate }) {
             <thead><tr><th>#</th><th>Vencimento</th><th>Pagamento</th><th style={{textAlign:"right"}}>Valor</th><th style={{textAlign:"center"}}>Status</th><th></th></tr></thead>
             <tbody>
               {listaFiltrada.map(p => (
-                <tr key={p.id} className={p.status === "atrasado" ? "fp-row-alert" : p.status === "pago" ? "fp-row-done" : ""}>
+                <tr key={p.id} className={calcSt(p) === "atrasado" ? "fp-row-alert" : p.status === "pago" ? "fp-row-done" : ""}>
                   <td style={{fontWeight:600}}>{p.numero_parcela}/{parcelas.length}</td>
                   <td>{fmtDate(p.data_vencimento)}</td>
                   <td>{fmtDate(p.data_pagamento)}</td>
                   <td style={{textAlign:"right",fontWeight:600}}>R$ {fmt(p.valor_parcela)}</td>
-                  <td style={{textAlign:"center"}}>{statusBadge(p.status)}</td>
+                  <td style={{textAlign:"center"}}>{statusBadge(p)}</td>
                   <td>
-                    {p.status !== "pago"
+                    {calcSt(p) !== "pago"
                       ? <button className="fp-btn-sm fp-btn-green" onClick={() => handlePagar(p)}><CheckCircle size={12} /> Pagar</button>
                       : <button className="fp-btn-sm fp-btn-secondary" style={{fontSize:"0.72rem"}} onClick={() => handleEstornar(p)}>Estornar</button>}
                   </td>
@@ -330,7 +326,7 @@ function Emprestimos() {
       resumo[p.emprestimo_id].total++;
       resumo[p.emprestimo_id].valorParcela = p.valor_parcela;
       if (p.status === "pago") resumo[p.emprestimo_id].pagas++;
-      else if (p.status === "atrasado") resumo[p.emprestimo_id].atrasadas++;
+      else if (p.status !== "pago" && p.data_vencimento < new Date().toISOString().split("T")[0]) resumo[p.emprestimo_id].atrasadas++;
       else {
         resumo[p.emprestimo_id].pendentes++;
         if (!resumo[p.emprestimo_id].proximaVenc || p.data_vencimento < resumo[p.emprestimo_id].proximaVenc) {
