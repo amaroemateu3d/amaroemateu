@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient";
 import { PlusCircle, TrendingUp, TrendingDown, CreditCard, X, Trash2, AlertCircle, CheckCircle, ChevronDown, ChevronRight, Calendar } from "lucide-react";
 import "./FinancasPessoais.css";
 
-const CATEGORIAS_SAIDA = ["Gastos fixos", "Escola", "Carros", "Mercado", "Vestuario", "Lazer"];
+const CATEGORIAS_SAIDA = ["Gastos fixos", "Escola", "Carros", "Mercado", "Vestuario", "Lazer", "Variados"];
 const CATEGORIAS_ENTRADA = ["Salario","Freelance","Aluguel","Investimento","Outros"];
 const fmt = (v) => Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = () => new Date().toISOString().split("T")[0];
