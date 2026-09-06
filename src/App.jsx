@@ -14,6 +14,7 @@ import Usuarios from './pages/Usuarios';
 import Estoque from './pages/Estoque';
 import Login from './pages/Login';
 import Acertos from './pages/Acertos';
+import FinancasPessoais from './pages/FinancasPessoais';
 import './splash.css';
 
 // Tela de carregamento simples — apenas o logo centralizado
@@ -68,6 +69,7 @@ function AppContent() {
           <Route path="saidas" element={<Saidas />} />
           <Route path="resumo" element={<Resumo />} />
           <Route path="usuarios" element={<Usuarios />} />
+          <Route path="financas-pessoais" element={<FinancasPessoais />} />
         </Route>
       </Routes>
     </BrowserRouter>

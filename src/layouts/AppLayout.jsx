@@ -2,13 +2,13 @@ import { Outlet, NavLink, Link } from 'react-router-dom';
 import {
   LayoutDashboard, Calculator,
   ShoppingCart, TrendingDown, ClipboardList, BarChart3,
-  Download, LogOut, Users, Package, Search
+  Download, LogOut, Users, Package, Search, Wallet
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import './AppLayout.css';
 
 export default function AppLayout() {
-  const { signOut, profile, isAdmin, isDaniel } = useAuth();
+  const { signOut, profile, isAdmin, isDaniel, isPessoal } = useAuth();
 
   const handleBackup = () => {
     try {
@@ -116,6 +116,17 @@ export default function AppLayout() {
               <NavLink to="/usuarios" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
                 <Users size={20} />
                 <span>Gestão de Usuários</span>
+              </NavLink>
+            </>
+          )}
+
+          {/* Finanças Pessoais — Daniel e Cintia */}
+          {isPessoal && (
+            <>
+              <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '0.5rem 0' }} />
+              <NavLink to="/financas-pessoais" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
+                <Wallet size={20} style={{ color: '#F97316' }} />
+                <span style={{ color: '#F97316', fontWeight: 600 }}>Finanças Pessoais</span>
               </NavLink>
             </>
           )}

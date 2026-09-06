@@ -139,6 +139,8 @@ export function AuthProvider({ children }) {
   const isDaniel =
     profile?.id === '45a50fe2-fb93-4d1f-a1b9-c95eb470d38f' ||
     profile?.nome?.toLowerCase() === 'daniel';
+  const isCintia = profile?.nome?.toLowerCase() === 'cintia';
+  const isPessoal = isDaniel || isCintia;
 
   async function signOut() {
     try {
@@ -152,7 +154,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, profile, permissions, isAdmin, isAcertos, isDaniel, canView, canEdit, signOut, loading }}
+      value={{ session, profile, permissions, isAdmin, isAcertos, isDaniel, isCintia, isPessoal, canView, canEdit, signOut, loading }}
     >
       {children}
     </AuthContext.Provider>
