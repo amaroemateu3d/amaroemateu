@@ -1,18 +1,19 @@
 ﻿import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabaseClient";
-import { PlusCircle, TrendingUp, TrendingDown, CreditCard, X, Trash2, AlertCircle, CheckCircle } from "lucide-react";
+import { PlusCircle, TrendingUp, TrendingDown, CreditCard, X, Trash2, AlertCircle, CheckCircle, ChevronDown, ChevronRight, Calendar } from "lucide-react";
 import "./FinancasPessoais.css";
 
-const CATEGORIAS_SAIDA = ["Mercado","Gasolina","Sem Parar","Escola / Filhos","Saúde","Lazer","Contas Fixas","Vestuário","Restaurante","Outros"];
-const CATEGORIAS_ENTRADA = ["Salário","Freelance","Aluguel","Investimento","Outros"];
+const CATEGORIAS_SAIDA = ["Mercado","Gasolina","Sem Parar","Escola / Filhos","Saude","Lazer","Contas Fixas","Vestuario","Restaurante","Outros"];
+const CATEGORIAS_ENTRADA = ["Salario","Freelance","Aluguel","Investimento","Outros"];
 const fmt = (v) => Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = () => new Date().toISOString().split("T")[0];
 const parseN = (v) => parseFloat(String(v).replace(",", ".")) || 0;
+const fmtDate = (d) => { if (!d) return "—"; const [y,m,day] = d.split("-"); return `${day}/${m}/${y}`; };
 
-function ModalBase({ title, onClose, children }) {
+function ModalBase({ title, onClose, children, wide }) {
   return (
     <div className="fp-modal-overlay" onClick={onClose}>
-      <div className="fp-modal" onClick={(e) => e.stopPropagation()}>
+      <div className={"fp-modal" + (wide ? " fp-modal-wide" : "")} onClick={(e) => e.stopPropagation()}>
         <div className="fp-modal-header">
           <h3>{title}</h3>
           <button className="fp-close-btn" onClick={onClose}><X size={18} /></button>
@@ -23,11 +24,14 @@ function ModalBase({ title, onClose, children }) {
   );
 }
 
+// ─────────────────────────────────────────────
+// ABA ENTRADAS
+// ─────────────────────────────────────────────
 function Entradas() {
   const [entradas, setEntradas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ descricao: "", valor: "", data: today(), categoria: "Salário", observacao: "" });
+  const [form, setForm] = useState({ descricao: "", valor: "", data: today(), categoria: "Salario", observacao: "" });
   const [mesFiltro, setMesFiltro] = useState(new Date().toISOString().slice(0, 7));
 
   const load = useCallback(async () => {
@@ -43,10 +47,10 @@ function Entradas() {
   const totalMes = listaDoMes.reduce((s, e) => s + parseN(e.valor), 0);
 
   const handleSave = async () => {
-    if (!form.descricao || !form.valor) return alert("Preencha descrição e valor.");
+    if (!form.descricao || !form.valor) return alert("Preencha descricao e valor.");
     await supabase.from("pessoal_entradas").insert([{ ...form, valor: parseN(form.valor) }]);
     setShowModal(false);
-    setForm({ descricao: "", valor: "", data: today(), categoria: "Salário", observacao: "" });
+    setForm({ descricao: "", valor: "", data: today(), categoria: "Salario", observacao: "" });
     load();
   };
 
@@ -68,21 +72,21 @@ function Entradas() {
         </div>
       </div>
       <div className="fp-toolbar">
-        <input type="month" value={mesFiltro} onChange={(e) => setMesFiltro(e.target.value)} className="fp-input" />
+        <input type="month" value={mesFiltro} onChange={(e) => setMesFiltro(e.target.value)} className="fp-input" style={{width:"auto"}} />
         <button className="fp-btn-primary" onClick={() => setShowModal(true)}><PlusCircle size={16} /> Nova Entrada</button>
       </div>
       {loading ? <p className="fp-loading">Carregando...</p> : (
         <table className="fp-table">
-          <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Observação</th><th style={{textAlign:"right"}}>Valor</th><th></th></tr></thead>
+          <thead><tr><th>Data</th><th>Descricao</th><th>Categoria</th><th>Observacao</th><th style={{textAlign:"right"}}>Valor</th><th></th></tr></thead>
           <tbody>
-            {listaDoMes.length === 0 && <tr><td colSpan={6} style={{textAlign:"center",color:"#888",padding:"2rem"}}>Nenhuma entrada neste mês.</td></tr>}
+            {listaDoMes.length === 0 && <tr><td colSpan={6} style={{textAlign:"center",color:"#888",padding:"2rem"}}>Nenhuma entrada neste mes.</td></tr>}
             {listaDoMes.map((e) => (
               <tr key={e.id}>
-                <td>{e.data}</td><td>{e.descricao}</td>
+                <td>{fmtDate(e.data)}</td><td>{e.descricao}</td>
                 <td><span className="fp-badge fp-badge-green">{e.categoria}</span></td>
                 <td>{e.observacao || "—"}</td>
-                <td style={{textAlign:"right",fontWeight:600,color:"var(--success)"}}>R$ {fmt(e.valor)}</td>
-                <td><button className="fp-icon-btn" onClick={() => handleDelete(e.id)}><Trash2 size={14} /></button></td>
+                <td style={{textAlign:"right",fontWeight:600,color:"#22C55E"}}>R$ {fmt(e.valor)}</td>
+                <td><button className="fp-icon-btn fp-icon-btn-danger" onClick={() => handleDelete(e.id)}><Trash2 size={14} /></button></td>
               </tr>
             ))}
           </tbody>
@@ -91,11 +95,11 @@ function Entradas() {
       {showModal && (
         <ModalBase title="Nova Entrada" onClose={() => setShowModal(false)}>
           <div className="fp-form-grid">
-            <label>Descrição *<input className="fp-input" value={form.descricao} onChange={(e) => setForm((p) => ({ ...p, descricao: e.target.value }))} placeholder="Ex: Salário Dezembro" /></label>
+            <label>Descricao *<input className="fp-input" value={form.descricao} onChange={(e) => setForm((p) => ({ ...p, descricao: e.target.value }))} placeholder="Ex: Salario Dezembro" /></label>
             <label>Valor (R$) *<input className="fp-input" type="number" value={form.valor} onChange={(e) => setForm((p) => ({ ...p, valor: e.target.value }))} /></label>
             <label>Data *<input className="fp-input" type="date" value={form.data} onChange={(e) => setForm((p) => ({ ...p, data: e.target.value }))} /></label>
             <label>Categoria<select className="fp-input" value={form.categoria} onChange={(e) => setForm((p) => ({ ...p, categoria: e.target.value }))}>{CATEGORIAS_ENTRADA.map((c) => <option key={c}>{c}</option>)}</select></label>
-            <label style={{gridColumn:"1 / -1"}}>Observação<input className="fp-input" value={form.observacao} onChange={(e) => setForm((p) => ({ ...p, observacao: e.target.value }))} placeholder="Opcional" /></label>
+            <label style={{gridColumn:"1 / -1"}}>Observacao<input className="fp-input" value={form.observacao} onChange={(e) => setForm((p) => ({ ...p, observacao: e.target.value }))} placeholder="Opcional" /></label>
           </div>
           <div className="fp-modal-footer">
             <button className="fp-btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
@@ -107,6 +111,9 @@ function Entradas() {
   );
 }
 
+// ─────────────────────────────────────────────
+// ABA SAIDAS
+// ─────────────────────────────────────────────
 function Saidas() {
   const [saidas, setSaidas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -130,7 +137,7 @@ function Saidas() {
   const porCategoria = CATEGORIAS_SAIDA.map((cat) => ({ cat, total: saidasDoMes.filter((s) => s.categoria === cat).reduce((sum, s) => sum + parseN(s.valor), 0) })).filter((c) => c.total > 0);
 
   const handleSave = async () => {
-    if (!form.descricao || !form.valor) return alert("Preencha descrição e valor.");
+    if (!form.descricao || !form.valor) return alert("Preencha descricao e valor.");
     await supabase.from("pessoal_saidas").insert([{ ...form, valor: parseN(form.valor) }]);
     setShowModal(false);
     setForm({ descricao: "", valor: "", data: today(), categoria: "Mercado", observacao: "" });
@@ -138,7 +145,7 @@ function Saidas() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Excluir esta saída?")) return;
+    if (!window.confirm("Excluir esta saida?")) return;
     await supabase.from("pessoal_saidas").delete().eq("id", id);
     load();
   };
@@ -146,24 +153,24 @@ function Saidas() {
   return (
     <div className="fp-tab-content">
       <div className="fp-summary-cards">
-        <div className="fp-card fp-card-red"><TrendingDown size={28} /><div><div className="fp-card-label">Total Saídas — {mesFiltro}</div><div className="fp-card-value">R$ {fmt(totalMes)}</div></div></div>
+        <div className="fp-card fp-card-red"><TrendingDown size={28} /><div><div className="fp-card-label">Total Saidas — {mesFiltro}</div><div className="fp-card-value">R$ {fmt(totalMes)}</div></div></div>
         {porCategoria.map(({ cat, total }) => (
           <div className="fp-card fp-card-mini" key={cat}><div className="fp-card-label">{cat}</div><div className="fp-card-value-sm">R$ {fmt(total)}</div></div>
         ))}
       </div>
       <div className="fp-toolbar">
-        <input type="month" value={mesFiltro} onChange={(e) => setMesFiltro(e.target.value)} className="fp-input" />
-        <select className="fp-input" value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}><option>Todas</option>{CATEGORIAS_SAIDA.map((c) => <option key={c}>{c}</option>)}</select>
-        <button className="fp-btn-danger" onClick={() => setShowModal(true)}><PlusCircle size={16} /> Nova Saída</button>
+        <input type="month" value={mesFiltro} onChange={(e) => setMesFiltro(e.target.value)} className="fp-input" style={{width:"auto"}} />
+        <select className="fp-input" style={{width:"auto"}} value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}><option>Todas</option>{CATEGORIAS_SAIDA.map((c) => <option key={c}>{c}</option>)}</select>
+        <button className="fp-btn-danger" onClick={() => setShowModal(true)}><PlusCircle size={16} /> Nova Saida</button>
       </div>
       {loading ? <p className="fp-loading">Carregando...</p> : (
         <table className="fp-table">
-          <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Observação</th><th style={{textAlign:"right"}}>Valor</th><th></th></tr></thead>
+          <thead><tr><th>Data</th><th>Descricao</th><th>Categoria</th><th>Observacao</th><th style={{textAlign:"right"}}>Valor</th><th></th></tr></thead>
           <tbody>
-            {saidasFiltradas.length === 0 && <tr><td colSpan={6} style={{textAlign:"center",color:"#888",padding:"2rem"}}>Nenhuma saída neste mês.</td></tr>}
+            {saidasFiltradas.length === 0 && <tr><td colSpan={6} style={{textAlign:"center",color:"#888",padding:"2rem"}}>Nenhuma saida neste mes.</td></tr>}
             {saidasFiltradas.map((s) => (
               <tr key={s.id}>
-                <td>{s.data}</td><td>{s.descricao}</td>
+                <td>{fmtDate(s.data)}</td><td>{s.descricao}</td>
                 <td><span className="fp-badge fp-badge-red">{s.categoria}</span></td>
                 <td>{s.observacao || "—"}</td>
                 <td style={{textAlign:"right",fontWeight:600,color:"#EF4444"}}>R$ {fmt(s.valor)}</td>
@@ -174,13 +181,13 @@ function Saidas() {
         </table>
       )}
       {showModal && (
-        <ModalBase title="Nova Saída" onClose={() => setShowModal(false)}>
+        <ModalBase title="Nova Saida" onClose={() => setShowModal(false)}>
           <div className="fp-form-grid">
-            <label>Descrição *<input className="fp-input" value={form.descricao} onChange={(e) => setForm((p) => ({ ...p, descricao: e.target.value }))} placeholder="Ex: Mercado Extra" /></label>
+            <label>Descricao *<input className="fp-input" value={form.descricao} onChange={(e) => setForm((p) => ({ ...p, descricao: e.target.value }))} placeholder="Ex: Mercado Extra" /></label>
             <label>Valor (R$) *<input className="fp-input" type="number" value={form.valor} onChange={(e) => setForm((p) => ({ ...p, valor: e.target.value }))} /></label>
             <label>Data *<input className="fp-input" type="date" value={form.data} onChange={(e) => setForm((p) => ({ ...p, data: e.target.value }))} /></label>
             <label>Categoria *<select className="fp-input" value={form.categoria} onChange={(e) => setForm((p) => ({ ...p, categoria: e.target.value }))}>{CATEGORIAS_SAIDA.map((c) => <option key={c}>{c}</option>)}</select></label>
-            <label style={{gridColumn:"1 / -1"}}>Observação<input className="fp-input" value={form.observacao} onChange={(e) => setForm((p) => ({ ...p, observacao: e.target.value }))} placeholder="Opcional" /></label>
+            <label style={{gridColumn:"1 / -1"}}>Observacao<input className="fp-input" value={form.observacao} onChange={(e) => setForm((p) => ({ ...p, observacao: e.target.value }))} placeholder="Opcional" /></label>
           </div>
           <div className="fp-modal-footer">
             <button className="fp-btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
@@ -192,120 +199,321 @@ function Saidas() {
   );
 }
 
-function Emprestimos() {
-  const [emprestimos, setEmprestimos] = useState([]);
+// ─────────────────────────────────────────────
+// ABA EMPRESTIMOS
+// ─────────────────────────────────────────────
+function ParcelasModal({ emprestimo, onClose, onUpdate }) {
+  const [parcelas, setParcelas] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ credor:"",valor_total:"",valor_parcela:"",data_inicio:today(),data_vencimento:"",dia_vencimento:"",parcelas_total:"",parcelas_pagas:0,taxa_juros:0,observacao:"",ativo:true });
+  const [filtro, setFiltro] = useState("todas");
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from("pessoal_emprestimos").select("*").order("data_vencimento");
-    setEmprestimos(data || []);
+    const { data } = await supabase
+      .from("emprestimo_parcelas")
+      .select("*")
+      .eq("emprestimo_id", emprestimo.id)
+      .order("numero_parcela");
+    // Atualiza atrasadas
+    const hoje = today();
+    const updates = (data || []).filter(p => p.status === "pendente" && p.data_vencimento < hoje);
+    if (updates.length > 0) {
+      await supabase.from("emprestimo_parcelas")
+        .update({ status: "atrasado" })
+        .in("id", updates.map(p => p.id));
+      updates.forEach(p => { p.status = "atrasado"; });
+    }
+    setParcelas(data || []);
+    setLoading(false);
+  }, [emprestimo.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handlePagar = async (parcela) => {
+    if (!window.confirm(`Marcar parcela ${parcela.numero_parcela} como PAGA?`)) return;
+    await supabase.from("emprestimo_parcelas")
+      .update({ status: "pago", data_pagamento: today() })
+      .eq("id", parcela.id);
+    load();
+    onUpdate();
+  };
+
+  const handleEstornar = async (parcela) => {
+    if (!window.confirm(`Estornar parcela ${parcela.numero_parcela} para PENDENTE?`)) return;
+    await supabase.from("emprestimo_parcelas")
+      .update({ status: "pendente", data_pagamento: null })
+      .eq("id", parcela.id);
+    load();
+    onUpdate();
+  };
+
+  const pagas = parcelas.filter(p => p.status === "pago").length;
+  const atrasadas = parcelas.filter(p => p.status === "atrasado").length;
+  const pendentes = parcelas.filter(p => p.status === "pendente").length;
+  const pct = parcelas.length > 0 ? Math.round((pagas / parcelas.length) * 100) : 0;
+
+  const listaFiltrada = filtro === "todas" ? parcelas :
+    filtro === "pagas" ? parcelas.filter(p => p.status === "pago") :
+    filtro === "atrasadas" ? parcelas.filter(p => p.status === "atrasado") :
+    parcelas.filter(p => p.status === "pendente");
+
+  const statusBadge = (s) => {
+    if (s === "pago") return <span className="fp-badge fp-badge-green"><CheckCircle size={11} /> Pago</span>;
+    if (s === "atrasado") return <span className="fp-badge fp-badge-red"><AlertCircle size={11} /> Atrasado</span>;
+    return <span className="fp-badge fp-badge-orange">A vencer</span>;
+  };
+
+  return (
+    <ModalBase title={`Parcelas — ${emprestimo.credor}`} onClose={onClose} wide>
+      <div style={{marginBottom:"1rem"}}>
+        <div style={{display:"flex",gap:"1rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
+          <span className="fp-badge fp-badge-green">{pagas} pagas</span>
+          {atrasadas > 0 && <span className="fp-badge fp-badge-red">{atrasadas} atrasadas</span>}
+          <span className="fp-badge fp-badge-orange">{pendentes} a vencer</span>
+          <span className="fp-badge">{pct}% concluido</span>
+        </div>
+        <div className="fp-progress-wrap" style={{width:"100%",height:10}}><div className="fp-progress-bar" style={{width:`${pct}%`}} /></div>
+      </div>
+      <div className="fp-toolbar" style={{marginBottom:"0.75rem"}}>
+        {["todas","pagas","atrasadas","pendentes"].map(f => (
+          <button key={f} onClick={() => setFiltro(f)}
+            className={filtro === f ? "fp-btn-primary" : "fp-btn-secondary"}
+            style={{padding:"4px 12px",fontSize:"0.8rem"}}>
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+      </div>
+      {loading ? <p className="fp-loading">Carregando...</p> : (
+        <div style={{maxHeight:"55vh",overflowY:"auto"}}>
+          <table className="fp-table">
+            <thead><tr><th>#</th><th>Vencimento</th><th>Pagamento</th><th style={{textAlign:"right"}}>Valor</th><th style={{textAlign:"center"}}>Status</th><th></th></tr></thead>
+            <tbody>
+              {listaFiltrada.map(p => (
+                <tr key={p.id} className={p.status === "atrasado" ? "fp-row-alert" : p.status === "pago" ? "fp-row-done" : ""}>
+                  <td style={{fontWeight:600}}>{p.numero_parcela}/{parcelas.length}</td>
+                  <td>{fmtDate(p.data_vencimento)}</td>
+                  <td>{fmtDate(p.data_pagamento)}</td>
+                  <td style={{textAlign:"right",fontWeight:600}}>R$ {fmt(p.valor_parcela)}</td>
+                  <td style={{textAlign:"center"}}>{statusBadge(p.status)}</td>
+                  <td>
+                    {p.status !== "pago"
+                      ? <button className="fp-btn-sm fp-btn-green" onClick={() => handlePagar(p)}><CheckCircle size={12} /> Pagar</button>
+                      : <button className="fp-btn-sm fp-btn-secondary" style={{fontSize:"0.72rem"}} onClick={() => handleEstornar(p)}>Estornar</button>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </ModalBase>
+  );
+}
+
+function Emprestimos() {
+  const [emprestimos, setEmprestimos] = useState([]);
+  const [parcelas, setParcelas] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [modalParcelas, setModalParcelas] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ credor:"", contrato_numero:"", titular:"", valor_total_financiado:"", valor_liberado:"", valor_total_a_pagar:"", taxa_juros_mensal:"", quantidade_parcelas:"", data_contratacao: today(), dia_vencimento:"", valor_parcela_fixa:"" });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data: emp } = await supabase.from("emprestimos").select("*").order("data_contratacao");
+    const { data: parc } = await supabase.from("emprestimo_parcelas").select("emprestimo_id, status, valor_parcela, data_vencimento");
+
+    // Agrupar resumo por emprestimo
+    const resumo = {};
+    (parc || []).forEach(p => {
+      if (!resumo[p.emprestimo_id]) resumo[p.emprestimo_id] = { pagas:0, total:0, atrasadas:0, pendentes:0, proximaVenc:null, valorParcela:0 };
+      resumo[p.emprestimo_id].total++;
+      resumo[p.emprestimo_id].valorParcela = p.valor_parcela;
+      if (p.status === "pago") resumo[p.emprestimo_id].pagas++;
+      else if (p.status === "atrasado") resumo[p.emprestimo_id].atrasadas++;
+      else {
+        resumo[p.emprestimo_id].pendentes++;
+        if (!resumo[p.emprestimo_id].proximaVenc || p.data_vencimento < resumo[p.emprestimo_id].proximaVenc) {
+          resumo[p.emprestimo_id].proximaVenc = p.data_vencimento;
+        }
+      }
+    });
+    setParcelas(resumo);
+    setEmprestimos(emp || []);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const handleSave = async () => {
-    const req = ["credor","valor_total","valor_parcela","data_inicio","data_vencimento","dia_vencimento","parcelas_total"];
-    if (req.some((k) => !form[k])) return alert("Preencha todos os campos obrigatórios (*).");
-    await supabase.from("pessoal_emprestimos").insert([{ ...form, valor_total:parseN(form.valor_total), valor_parcela:parseN(form.valor_parcela), dia_vencimento:parseInt(form.dia_vencimento), parcelas_total:parseInt(form.parcelas_total), parcelas_pagas:parseInt(form.parcelas_pagas)||0, taxa_juros:parseN(form.taxa_juros) }]);
-    setShowModal(false);
-    setForm({ credor:"",valor_total:"",valor_parcela:"",data_inicio:today(),data_vencimento:"",dia_vencimento:"",parcelas_total:"",parcelas_pagas:0,taxa_juros:0,observacao:"",ativo:true });
-    load();
-  };
+  const handleSaveEmp = async () => {
+    const req = ["credor","valor_total_financiado","quantidade_parcelas","data_contratacao","dia_vencimento","valor_parcela_fixa"];
+    if (req.some(k => !form[k])) return alert("Preencha os campos obrigatorios (*).");
+    const { data: empNew, error } = await supabase.from("emprestimos").insert([{
+      credor: form.credor, contrato_numero: form.contrato_numero, titular: form.titular,
+      valor_total_financiado: parseN(form.valor_total_financiado),
+      valor_liberado: parseN(form.valor_liberado) || null,
+      valor_total_a_pagar: parseN(form.valor_total_a_pagar) || null,
+      taxa_juros_mensal: parseN(form.taxa_juros_mensal) || null,
+      quantidade_parcelas: parseInt(form.quantidade_parcelas),
+      data_contratacao: form.data_contratacao,
+      status: "ativo"
+    }]).select().single();
+    if (error || !empNew) return alert("Erro ao salvar emprestimo.");
 
-  const handlePagamento = async (emp) => {
-    const novas = (emp.parcelas_pagas || 0) + 1;
-    if (novas > emp.parcelas_total) return alert("Todas as parcelas já foram pagas!");
-    if (!window.confirm(`Registrar pagamento ${novas}/${emp.parcelas_total} de ${emp.credor}?`)) return;
-    await supabase.from("pessoal_emprestimos").update({ parcelas_pagas: novas }).eq("id", emp.id);
+    // Gerar parcelas fixas
+    const dia = parseInt(form.dia_vencimento);
+    const qtd = parseInt(form.quantidade_parcelas);
+    const baseDate = new Date(form.data_contratacao);
+    const parcArr = [];
+    for (let i = 0; i < qtd; i++) {
+      const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, dia);
+      parcArr.push({ emprestimo_id: empNew.id, numero_parcela: i+1, valor_parcela: parseN(form.valor_parcela_fixa), data_vencimento: d.toISOString().split("T")[0], status: "pendente" });
+    }
+    await supabase.from("emprestimo_parcelas").insert(parcArr);
+    setShowForm(false);
+    setForm({ credor:"", contrato_numero:"", titular:"", valor_total_financiado:"", valor_liberado:"", valor_total_a_pagar:"", taxa_juros_mensal:"", quantidade_parcelas:"", data_contratacao: today(), dia_vencimento:"", valor_parcela_fixa:"" });
     load();
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Excluir este empréstimo?")) return;
-    await supabase.from("pessoal_emprestimos").delete().eq("id", id);
+    if (!window.confirm("Excluir este emprestimo e todas as suas parcelas?")) return;
+    await supabase.from("emprestimo_parcelas").delete().eq("emprestimo_id", id);
+    await supabase.from("emprestimos").delete().eq("id", id);
     load();
   };
 
-  const proximoVencimento = (emp) => {
-    const hoje = new Date();
-    const t = new Date(hoje.getFullYear(), hoje.getMonth(), emp.dia_vencimento);
-    if (t < hoje) t.setMonth(t.getMonth() + 1);
-    return t;
-  };
-  const diasParaVencer = (emp) => Math.ceil((proximoVencimento(emp) - new Date()) / (1000*60*60*24));
+  // Totais gerais
+  const totalMensal = emprestimos.filter(e => e.status === "ativo").reduce((s, e) => {
+    const r = parcelas[e.id];
+    return s + (r ? parseN(r.valorParcela) : 0);
+  }, 0);
+  const totalFinanciado = emprestimos.reduce((s, e) => s + parseN(e.valor_total_financiado), 0);
+  const totalAberto = emprestimos.reduce((s, e) => {
+    const r = parcelas[e.id];
+    if (!r) return s;
+    return s + (parseN(r.valorParcela) * (r.total - r.pagas));
+  }, 0);
+  const ativos = emprestimos.filter(e => e.status === "ativo").length;
 
-  const totalMensal = emprestimos.filter((e) => e.ativo).reduce((s, e) => s + parseN(e.valor_parcela), 0);
-  const totalRestante = emprestimos.filter((e) => e.ativo).reduce((s, e) => s + parseN(e.valor_parcela) * (e.parcelas_total - (e.parcelas_pagas || 0)), 0);
+  const diasAteVencer = (d) => {
+    if (!d) return null;
+    return Math.ceil((new Date(d + "T12:00:00") - new Date()) / (1000*60*60*24));
+  };
 
   return (
     <div className="fp-tab-content">
+      {/* Cards resumo */}
       <div className="fp-summary-cards">
-        <div className="fp-card fp-card-orange"><CreditCard size={28} /><div><div className="fp-card-label">Compromisso Mensal</div><div className="fp-card-value">R$ {fmt(totalMensal)}</div></div></div>
-        <div className="fp-card fp-card-mini"><div className="fp-card-label">Total em Aberto</div><div className="fp-card-value-sm">R$ {fmt(totalRestante)}</div></div>
-        <div className="fp-card fp-card-mini"><div className="fp-card-label">Contratos Ativos</div><div className="fp-card-value-sm">{emprestimos.filter((e) => e.ativo).length}</div></div>
+        <div className="fp-card fp-card-orange">
+          <CreditCard size={28} />
+          <div>
+            <div className="fp-card-label">Compromisso Mensal Total</div>
+            <div className="fp-card-value">R$ {fmt(totalMensal)}</div>
+          </div>
+        </div>
+        <div className="fp-card fp-card-mini"><div className="fp-card-label">Contratos Ativos</div><div className="fp-card-value-sm">{ativos}</div></div>
+        <div className="fp-card fp-card-mini"><div className="fp-card-label">Total Financiado</div><div className="fp-card-value-sm">R$ {fmt(totalFinanciado)}</div></div>
+        <div className="fp-card fp-card-mini"><div className="fp-card-label">Saldo Total em Aberto</div><div className="fp-card-value-sm" style={{color:"#EF4444"}}>R$ {fmt(totalAberto)}</div></div>
       </div>
+
       <div className="fp-toolbar">
-        <button className="fp-btn-orange" onClick={() => setShowModal(true)}><PlusCircle size={16} /> Novo Empréstimo</button>
+        <button className="fp-btn-orange" onClick={() => setShowForm(true)}><PlusCircle size={16} /> Novo Emprestimo</button>
       </div>
+
       {loading ? <p className="fp-loading">Carregando...</p> : (
-        <table className="fp-table">
-          <thead><tr><th>Credor</th><th style={{textAlign:"right"}}>Valor Total</th><th style={{textAlign:"right"}}>Parcela</th><th style={{textAlign:"center"}}>Progresso</th><th style={{textAlign:"center"}}>Próx. Vencimento</th><th style={{textAlign:"center"}}>Taxa %</th><th>Obs.</th><th></th></tr></thead>
-          <tbody>
-            {emprestimos.length === 0 && <tr><td colSpan={8} style={{textAlign:"center",color:"#888",padding:"2rem"}}>Nenhum empréstimo cadastrado.</td></tr>}
-            {emprestimos.map((emp) => {
-              const pagas = emp.parcelas_pagas || 0;
-              const total = emp.parcelas_total || 1;
-              const pct = Math.round((pagas / total) * 100);
-              const quitado = pagas >= total;
-              const dias = (!quitado && emp.ativo) ? diasParaVencer(emp) : null;
-              const vencPerto = dias !== null && dias <= 5;
-              return (
-                <tr key={emp.id} className={quitado ? "fp-row-done" : vencPerto ? "fp-row-alert" : ""}>
-                  <td style={{fontWeight:600}}>{emp.credor}</td>
-                  <td style={{textAlign:"right"}}>R$ {fmt(emp.valor_total)}</td>
-                  <td style={{textAlign:"right",color:"#EF4444",fontWeight:600}}>R$ {fmt(emp.valor_parcela)}</td>
-                  <td style={{textAlign:"center"}}>
-                    <div className="fp-progress-wrap"><div className="fp-progress-bar" style={{width:`${pct}%`}} /></div>
-                    <div className="fp-progress-label">{pagas}/{total} ({pct}%)</div>
-                  </td>
-                  <td style={{textAlign:"center"}}>
-                    {quitado
-                      ? <span className="fp-badge fp-badge-green">Quitado ✓</span>
-                      : <span className={`fp-badge ${vencPerto ? "fp-badge-red" : "fp-badge-orange"}`}>{vencPerto && <AlertCircle size={12} style={{marginRight:4}} />}Dia {emp.dia_vencimento} ({dias}d)</span>}
-                  </td>
-                  <td style={{textAlign:"center"}}>{emp.taxa_juros ? `${emp.taxa_juros}%` : "—"}</td>
-                  <td>{emp.observacao || "—"}</td>
-                  <td style={{display:"flex",gap:6}}>
-                    {!quitado && <button className="fp-btn-sm fp-btn-green" onClick={() => handlePagamento(emp)}><CheckCircle size={13} /> Pagar</button>}
+        <div className="fp-emp-list">
+          {emprestimos.map(emp => {
+            const r = parcelas[emp.id] || { pagas:0, total:0, atrasadas:0, pendentes:0, proximaVenc:null, valorParcela:0 };
+            const pct = r.total > 0 ? Math.round((r.pagas / r.total) * 100) : 0;
+            const quitado = r.pagas >= r.total && r.total > 0;
+            const dias = r.proximaVenc ? diasAteVencer(r.proximaVenc) : null;
+            const vencPerto = dias !== null && dias <= 5;
+            const saldoAberto = parseN(r.valorParcela) * (r.total - r.pagas);
+
+            return (
+              <div key={emp.id} className={"fp-emp-card" + (quitado ? " fp-emp-quitado" : "") + (r.atrasadas > 0 ? " fp-emp-alert" : "")}>
+                {/* Header */}
+                <div className="fp-emp-header">
+                  <div className="fp-emp-title-area">
+                    <div className="fp-emp-credor">{emp.credor}</div>
+                    <div className="fp-emp-titular">{emp.titular}</div>
+                    {emp.contrato_numero && <div className="fp-emp-contrato">Contrato: {emp.contrato_numero}</div>}
+                  </div>
+                  <div className="fp-emp-stats">
+                    <div className="fp-emp-stat">
+                      <span className="fp-stat-label">Parcela</span>
+                      <span className="fp-stat-value" style={{color:"#EF4444"}}>R$ {fmt(r.valorParcela)}/mes</span>
+                    </div>
+                    <div className="fp-emp-stat">
+                      <span className="fp-stat-label">Saldo Aberto</span>
+                      <span className="fp-stat-value">R$ {fmt(saldoAberto)}</span>
+                    </div>
+                    <div className="fp-emp-stat">
+                      <span className="fp-stat-label">Progresso</span>
+                      <span className="fp-stat-value">{r.pagas}/{r.total} parcelas</span>
+                    </div>
+                    <div className="fp-emp-stat">
+                      {quitado
+                        ? <span className="fp-badge fp-badge-green"><CheckCircle size={12} /> Quitado</span>
+                        : r.atrasadas > 0
+                          ? <span className="fp-badge fp-badge-red"><AlertCircle size={12} /> {r.atrasadas} atrasada{r.atrasadas > 1 ? "s" : ""}</span>
+                          : dias !== null
+                            ? <span className={`fp-badge ${vencPerto ? "fp-badge-red" : "fp-badge-orange"}`}>
+                                <Calendar size={11} /> Prox: {fmtDate(r.proximaVenc)} ({dias}d)
+                              </span>
+                            : null}
+                    </div>
+                  </div>
+                  <div className="fp-emp-actions">
+                    <button className="fp-btn-sm fp-btn-primary" onClick={() => setModalParcelas(emp)}>
+                      <ChevronRight size={13} /> Ver Parcelas
+                    </button>
                     <button className="fp-icon-btn fp-icon-btn-danger" onClick={() => handleDelete(emp.id)}><Trash2 size={14} /></button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </div>
+                </div>
+                {/* Barra de progresso */}
+                <div style={{padding:"0 1rem 0.75rem"}}>
+                  <div className="fp-progress-wrap" style={{width:"100%",height:8}}><div className="fp-progress-bar" style={{width:`${pct}%`,background: r.atrasadas > 0 ? "#EF4444" : "#22C55E"}} /></div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.75rem",color:"var(--text-secondary)",marginTop:4}}>
+                    <span>{pct}% pago</span>
+                    {emp.taxa_juros_mensal && <span>{emp.taxa_juros_mensal}% a.m.</span>}
+                    <span>Total financiado: R$ {fmt(emp.valor_total_financiado)}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
-      {showModal && (
-        <ModalBase title="Novo Empréstimo / Financiamento" onClose={() => setShowModal(false)}>
+
+      {/* Modal parcelas */}
+      {modalParcelas && (
+        <ParcelasModal
+          emprestimo={modalParcelas}
+          onClose={() => setModalParcelas(null)}
+          onUpdate={load}
+        />
+      )}
+
+      {/* Formulario novo emprestimo */}
+      {showForm && (
+        <ModalBase title="Novo Emprestimo / Financiamento" onClose={() => setShowForm(false)} wide>
           <div className="fp-form-grid">
-            <label>Credor / Banco *<input className="fp-input" value={form.credor} onChange={(e) => setForm((p) => ({ ...p, credor: e.target.value }))} placeholder="Ex: Banco Itaú" /></label>
-            <label>Valor Total *<input className="fp-input" type="number" value={form.valor_total} onChange={(e) => setForm((p) => ({ ...p, valor_total: e.target.value }))} /></label>
-            <label>Valor da Parcela *<input className="fp-input" type="number" value={form.valor_parcela} onChange={(e) => setForm((p) => ({ ...p, valor_parcela: e.target.value }))} /></label>
-            <label>Nº Total de Parcelas *<input className="fp-input" type="number" value={form.parcelas_total} onChange={(e) => setForm((p) => ({ ...p, parcelas_total: e.target.value }))} /></label>
-            <label>Parcelas Já Pagas<input className="fp-input" type="number" value={form.parcelas_pagas} onChange={(e) => setForm((p) => ({ ...p, parcelas_pagas: e.target.value }))} /></label>
-            <label>Dia Vencimento Mensal *<input className="fp-input" type="number" min="1" max="31" value={form.dia_vencimento} onChange={(e) => setForm((p) => ({ ...p, dia_vencimento: e.target.value }))} placeholder="Ex: 15" /></label>
-            <label>Data Início *<input className="fp-input" type="date" value={form.data_inicio} onChange={(e) => setForm((p) => ({ ...p, data_inicio: e.target.value }))} /></label>
-            <label>Data Vencimento Final *<input className="fp-input" type="date" value={form.data_vencimento} onChange={(e) => setForm((p) => ({ ...p, data_vencimento: e.target.value }))} /></label>
-            <label>Taxa Juros (% a.m.)<input className="fp-input" type="number" value={form.taxa_juros} onChange={(e) => setForm((p) => ({ ...p, taxa_juros: e.target.value }))} placeholder="0" /></label>
-            <label style={{gridColumn:"1 / -1"}}>Observação<input className="fp-input" value={form.observacao} onChange={(e) => setForm((p) => ({ ...p, observacao: e.target.value }))} placeholder="Opcional" /></label>
+            <label>Credor *<input className="fp-input" value={form.credor} onChange={e => setForm(p => ({...p, credor: e.target.value}))} placeholder="Ex: Nubank" /></label>
+            <label>Titular<input className="fp-input" value={form.titular} onChange={e => setForm(p => ({...p, titular: e.target.value}))} placeholder="Ex: Cintia Regina" /></label>
+            <label>Numero do Contrato<input className="fp-input" value={form.contrato_numero} onChange={e => setForm(p => ({...p, contrato_numero: e.target.value}))} /></label>
+            <label>Valor Financiado *<input className="fp-input" type="number" value={form.valor_total_financiado} onChange={e => setForm(p => ({...p, valor_total_financiado: e.target.value}))} /></label>
+            <label>Valor Liberado<input className="fp-input" type="number" value={form.valor_liberado} onChange={e => setForm(p => ({...p, valor_liberado: e.target.value}))} /></label>
+            <label>Total a Pagar<input className="fp-input" type="number" value={form.valor_total_a_pagar} onChange={e => setForm(p => ({...p, valor_total_a_pagar: e.target.value}))} /></label>
+            <label>Juros (% a.m.)<input className="fp-input" type="number" value={form.taxa_juros_mensal} onChange={e => setForm(p => ({...p, taxa_juros_mensal: e.target.value}))} /></label>
+            <label>Qtd de Parcelas *<input className="fp-input" type="number" value={form.quantidade_parcelas} onChange={e => setForm(p => ({...p, quantidade_parcelas: e.target.value}))} placeholder="Ex: 24" /></label>
+            <label>Valor da Parcela Fixa *<input className="fp-input" type="number" value={form.valor_parcela_fixa} onChange={e => setForm(p => ({...p, valor_parcela_fixa: e.target.value}))} /></label>
+            <label>Data da 1a Parcela *<input className="fp-input" type="date" value={form.data_contratacao} onChange={e => setForm(p => ({...p, data_contratacao: e.target.value}))} /></label>
+            <label>Dia de Vencimento Mensal *<input className="fp-input" type="number" min="1" max="31" value={form.dia_vencimento} onChange={e => setForm(p => ({...p, dia_vencimento: e.target.value}))} placeholder="Ex: 15" /></label>
           </div>
           <div className="fp-modal-footer">
-            <button className="fp-btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-            <button className="fp-btn-orange" onClick={handleSave}>Salvar</button>
+            <button className="fp-btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>
+            <button className="fp-btn-orange" onClick={handleSaveEmp}>Salvar e Gerar Parcelas</button>
           </div>
         </ModalBase>
       )}
@@ -313,18 +521,21 @@ function Emprestimos() {
   );
 }
 
+// ─────────────────────────────────────────────
+// COMPONENTE PRINCIPAL
+// ─────────────────────────────────────────────
 export default function FinancasPessoais() {
-  const [aba, setAba] = useState("entradas");
+  const [aba, setAba] = useState("emprestimos");
   return (
     <div className="fp-container">
       <div className="fp-header">
-        <h1>💰 Finanças Pessoais</h1>
+        <h1>Financas Pessoais</h1>
         <p className="fp-subtitle">Controle privado de Daniel &amp; Cintia — separado da empresa</p>
       </div>
       <div className="fp-tabs">
         <button className={`fp-tab ${aba === "entradas" ? "fp-tab-active fp-tab-green" : ""}`} onClick={() => setAba("entradas")}><TrendingUp size={16} /> Entradas</button>
-        <button className={`fp-tab ${aba === "saidas" ? "fp-tab-active fp-tab-red" : ""}`} onClick={() => setAba("saidas")}><TrendingDown size={16} /> Saídas</button>
-        <button className={`fp-tab ${aba === "emprestimos" ? "fp-tab-active fp-tab-orange" : ""}`} onClick={() => setAba("emprestimos")}><CreditCard size={16} /> Empréstimos</button>
+        <button className={`fp-tab ${aba === "saidas" ? "fp-tab-active fp-tab-red" : ""}`} onClick={() => setAba("saidas")}><TrendingDown size={16} /> Saidas</button>
+        <button className={`fp-tab ${aba === "emprestimos" ? "fp-tab-active fp-tab-orange" : ""}`} onClick={() => setAba("emprestimos")}><CreditCard size={16} /> Emprestimos</button>
       </div>
       {aba === "entradas" && <Entradas />}
       {aba === "saidas" && <Saidas />}

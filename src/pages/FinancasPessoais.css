@@ -291,3 +291,50 @@
 
 .fp-tab-content { animation: fadeIn 0.2s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+/* EMPRESTIMOS */
+.fp-emp-list { display: flex; flex-direction: column; gap: 1rem; }
+
+.fp-emp-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+.fp-emp-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+.fp-emp-alert { border-color: #EF4444; border-left: 4px solid #EF4444; }
+.fp-emp-quitado { opacity: 0.65; }
+
+.fp-emp-header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1rem 1rem 0.5rem;
+  flex-wrap: wrap;
+}
+
+.fp-emp-title-area { flex: 0 0 220px; }
+.fp-emp-credor { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+.fp-emp-titular { font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px; }
+.fp-emp-contrato { font-size: 0.72rem; color: var(--text-secondary); margin-top: 2px; font-family: monospace; }
+
+.fp-emp-stats {
+  display: flex;
+  gap: 1.5rem;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.fp-emp-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.fp-stat-label { font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.fp-stat-value { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-top: 2px; }
+
+.fp-emp-actions { display: flex; gap: 0.5rem; align-items: center; margin-left: auto; }
+
+.fp-modal-wide { width: 820px; }
