@@ -47,59 +47,12 @@ function Entradas() {
   const totalMes = listaDoMes.reduce((s, e) => s + parseN(e.valor), 0);
 
   const handleSave = async () => {
-    try {
-      if (!form.descricao) return alert("A descrição é obrigatória.");
-      if (!form.data) return alert("A data de vencimento é obrigatória.");
-      
-      const val = parseN(form.valor);
-      const grupo_id = recorrente ? generateUUID() : null;
-      let error = null;
-      
-      if (recorrente && qtdMeses > 1) {
-        const baseDate = new Date(form.data + "T12:00:00");
-        const arr = [];
-        for(let i=0; i < qtdMeses; i++) {
-          const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, baseDate.getDate());
-          arr.push({ 
-            descricao: form.descricao,
-            categoria: form.categoria,
-            observacao: form.observacao || "",
-            valor: val > 0 ? val : null, 
-            data: d.toISOString().split("T")[0],
-            grupo_id,
-            pago: i === 0 ? jaPago : false
-          });
-        }
-        const res = await supabase.from("pessoal_saidas").insert(arr);
-        error = res.error;
-      } else {
-        const res = await supabase.from("pessoal_saidas").insert([{ 
-            descricao: form.descricao,
-            categoria: form.categoria,
-            observacao: form.observacao || "",
-            valor: val > 0 ? val : null, 
-            data: form.data,
-            pago: jaPago, 
-            grupo_id 
-        }]);
-        error = res.error;
-      }
-      
-      if (error) {
-        console.error(error);
-        alert("Erro do banco: " + error.message);
-        return;
-      }
-      
-      setForm({ descricao: "", valor: "", data: today(), categoria: "Gastos fixos", observacao: "" });
-      setRecorrente(false);
-      setQtdMeses(12);
-      setJaPago(false);
-      load();
-    } catch (err) {
-      console.error(err);
-      alert("Erro na tela: " + err.message);
-    }
+    if (!form.descricao) return alert("A descrição é obrigatória.");
+    if (!form.data) return alert("A data é obrigatória.");
+    await supabase.from("pessoal_entradas").insert([{ ...form, valor: parseN(form.valor) }]);
+    setForm({ descricao: "", valor: "", data: today(), categoria: "Salario", observacao: "" });
+    setShowModal(false);
+    load();
   };
 
   const handleDelete = async (id) => {
@@ -192,42 +145,68 @@ function Saidas() {
   const porCategoria = CATEGORIAS_SAIDA.map((cat) => ({ cat, total: saidasDoMes.filter((s) => s.categoria === cat).reduce((sum, s) => sum + parseN(s.valor), 0) })).filter((c) => c.total > 0);
 
   const handleSave = async () => {
-    if (!form.descricao) return alert("A descrição é obrigatória.");
-    const val = parseN(form.valor);
-    
-    const generateUUID = () => {
-      if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-      });
-    };
-    const grupo_id = recorrente ? generateUUID() : null;
-
-    
-    if (recorrente && qtdMeses > 1) {
-      const baseDate = new Date(form.data + "T12:00:00");
-      const arr = [];
-      for(let i=0; i < qtdMeses; i++) {
-        const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, baseDate.getDate());
-        arr.push({ 
-          ...form, 
-          valor: val > 0 ? val : null, 
-          data: d.toISOString().split("T")[0],
-          grupo_id,
-          pago: i === 0 ? jaPago : false
+    try {
+      if (!form.descricao) return alert("A descrição é obrigatória.");
+      if (!form.data) return alert("A data de vencimento é obrigatória.");
+      
+      const val = parseN(form.valor);
+      
+      const generateUUID = () => {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
         });
+      };
+      
+      const grupo_id = recorrente ? generateUUID() : null;
+      let error = null;
+      
+      if (recorrente && qtdMeses > 1) {
+        const baseDate = new Date(form.data + "T12:00:00");
+        const arr = [];
+        for(let i=0; i < qtdMeses; i++) {
+          const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, baseDate.getDate());
+          arr.push({ 
+            descricao: form.descricao,
+            categoria: form.categoria,
+            observacao: form.observacao || "",
+            valor: val > 0 ? val : null, 
+            data: d.toISOString().split("T")[0],
+            grupo_id,
+            pago: i === 0 ? jaPago : false
+          });
+        }
+        const res = await supabase.from("pessoal_saidas").insert(arr);
+        error = res.error;
+      } else {
+        const res = await supabase.from("pessoal_saidas").insert([{ 
+            descricao: form.descricao,
+            categoria: form.categoria,
+            observacao: form.observacao || "",
+            valor: val > 0 ? val : null, 
+            data: form.data,
+            pago: jaPago, 
+            grupo_id 
+        }]);
+        error = res.error;
       }
-      await supabase.from("pessoal_saidas").insert(arr);
-    } else {
-      await supabase.from("pessoal_saidas").insert([{ ...form, valor: val > 0 ? val : null, pago: jaPago, grupo_id }]);
+      
+      if (error) {
+        console.error(error);
+        alert("Erro do banco: " + error.message);
+        return;
+      }
+      
+      setForm({ descricao: "", valor: "", data: today(), categoria: "Gastos fixos", observacao: "" });
+      setRecorrente(false);
+      setQtdMeses(12);
+      setJaPago(false);
+      load();
+    } catch (err) {
+      console.error(err);
+      alert("Erro na tela: " + err.message);
     }
-    
-    setForm({ descricao: "", valor: "", data: today(), categoria: "Gastos fixos" });
-    setRecorrente(false);
-    setQtdMeses(12);
-    setJaPago(false);
-    load();
   };
 
   const handleDelete = async (s) => {
