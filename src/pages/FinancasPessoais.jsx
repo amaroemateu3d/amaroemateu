@@ -146,7 +146,16 @@ function Saidas() {
   const handleSave = async () => {
     if (!form.descricao) return alert("A descrição é obrigatória.");
     const val = parseN(form.valor);
-    const grupo_id = recorrente ? crypto.randomUUID() : null;
+    
+    const generateUUID = () => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    };
+    const grupo_id = recorrente ? generateUUID() : null;
+
     
     if (recorrente && qtdMeses > 1) {
       const baseDate = new Date(form.data + "T12:00:00");
