@@ -75,7 +75,7 @@
 .fp-card-orange { background: linear-gradient(135deg, #EA580C, #F97316); }
 
 .fp-card-mini {
-  background: var(--card-bg);
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 1rem 1.25rem;
@@ -101,7 +101,7 @@
   display: block;
   width: 100%;
   padding: 0.5rem 0.75rem;
-  background: var(--input-bg);
+  background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   color: var(--text-primary);
@@ -130,7 +130,7 @@
 .fp-btn-danger    { background: #EF4444; color: white; }
 .fp-btn-orange    { background: #F97316; color: white; }
 .fp-btn-green     { background: #22C55E; color: white; }
-.fp-btn-secondary { background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-primary); }
+.fp-btn-secondary { background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); }
 
 .fp-btn-sm {
   padding: 3px 8px;
@@ -155,7 +155,7 @@
   border-radius: 4px;
   display: inline-flex;
 }
-.fp-icon-btn:hover { color: var(--text-primary); background: var(--hover-bg); }
+.fp-icon-btn:hover { color: var(--text-primary); background: var(--bg-surface-hover); }
 .fp-icon-btn-danger { color: #EF4444 !important; }
 .fp-icon-btn-danger:hover { background: #FEE2E2; }
 
@@ -183,7 +183,7 @@
   vertical-align: middle;
 }
 
-.fp-table tr:hover td { background: var(--hover-bg); }
+.fp-table tr:hover td { background: var(--bg-surface-hover); }
 .fp-row-done td { opacity: 0.55; }
 .fp-row-alert td { background: #FFF7ED !important; }
 
@@ -196,7 +196,7 @@
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 600;
-  background: var(--hover-bg);
+  background: var(--bg-surface-hover);
   color: var(--text-secondary);
 }
 .fp-badge-green  { background: #DCFCE7; color: #16A34A; }
@@ -232,7 +232,7 @@
 }
 
 .fp-modal {
-  background: var(--card-bg);
+  background: var(--bg-surface);
   border-radius: 16px;
   width: 640px;
   max-width: 95vw;
@@ -296,7 +296,7 @@
 .fp-emp-list { display: flex; flex-direction: column; gap: 1rem; }
 
 .fp-emp-card {
-  background: var(--card-bg);
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   overflow: hidden;
@@ -338,3 +338,4 @@
 .fp-emp-actions { display: flex; gap: 0.5rem; align-items: center; margin-left: auto; }
 
 .fp-modal-wide { width: 820px; }
+
