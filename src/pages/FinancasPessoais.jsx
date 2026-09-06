@@ -641,7 +641,7 @@ function Emprestimos({ tipo = "bancario" }) {
     if (!isFlex) {
       const dia = parseInt(form.dia_vencimento);
       const qtd = parseInt(form.quantidade_parcelas);
-      const baseDate = new Date(form.data_contratacao);
+      const baseDate = new Date(form.data_contratacao + "T12:00:00");
       const parcArr = [];
       for (let i = 0; i < qtd; i++) {
         const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, dia);
