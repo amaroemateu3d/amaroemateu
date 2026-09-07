@@ -84,7 +84,7 @@ const ExtraRow = ({ index, inputs, onChange, showLabels, onSelectInsumoClick }) 
   );
 };
 
-export default function FtInputs({ inputs, onChange, savedFts = [], onManageInsumos, onSelectInsumoClick, isCustomProduct = false }) {
+export default function FtInputs({ inputs, onChange, savedFts = [], onManageInsumos, onSelectInsumoClick, isCustomProduct = false, filamentos = [], onManageFilamentos }) {
   
   const commonProps = { inputs, onChange };
 
@@ -183,7 +183,51 @@ export default function FtInputs({ inputs, onChange, savedFts = [], onManageInsu
         </div>
         
         <div className="inputs-grid-1">
-          <InputRow label="Preço Filamento" name="precoKgMaterial" prefix="R$" suffix="/kg" {...commonProps} />
+          
+            <div className="input-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ marginBottom: 0 }}>Filamento / Material</label>
+                {onManageFilamentos && (
+                  <button type="button" onClick={onManageFilamentos} style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>⚙️ Gerenciar</button>
+                )}
+              </div>
+              <select 
+                className="input-field" 
+                value={inputs.filamento_id || ''} 
+                onChange={(e) => {
+                  const val = e.target.value;
+                  onChange({ target: { name: 'filamento_id', value: val } });
+                  if (val) {
+                    const selected = filamentos.find(f => f.id === val);
+                    if (selected) onChange({ target: { name: 'precoKgMaterial', value: selected.preco_kg } });
+                  } else {
+                    onChange({ target: { name: 'precoKgMaterial', value: '' } });
+                  }
+                }}
+              >
+                <option value="">-- Selecione ou digite manualmente abaixo --</option>
+                {filamentos?.map(f => (
+                  <option key={f.id} value={f.id}>{f.nome} (R$ {Number(f.preco_kg).toFixed(2)}/kg)</option>
+                ))}
+              </select>
+              
+              {!inputs.filamento_id && (
+                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center' }}>
+                  <span className="input-prefix">R$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="precoKgMaterial"
+                    className="input-field with-prefix with-suffix"
+                    placeholder="Valor avulso"
+                    value={inputs.precoKgMaterial || ''}
+                    onChange={onChange}
+                  />
+                  <span className="input-suffix">/kg</span>
+                </div>
+              )}
+            </div>
+
           <InputRow label="Energia/Hora" name="custoKwh" prefix="R$" suffix="/h" {...commonProps} />
           <InputRow label="Máquina/Hora (Deprec.)" name="custoDepreciacao" prefix="R$" suffix="/h" {...commonProps} />
         </div>

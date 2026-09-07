@@ -58,6 +58,10 @@ export default function FichasTecnicas() {
 
   // Estados de Insumos / Gastos Extras Pré-Cadastrados
   const [insumos, setInsumos] = useState([]);
+  const [filamentos, setFilamentos] = useState([]);
+  const [showFilamentosManager, setShowFilamentosManager] = useState(false);
+  const [newFilamento, setNewFilamento] = useState({ nome: '', preco_kg: '' });
+  const [isUpdatingFts, setIsUpdatingFts] = useState(false);
   const [showInsumosManager, setShowInsumosManager] = useState(false);
   const [selectInsumoIndex, setSelectInsumoIndex] = useState(null);
   const [newInsumo, setNewInsumo] = useState({ nome: '', valor: '' });
@@ -65,6 +69,7 @@ export default function FichasTecnicas() {
   useEffect(() => {
     fetchFichas();
     fetchInsumos();
+    fetchFilamentos();
 
     const channelFts = supabase
       .channel('realtime-fichas')
@@ -97,6 +102,17 @@ export default function FichasTecnicas() {
       )
       .subscribe();
 
+    const channelFilamentos = supabase
+      .channel('realtime-filamentos')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'filamentos' },
+        () => {
+          fetchFilamentos();
+        }
+      )
+      .subscribe();
+
     const channelInsumos = supabase
       .channel('realtime-insumos')
       .on(
@@ -111,8 +127,94 @@ export default function FichasTecnicas() {
     return () => {
       supabase.removeChannel(channelFts);
       supabase.removeChannel(channelInsumos);
+      supabase.removeChannel(channelFilamentos);
     };
   }, []);
+
+  const fetchFilamentos = async () => {
+    try {
+      const { data, error } = await supabase.from('filamentos').select('*').order('nome', { ascending: true });
+      if (!error && data) setFilamentos(data);
+    } catch (e) {
+      console.error("Erro ao buscar filamentos:", e);
+    }
+  };
+
+  const handleAddFilamento = async (e) => {
+    e.preventDefault();
+    if (!newFilamento.nome.trim() || !newFilamento.preco_kg) return;
+    try {
+      const empId = profile?.empresa_id;
+      const { error } = await supabase.from('filamentos').insert({
+        nome: newFilamento.nome,
+        preco_kg: parseFloat(newFilamento.preco_kg),
+        empresa_id: empId
+      });
+      if (error) throw error;
+      setNewFilamento({ nome: '', preco_kg: '' });
+      fetchFilamentos();
+    } catch (e) {
+      alert("Erro ao adicionar: " + e.message);
+    }
+  };
+
+  const handleDeleteFilamento = async (id) => {
+    if (!window.confirm("Atenção: Excluir este filamento não apagará as Fichas Técnicas que o utilizam, mas elas deixarão de receber atualizações de preço deste filamento. Deseja continuar?")) return;
+    try {
+      await supabase.from('filamentos').delete().eq('id', id);
+      fetchFilamentos();
+    } catch (e) {
+      alert("Erro ao excluir: " + e.message);
+    }
+  };
+
+  const handleUpdateFilamentoCost = async (fil, newCostStr) => {
+    const novoCusto = parseFloat(newCostStr);
+    if (!novoCusto || novoCusto === fil.preco_kg) return;
+    if (!window.confirm(`Deseja alterar o custo do ${fil.nome} para R$ ${novoCusto.toFixed(2)}? ISSO ATUALIZARÁ AUTOMATICAMENTE TODAS AS FICHAS TÉCNICAS QUE USAM ESTE FILAMENTO.`)) return;
+    
+    setIsUpdatingFts(true);
+    try {
+      // 1. Atualizar o filamento
+      await supabase.from('filamentos').update({ preco_kg: novoCusto }).eq('id', fil.id);
+      
+      // 2. Buscar FTs que usam este filamento
+      const { data: ftsParaAtualizar } = await supabase.from('fichas_tecnicas').select('*');
+      const ftsAlvo = (ftsParaAtualizar || []).filter(f => f.data?.filamento_id === fil.id);
+      
+      if (ftsAlvo.length > 0) {
+        // 3. Recalcular cada FT
+        const atualizados = ftsAlvo.map(ftRow => {
+          const dadosAntigos = ftRow.data;
+          const novosDados = { ...dadosAntigos, precoKgMaterial: novoCusto };
+          // Usa a lógica de calcularResultados (já temos getResultados importado)
+          const resultados = getResultados(novosDados);
+          novosDados._custoFinal = resultados.custoFisicoUnit;
+          
+          return {
+            id: ftRow.id,
+            name: ftRow.name,
+            cost: resultados.custoFisicoUnit,
+            data: novosDados,
+            empresa_id: ftRow.empresa_id,
+            estoque: ftRow.estoque
+          };
+        });
+        
+        // 4. Salvar tudo em lote
+        await supabase.from('fichas_tecnicas').upsert(atualizados, { onConflict: 'id,empresa_id' });
+        alert(`✅ ${atualizados.length} Fichas Técnicas atualizadas com o novo custo!`);
+      } else {
+        alert("Custo atualizado, mas nenhuma Ficha Técnica usava este filamento.");
+      }
+      
+      fetchFilamentos();
+    } catch (e) {
+      alert("Erro ao atualizar custo em lote: " + e.message);
+    } finally {
+      setIsUpdatingFts(false);
+    }
+  };
 
   const fetchInsumos = async () => {
     try {
@@ -606,6 +708,8 @@ export default function FichasTecnicas() {
               savedFts={savedFts}
               onManageInsumos={() => setShowInsumosManager(true)}
               onSelectInsumoClick={(index) => setSelectInsumoIndex(index)}
+                filamentos={filamentos}
+                onManageFilamentos={() => setShowFilamentosManager(true)}
             />
           </div>
           <div className="fichas-right">
@@ -776,7 +880,75 @@ export default function FichasTecnicas() {
         onCancel={closeConfirm}
       />
 
+      
+      {/* MODAL GERENCIAR FILAMENTOS */}
+      {showFilamentosManager && (
+        <div className="modal-fullscreen" style={{ backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div className="card" style={{ width: '550px', maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: '1.5rem', background: 'var(--bg-surface)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: 0 }}>⚙️ Gerenciar Preços de Filamentos</h3>
+              <button className="btn-icon" onClick={() => setShowFilamentosManager(false)} style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>✕</button>
+            </div>
+            
+            <p style={{fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem', marginTop: 0}}>
+              Atualizar o preço de um filamento nesta tela irá <strong>recalcular automaticamente</strong> todas as Fichas Técnicas que o utilizam, e consequentemente os custos nos canais de venda!
+            </p>
+
+            <form onSubmit={handleAddFilamento} style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem', alignItems: 'flex-end', background: 'var(--bg-secondary)', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Nome do Filamento (ex: PLA Silk)</label>
+                <input type="text" className="input-field" value={newFilamento.nome} onChange={e => setNewFilamento({...newFilamento, nome: e.target.value})} placeholder="Nome" required />
+              </div>
+              <div style={{ width: '120px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Custo/Kg (R$)</label>
+                <input type="number" step="0.01" className="input-field" value={newFilamento.preco_kg} onChange={e => setNewFilamento({...newFilamento, preco_kg: e.target.value})} placeholder="120.00" required />
+              </div>
+              <button type="submit" className="btn-primary" style={{ padding: '0.75rem 1rem' }}>Adicionar</button>
+            </form>
+
+            <div style={{ overflowY: 'auto', flex: 1, border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                <thead style={{ background: 'var(--bg-secondary)', position: 'sticky', top: 0 }}>
+                  <tr>
+                    <th style={{ padding: '0.75rem', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontWeight: 600 }}>Nome</th>
+                    <th style={{ padding: '0.75rem', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontWeight: 600, width: '130px' }}>Custo (Kg)</th>
+                    <th style={{ padding: '0.75rem', borderBottom: '1px solid var(--border-color)', width: '60px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filamentos.map(fil => (
+                    <tr key={fil.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '0.75rem', fontWeight: 500 }}>{fil.nome}</td>
+                      <td style={{ padding: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <span style={{color: 'var(--text-secondary)', marginRight: '4px', fontSize: '0.8rem'}}>R$</span>
+                          <input 
+                            type="number" 
+                            className="input-field" 
+                            style={{ padding: '4px 8px', margin: 0, height: '30px', fontSize: '0.9rem', width: '80px' }} 
+                            defaultValue={fil.preco_kg}
+                            onBlur={(e) => handleUpdateFilamentoCost(fil, e.target.value)}
+                          />
+                        </div>
+                      </td>
+                      <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                        <button className="btn-icon" style={{ color: 'var(--danger)', padding: '4px' }} onClick={() => handleDeleteFilamento(fil.id)}>🗑️</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filamentos.length === 0 && (
+                    <tr><td colSpan="3" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Nenhum filamento cadastrado.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {isUpdatingFts && <p style={{ color: 'var(--accent-primary)', textAlign: 'center', marginTop: '1rem', fontWeight: 'bold' }}>Atualizando Fichas Técnicas em lote...</p>}
+          </div>
+        </div>
+      )}
+
       {/* MODAL GERENCIAR INSUMOS */}
+
       {showInsumosManager && (
         <div className="modal-fullscreen" style={{ backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
           <div className="card" style={{ width: '550px', maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: '1.5rem', background: 'var(--bg-surface)' }}>
