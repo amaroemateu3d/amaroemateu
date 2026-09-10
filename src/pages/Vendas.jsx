@@ -102,6 +102,9 @@ export default function Vendas() {
   const [selectedFts, setSelectedFts] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showAutoPrecos, setShowAutoPrecos] = useState(false);
+  const [autoCanais, setAutoCanais] = useState(['ml']);
+  const [autoFiltro, setAutoFiltro] = useState('');
 
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'save', title: '', details: [], onConfirm: null });
   const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
@@ -395,6 +398,53 @@ export default function Vendas() {
     return { ...physicalFT, ...defaults, ...channelOps }; 
   };
 
+  const getFtWithOverridesForChannel = (ftBase, channelId) => {
+    const physicalFT = { ...ftBase };
+    const defaults = channelDefaults[channelId] || {
+      custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0, custoEnvioPerc: 0,
+      taxaFixaVenda: 0, impostosNF: 0, taxaMLPerc: 0
+    };
+    const channelOps = overrides[channelId]?.[ftBase.indiceFt] || {};
+    return { ...physicalFT, ...defaults, ...channelOps };
+  };
+
+  const handleAutoPriceChange = async (ftId, channelId, stringVal) => {
+    let safeVal = stringVal;
+    if (typeof stringVal === 'string') safeVal = stringVal.replace(',', '.');
+
+    const nov = { ...overrides };
+    if (!nov[channelId]) nov[channelId] = {};
+    const currentOps = nov[channelId][ftId] || {};
+
+    let finalOps;
+    if (safeVal === '' || safeVal === '0') {
+      finalOps = { ...currentOps };
+      delete finalOps.precoVendaManual;
+      delete finalOps.precoAnuncio;
+      delete finalOps.precoRankeamento;
+    } else {
+      const baseFt = savedFts.find(f => f.indiceFt === ftId);
+      const channelFt = getFtWithOverridesForChannel(baseFt, channelId);
+      const tempFt = { ...channelFt, ...currentOps, precoVendaManual: safeVal };
+      const res = getResultados(tempFt);
+      const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(tempFt.taxaFixaVenda);
+      const aliquotasPerc = (parseNumber(tempFt.impostosNF) + parseNumber(tempFt.taxaMLPerc) + parseNumber(tempFt.custoEnvioPerc)) / 100;
+      const precoVenda = parseNumber(safeVal);
+      const precoRank = precoVenda > 0 && aliquotasPerc < 1 ? (custosFixos / (1 - aliquotasPerc)).toFixed(2) : '';
+      const precoAnuncio = precoVenda > 0 ? (precoVenda / 0.7).toFixed(2) : '';
+      finalOps = { ...currentOps, precoVendaManual: safeVal, precoAnuncio, precoRankeamento: precoRank };
+    }
+
+    if (Object.keys(finalOps).length === 0) {
+      delete nov[channelId][ftId];
+      await supaWrite('ecommerce_overrides', 'DELETE', null, { channel_id: channelId, ft_id: ftId });
+    } else {
+      nov[channelId][ftId] = finalOps;
+      await supaWrite('ecommerce_overrides', 'POST', { channel_id: channelId, ft_id: ftId, settings: finalOps }, {}, 'channel_id,ft_id');
+    }
+    setOverrides(nov);
+  };
+
   const handleOpenOverride = (ft) => {
     const merged = getFtWithOverrides(ft);
     setEditingOverride({ ftBase: ft, customData: merged });
@@ -607,6 +657,27 @@ export default function Vendas() {
             <span className="label">{ch.label}</span>
           </button>
         ))}
+        <button
+          onClick={() => setShowAutoPrecos(true)}
+          style={{
+            marginLeft: 'auto',
+            background: 'linear-gradient(135deg, #7C3AED, #4F46E5)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '10px',
+            padding: '0.5rem 1rem',
+            fontWeight: 700,
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: '0 2px 8px rgba(124,58,237,0.4)',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          ⚡ Automação de Preços
+        </button>
       </div>
 
       <div className="card vendas-table-card">
@@ -929,6 +1000,21 @@ export default function Vendas() {
       )}
       {showReport && (<MonthlyReportOverlay month={currentMonth} vendasMensal={vendasMensal[currentMonth] || {}} savedFts={savedFts} overrides={overrides} channelDefaults={channelDefaults} onClose={() => setShowReport(false)} />)}
 
+      {showAutoPrecos && (
+        <AutoPrecosOverlay
+          savedFts={savedFts}
+          overrides={overrides}
+          channelDefaults={channelDefaults}
+          autoCanais={autoCanais}
+          setAutoCanais={setAutoCanais}
+          autoFiltro={autoFiltro}
+          setAutoFiltro={setAutoFiltro}
+          onPriceChange={handleAutoPriceChange}
+          onClose={() => setShowAutoPrecos(false)}
+          getFtWithOverridesForChannel={getFtWithOverridesForChannel}
+        />
+      )}
+
       <ConfirmModal
         isOpen={confirmModal.isOpen}
         type={confirmModal.type}
@@ -936,6 +1022,186 @@ export default function Vendas() {
         details={confirmModal.details}
         onConfirm={async () => { closeConfirm(); await confirmModal.onConfirm?.(); }}
         onCancel={closeConfirm}
+      />
+    </div>
+  );
+}
+
+function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, setAutoCanais, autoFiltro, setAutoFiltro, onPriceChange, onClose, getFtWithOverridesForChannel }) {
+
+  const toggleCanal = (id) => {
+    setAutoCanais(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
+  };
+
+  const activeChannelList = CHANNELS.filter(c => autoCanais.includes(c.id));
+
+  const filteredFts = savedFts.filter(ft => {
+    if (!autoFiltro) return true;
+    const q = autoFiltro.toLowerCase();
+    const ftRes0 = getFtWithOverridesForChannel(ft, autoCanais[0] || 'ml');
+    const res0 = getResultados(ftRes0);
+    const preco = parseNumber(ftRes0.precoVendaManual);
+    const margem = res0.margemContribuicaoPerc;
+    return (
+      ft.nomePeca.toLowerCase().includes(q) ||
+      ft.indiceFt.toLowerCase().includes(q) ||
+      (preco > 0 && String(preco.toFixed(2)).includes(q)) ||
+      (String(margem.toFixed(1)).includes(q))
+    );
+  });
+
+  const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div style={{ background: 'linear-gradient(135deg, #7C3AED, #4F46E5)', padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div>
+          <h2 style={{ margin: 0, color: 'white', fontSize: '1.2rem' }}>⚡ Automação de Preços</h2>
+          <p style={{ margin: 0, color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem' }}>Edite preços inline e veja margens em todos os canais simultaneamente</p>
+        </div>
+        <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', borderRadius: '8px', padding: '0.5rem 0.9rem', cursor: 'pointer', fontWeight: 700, fontSize: '1.1rem' }}>✕</button>
+      </div>
+
+      {/* Controls */}
+      <div style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-color)', padding: '0.75rem 1.5rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600, marginRight: '4px' }}>Canais:</span>
+          {CHANNELS.map(ch => (
+            <label key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', background: autoCanais.includes(ch.id) ? 'var(--accent-primary)' : 'var(--bg-secondary)', color: autoCanais.includes(ch.id) ? 'white' : 'var(--text-primary)', padding: '4px 10px', borderRadius: '20px', fontSize: '0.82rem', fontWeight: 600, border: '1px solid var(--border-color)', transition: 'all 0.15s' }}>
+              <input type="checkbox" checked={autoCanais.includes(ch.id)} onChange={() => toggleCanal(ch.id)} style={{ display: 'none' }} />
+              {ch.icon} {ch.label}
+            </label>
+          ))}
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '0.4rem 0.75rem' }}>
+          <span>🔍</span>
+          <input
+            type="text"
+            placeholder="Buscar por nome, FT, preço ou margem..."
+            value={autoFiltro}
+            onChange={e => setAutoFiltro(e.target.value)}
+            style={{ border: 'none', background: 'transparent', color: 'var(--text-primary)', outline: 'none', width: '260px', fontSize: '0.88rem' }}
+          />
+        </div>
+      </div>
+
+      {/* Table */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '1rem 1.5rem' }}>
+        {activeChannelList.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)' }}>Selecione ao menos um canal acima.</div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-secondary)', position: 'sticky', top: 0, zIndex: 10 }}>
+                <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left', borderBottom: '2px solid var(--border-color)', whiteSpace: 'nowrap', color: 'var(--text-secondary)', fontWeight: 700 }}>ID</th>
+                <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontWeight: 700 }}>Produto</th>
+                <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontWeight: 700 }}>⏱ Tempo</th>
+                {activeChannelList.map(ch => (
+                  <th key={ch.id} colSpan={4} style={{ padding: '0.6rem 0.8rem', textAlign: 'center', borderBottom: '2px solid var(--border-color)', borderLeft: '2px solid var(--border-color)', color: 'var(--accent-primary)', fontWeight: 700, background: 'var(--bg-surface)' }}>
+                    {ch.icon} {ch.label}
+                  </th>
+                ))}
+              </tr>
+              <tr style={{ background: 'var(--bg-secondary)', position: 'sticky', top: '37px', zIndex: 9 }}>
+                <th colSpan={3} style={{ borderBottom: '1px solid var(--border-color)' }}></th>
+                {activeChannelList.map(ch => (
+                  <>
+                    <th key={ch.id + '_preco'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', borderLeft: '2px solid var(--border-color)', color: 'var(--accent-primary)', fontWeight: 600, fontSize: '0.75rem' }}>Preço Venda</th>
+                    <th key={ch.id + '_marg'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: 'var(--success)', fontWeight: 600, fontSize: '0.75rem' }}>Margem %</th>
+                    <th key={ch.id + '_lucro'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: 'var(--success)', fontWeight: 600, fontSize: '0.75rem' }}>Lucro R$</th>
+                    <th key={ch.id + '_24h'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#F59E0B', fontWeight: 600, fontSize: '0.75rem', background: 'rgba(245,158,11,0.06)' }}>🕒 Lucro 24h</th>
+                  </>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredFts.map((ft, idx) => {
+                const unitTimeHours = getUnitProductionTime(ft);
+                const unidades24h = unitTimeHours > 0 ? Math.floor(24 / unitTimeHours) : 0;
+
+                return (
+                  <tr key={ft.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
+                    <td style={{ padding: '0.55rem 0.8rem', whiteSpace: 'nowrap' }}>
+                      <span style={{ background: 'var(--bg-secondary)', color: 'var(--accent-primary)', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '0.78rem' }}>{ft.indiceFt}</span>
+                    </td>
+                    <td style={{ padding: '0.55rem 0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>{ft.nomePeca}</td>
+                    <td style={{ padding: '0.55rem 0.8rem', textAlign: 'center', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{formatTime(unitTimeHours)}</td>
+
+                    {activeChannelList.map(ch => {
+                      const merged = getFtWithOverridesForChannel(ft, ch.id);
+                      const res = getResultados(merged);
+                      const preco = parseNumber(merged.precoVendaManual);
+                      const marg = res.margemContribuicaoPerc;
+                      const lucro = res.lucroLiquido;
+                      const lucro24h = lucro * unidades24h;
+                      const margColor = marg > 20 ? 'var(--success)' : marg > 0 ? '#F59E0B' : 'var(--danger)';
+
+                      return (
+                        <>
+                          <td key={ch.id + '_p'} style={{ padding: '0.4rem 0.6rem', borderLeft: '2px solid var(--border-color)', textAlign: 'center', minWidth: '110px' }}>
+                            <AutoPriceInput
+                              initialValue={merged.precoVendaManual}
+                              onSave={(val) => onPriceChange(ft.indiceFt, ch.id, val)}
+                            />
+                          </td>
+                          <td key={ch.id + '_m'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', fontWeight: 700, color: margColor, whiteSpace: 'nowrap' }}>
+                            {preco > 0 ? `${marg.toFixed(1)}%` : <span style={{ color: 'var(--text-secondary)' }}>—</span>}
+                          </td>
+                          <td key={ch.id + '_l'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', fontWeight: 700, color: lucro >= 0 ? 'var(--success)' : 'var(--danger)', whiteSpace: 'nowrap' }}>
+                            {preco > 0 ? `R$ ${fmt(lucro)}` : <span style={{ color: 'var(--text-secondary)' }}>—</span>}
+                          </td>
+                          <td key={ch.id + '_24'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', background: 'rgba(245,158,11,0.06)', whiteSpace: 'nowrap' }}>
+                            {preco > 0 && unidades24h > 0 ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
+                                <span style={{ fontWeight: 700, color: lucro24h >= 0 ? '#F59E0B' : 'var(--danger)', fontSize: '0.88rem' }}>R$ {fmt(lucro24h)}</span>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{unidades24h} un/dia</span>
+                              </div>
+                            ) : <span style={{ color: 'var(--text-secondary)' }}>—</span>}
+                          </td>
+                        </>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AutoPriceInput({ initialValue, onSave }) {
+  const [val, setVal] = useState(initialValue !== undefined && initialValue !== null ? String(initialValue).replace('.', ',') : '');
+
+  useEffect(() => {
+    setVal(initialValue !== undefined && initialValue !== null ? String(initialValue).replace('.', ',') : '');
+  }, [initialValue]);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '2px', justifyContent: 'center' }}>
+      <span style={{ color: 'var(--accent-primary)', fontWeight: 700, fontSize: '0.8rem' }}>R$</span>
+      <input
+        type="text"
+        value={val}
+        placeholder="0,00"
+        onChange={e => setVal(e.target.value)}
+        onBlur={() => { const old = initialValue !== undefined && initialValue !== null ? String(initialValue).replace('.', ',') : ''; if (val !== old) onSave(val); }}
+        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+        style={{
+          width: '70px',
+          border: '1px solid var(--border-color)',
+          borderRadius: '6px',
+          padding: '3px 6px',
+          background: 'var(--bg-secondary)',
+          color: 'var(--accent-primary)',
+          fontWeight: 700,
+          fontSize: '0.85rem',
+          textAlign: 'right',
+          outline: 'none'
+        }}
       />
     </div>
   );
