@@ -4,7 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   Users, UserPlus, Trash2, Shield, LayoutDashboard,
   Calculator, ShoppingCart, TrendingDown, ClipboardList,
-  BarChart3, Check, X, Building2, Plus, Lock
+  BarChart3, Check, X, Building2, Plus, Lock,
+  Search, Package, Wallet, FileText, Truck, ShieldAlert
 } from 'lucide-react';
 import './Usuarios.css';
 import ConfirmModal from '../components/ConfirmModal';
