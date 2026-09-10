@@ -1052,8 +1052,8 @@ function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, s
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', flexDirection: 'column' }}>
+    return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #7C3AED, #4F46E5)', padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div>
