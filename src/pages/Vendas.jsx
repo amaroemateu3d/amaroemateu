@@ -105,6 +105,7 @@ export default function Vendas() {
   const [showAutoPrecos, setShowAutoPrecos] = useState(false);
   const [autoCanais, setAutoCanais] = useState(['ml']);
   const [autoFiltro, setAutoFiltro] = useState('');
+  const [apenasComPreco, setApenasComPreco] = useState(false);
 
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'save', title: '', details: [], onConfirm: null });
   const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
@@ -1009,6 +1010,8 @@ export default function Vendas() {
           setAutoCanais={setAutoCanais}
           autoFiltro={autoFiltro}
           setAutoFiltro={setAutoFiltro}
+          apenasComPreco={apenasComPreco}
+          setApenasComPreco={setApenasComPreco}
           onPriceChange={handleAutoPriceChange}
           onClose={() => setShowAutoPrecos(false)}
           getFtWithOverridesForChannel={getFtWithOverridesForChannel}
@@ -1027,7 +1030,7 @@ export default function Vendas() {
   );
 }
 
-function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, setAutoCanais, autoFiltro, setAutoFiltro, onPriceChange, onClose, getFtWithOverridesForChannel }) {
+function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, setAutoCanais, autoFiltro, setAutoFiltro, apenasComPreco, setApenasComPreco, onPriceChange, onClose, getFtWithOverridesForChannel }) {
 
   const toggleCanal = (id) => {
     setAutoCanais(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
@@ -1036,6 +1039,15 @@ function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, s
   const activeChannelList = CHANNELS.filter(c => autoCanais.includes(c.id));
 
   const filteredFts = savedFts.filter(ft => {
+    // Filtro: apenas com preço cadastrado em pelo menos um dos canais selecionados
+    if (apenasComPreco) {
+      const temPreco = autoCanais.some(chId => {
+        const merged = getFtWithOverridesForChannel(ft, chId);
+        return parseNumber(merged.precoVendaManual) > 0;
+      });
+      if (!temPreco) return false;
+    }
+
     if (!autoFiltro) return true;
     const q = autoFiltro.toLowerCase();
     const ftRes0 = getFtWithOverridesForChannel(ft, autoCanais[0] || 'ml');
@@ -1074,15 +1086,37 @@ function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, s
             </label>
           ))}
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '0.4rem 0.75rem' }}>
-          <span>🔍</span>
-          <input
-            type="text"
-            placeholder="Buscar por nome, FT, preço ou margem..."
-            value={autoFiltro}
-            onChange={e => setAutoFiltro(e.target.value)}
-            style={{ border: 'none', background: 'transparent', color: 'var(--text-primary)', outline: 'none', width: '260px', fontSize: '0.88rem' }}
-          />
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={() => setApenasComPreco(p => !p)}
+            style={{
+              background: apenasComPreco ? 'var(--success)' : 'var(--bg-secondary)',
+              color: apenasComPreco ? 'white' : 'var(--text-secondary)',
+              border: `1px solid ${apenasComPreco ? 'var(--success)' : 'var(--border-color)'}`,
+              borderRadius: '8px',
+              padding: '0.4rem 0.85rem',
+              fontWeight: 600,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              transition: 'all 0.15s'
+            }}
+          >
+            {apenasComPreco ? '✅' : '☐'} Com preço cadastrado
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '0.4rem 0.75rem' }}>
+            <span>🔍</span>
+            <input
+              type="text"
+              placeholder="Buscar por nome, FT, preço ou margem..."
+              value={autoFiltro}
+              onChange={e => setAutoFiltro(e.target.value)}
+              style={{ border: 'none', background: 'transparent', color: 'var(--text-primary)', outline: 'none', width: '260px', fontSize: '0.88rem' }}
+            />
+          </div>
         </div>
       </div>
 
