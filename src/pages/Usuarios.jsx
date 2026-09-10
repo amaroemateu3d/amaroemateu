@@ -16,6 +16,11 @@ const PAGES = [
   { id: 'vendas',          label: 'Vendas Multi-Canal', icon: <ShoppingCart size={16} /> },
   { id: 'pedidos',         label: 'Pedidos',            icon: <ClipboardList size={16} /> },
   { id: 'saidas',          label: 'Saídas e Despesas',  icon: <TrendingDown size={16} /> },
+  { id: 'financas-pessoais', label: 'Finanças Pessoais',  icon: <Wallet size={16} /> },
+  { id: 'pesquisa-ecommerce', label: 'Pesquisa Concorrência', icon: <Search size={16} /> },
+  { id: 'orcamentos',      label: 'Orçamentos Rápidos', icon: <FileText size={16} /> },
+  { id: 'estoque',         label: 'Estoque / Insumos',  icon: <Package size={16} /> },
+  { id: 'consignados',     label: 'Consignados',        icon: <Truck size={16} /> },
 ];
 
 const COLORS = ['#8B5CF6','#3B82F6','#10B981','#F59E0B','#EC4899','#06B6D4','#84CC16'];
@@ -192,6 +197,31 @@ export default function Usuarios() {
       alert("Erro ao salvar permissões: " + err.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  
+  async function handleToggleAdmin(userId, currentValue) {
+    if (!window.confirm(currentValue ? "Remover privilégios de administrador deste usuário?" : "Tornar este usuário um administrador com acesso total?")) return;
+    const newValue = !currentValue;
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ is_admin: newValue })
+        .eq('id', userId);
+
+      if (error) throw error;
+      
+      setProfiles(prev => {
+        const next = { ...prev };
+        if (next[userId]) {
+          next[userId] = { ...next[userId], is_admin: newValue };
+        }
+        return next;
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao alterar privilégios: ' + err.message);
     }
   }
 
@@ -786,16 +816,29 @@ export default function Usuarios() {
                       🔑 Senha Cadastrada: <strong style={{ color: 'var(--success)', fontFamily: 'monospace', fontSize: '0.95rem' }}>{profiles[selectedUser.id]?.password_plain || '—'}</strong>
                     </span>
                   </div>
-                  {!profiles[selectedUser.id]?.is_admin && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', background: 'var(--bg-secondary)', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '0.9rem' }}>
-                      <input
-                        type="checkbox"
-                        checked={profiles[selectedUser.id]?.is_acertos || false}
-                        onChange={() => handleToggleAcertos(selectedUser.id, profiles[selectedUser.id]?.is_acertos)}
-                      />
-                      <strong style={{ color: 'var(--accent-primary)' }}>Acesso Restrito a Acertos</strong>
-                    </label>
-                  )}
+                  
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', background: 'var(--bg-secondary)', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '0.9rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={profiles[selectedUser.id]?.is_admin || false}
+                          onChange={() => handleToggleAdmin(selectedUser.id, profiles[selectedUser.id]?.is_admin)}
+                        />
+                        <strong style={{ color: 'var(--danger)' }}>Administrador (Acesso Total)</strong>
+                      </label>
+                      
+                      {!profiles[selectedUser.id]?.is_admin && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', background: 'var(--bg-secondary)', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '0.9rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={profiles[selectedUser.id]?.is_acertos || false}
+                            onChange={() => handleToggleAcertos(selectedUser.id, profiles[selectedUser.id]?.is_acertos)}
+                          />
+                          <strong style={{ color: 'var(--accent-primary)' }}>Acesso Restrito a Acertos</strong>
+                        </label>
+                      )}
+                    </div>
+
                 </div>
 
                 {/* Painel de Redefinição de Senha */}
@@ -855,6 +898,16 @@ export default function Usuarios() {
                     </tr>
                   </thead>
                   <tbody>
+                    {profiles[selectedUser.id]?.is_admin && (
+                      <tr>
+                        <td colSpan="3">
+                          <div style={{ padding: '12px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', marginBottom: '8px' }}>
+                            <ShieldAlert size={18} />
+                            Este usuário é Administrador e possui acesso total. Desmarque a opção "Administrador" acima para personalizar permissões.
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                     {PAGES.map(page => {
                       const perm = permissions[page.id] || { can_view: true, can_edit: true };
                       const isAdminUser = profiles[selectedUser.id]?.is_admin;
