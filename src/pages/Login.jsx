@@ -1,57 +1,43 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
-import './Login.css';
+﻿import { useState, useEffect } from "react";
+import { supabase } from "../supabaseClient";
+import "./Login.css";
 
-// Mapeamento: usuário → email no Supabase
 const USER_MAP = {
-  daniel: 'daniel@am3d.app',
-  cintia: 'cintia@am3d.app',
-  vendas: 'vendas@am3d.app',
+  daniel: "daniel@am3d.app",
+  cintia: "cintia@am3d.app",
+  vendas: "vendas@am3d.app",
 };
 
 export default function Login() {
-  const [usuario, setUsuario] = useState('');
-  const [senha, setSenha] = useState('');
+  const [usuario, setUsuario] = useState("");
+  const [senha, setSenha] = useState("");
   const [lembrar, setLembrar] = useState(false);
   const [mostrarSenha, setMostrarSenha] = useState(false);
-  const [erro, setErro] = useState('');
+  const [erro, setErro] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Carrega credenciais salvas se a opção Lembrar estiver ativa
-    const savedUsuario = localStorage.getItem('am3d_usuario') || localStorage.getItem('lume_usuario') || '';
-    const savedSenha = localStorage.getItem('am3d_senha') || localStorage.getItem('lume_senha') || '';
-    const savedLembrar = (localStorage.getItem('am3d_lembrar') || localStorage.getItem('lume_lembrar')) === 'true';
-
+    const savedUsuario = localStorage.getItem("am3d_usuario") || localStorage.getItem("lume_usuario") || "";
+    const savedSenha = localStorage.getItem("am3d_senha") || localStorage.getItem("lume_senha") || "";
+    const savedLembrar = (localStorage.getItem("am3d_lembrar") || localStorage.getItem("lume_lembrar")) === "true";
     if (savedLembrar) {
       setUsuario(savedUsuario);
       setSenha(savedSenha);
       setLembrar(true);
     }
-
-    try {
-      // Limpa chaves antigas e resíduos do Supabase para garantir login 100% limpo
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const key = localStorage.key(i);
-        if (key && (key.includes('supabase') || key.startsWith('sb-')) && !key.includes('lume_') && !key.includes('am3d_')) {
-          localStorage.removeItem(key);
-        }
-      }
-    } catch (e) {
-      console.error("Erro ao limpar localStorage no Login:", e);
-    }
+    // NAO limpar chaves do Supabase aqui — corrompia o fluxo de autenticacao
   }, []);
 
   async function handleLogin(e) {
     e.preventDefault();
-    setErro('');
+    setErro("");
     setLoading(true);
 
     const cleanUser = usuario.toLowerCase().trim();
     let email = USER_MAP[cleanUser];
 
     if (!email) {
-      if (cleanUser.includes('@')) {
+      if (cleanUser.includes("@")) {
         email = cleanUser;
       } else if (cleanUser.length > 0) {
         email = `${cleanUser}@am3d.app`;
@@ -59,7 +45,7 @@ export default function Login() {
     }
 
     if (!email) {
-      setErro('Usuário não encontrado.');
+      setErro("Usuario nao encontrado.");
       setLoading(false);
       return;
     }
@@ -67,24 +53,24 @@ export default function Login() {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
       if (error) {
-        setErro('Usuário ou senha incorretos: ' + error.message);
+        setErro("Usuario ou senha incorretos: " + error.message);
+        setLoading(false);
       } else {
-        // Se logou com sucesso, salva ou remove credenciais
         if (lembrar) {
-          localStorage.setItem('am3d_usuario', usuario);
-          localStorage.setItem('am3d_senha', senha);
-          localStorage.setItem('am3d_lembrar', 'true');
+          localStorage.setItem("am3d_usuario", usuario);
+          localStorage.setItem("am3d_senha", senha);
+          localStorage.setItem("am3d_lembrar", "true");
         } else {
-          localStorage.removeItem('am3d_usuario');
-          localStorage.removeItem('am3d_senha');
-          localStorage.setItem('am3d_lembrar', 'false');
+          localStorage.removeItem("am3d_usuario");
+          localStorage.removeItem("am3d_senha");
+          localStorage.setItem("am3d_lembrar", "false");
         }
-        // AuthContext onAuthStateChange detecta a sessão e redireciona automaticamente
+        // Recarrega a pagina — AuthContext detecta a sessao e entra no sistema
+        window.location.reload();
       }
     } catch (err) {
-      console.error("Erro de execução no signInWithPassword:", err);
-      setErro('Erro de conexão: ' + err.message);
-    } finally {
+      console.error("Erro no signInWithPassword:", err);
+      setErro("Erro de conexao: " + err.message);
       setLoading(false);
     }
   }
@@ -100,10 +86,10 @@ export default function Login() {
 
         <form className="login-form" onSubmit={handleLogin}>
           <div className="login-field">
-            <label>Usuário</label>
+            <label>Usuario</label>
             <input
               type="text"
-              placeholder="Digite seu usuário"
+              placeholder="Digite seu usuario"
               value={usuario}
               onChange={e => setUsuario(e.target.value)}
               autoComplete="username"
@@ -122,14 +108,14 @@ export default function Login() {
                 autoComplete="current-password"
                 required
               />
-              <button 
-                type="button" 
-                className="toggle-password-btn" 
+              <button
+                type="button"
+                className="toggle-password-btn"
                 onClick={() => setMostrarSenha(prev => !prev)}
                 tabIndex="-1"
                 title={mostrarSenha ? "Ocultar Senha" : "Exibir Senha"}
               >
-                {mostrarSenha ? '👁️' : '👁️‍🗨️'}
+                {mostrarSenha ? "\uD83D\uDC41\uFE0F" : "\uD83D\uDC41\uFE0F\u200D\uD83D\uDDE8\uFE0F"}
               </button>
             </div>
           </div>
@@ -148,7 +134,7 @@ export default function Login() {
           {erro && <div className="login-error">{erro}</div>}
 
           <button type="submit" className="login-btn" disabled={loading}>
-            {loading ? 'Entrando...' : 'Entrar'}
+            {loading ? "Entrando..." : "Entrar"}
           </button>
         </form>
 
