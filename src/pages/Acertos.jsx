@@ -38,22 +38,22 @@ export default function Acertos() {
   const shareWhatsApp = async (settlement) => {
     if (!settlement) return;
     const comissaoText = settlement.tipoAcerto === 'comissionado' 
-      ? `*Comissão (${settlement.comissaoPct}%):* - R$ ${fmt(settlement.grossTotal * (parseN(settlement.comissaoPct) / 100))}\n*Valor Líquido Recebido:* R$ ${fmt(settlement.netTotal)}`
+      ? `*ComissÃ£o (${settlement.comissaoPct}%):* - R$ ${fmt(settlement.grossTotal * (parseN(settlement.comissaoPct) / 100))}\n*Valor LÃ­quido Recebido:* R$ ${fmt(settlement.netTotal)}`
       : `*Valor Recebido:* R$ ${fmt(settlement.netTotal)}`;
 
     const itemsText = settlement.items.map(it => {
       const displayNome = it.nomePeca || productNames[it.indiceFt] || 'Sem Nome';
-      return `• ${it.qtd}x ${displayNome} (R$ ${fmt(it.precoUnit)}/un)`;
+      return `â€¢ ${it.qtd}x ${displayNome} (R$ ${fmt(it.precoUnit)}/un)`;
     }).join('\n');
 
     const message = `*AM3D - COMPROVANTE DE ACERTO CONSIGNADO*\n\n` +
-      `🤝 *Cliente:* ${settlement.cliente.nome}\n` +
-      `📅 *Data:* ${settlement.date}\n\n` +
-      `*Peças Acertadas:*\n${itemsText}\n\n` +
+      `ðŸ¤ *Cliente:* ${settlement.cliente.nome}\n` +
+      `ðŸ“… *Data:* ${settlement.date}\n\n` +
+      `*PeÃ§as Acertadas:*\n${itemsText}\n\n` +
       `*Resumo Financeiro:*\n` +
-      `*Venda Bruta:* R$ ${fmt(settlement.grossTotal)}\n` +
+      (settlement.tipoAcerto === 'comissionado' ? `*Venda Bruta:* R$ ${fmt(settlement.grossTotal)}\n` : '') +
       `${comissaoText}\n\n` +
-      `Obrigado pela parceria! 🚀`;
+      `Obrigado pela parceria! ðŸš€`;
 
     if (navigator.share) {
       try {
@@ -98,9 +98,9 @@ export default function Acertos() {
     const totalsHtml = settlement.tipoAcerto === 'comissionado' ? `
       <div style="background: ${accentBg}; border-radius: 10px; padding: 13px 22px; text-align: right; min-width: 240px; display: flex; flex-direction: column; gap: 4px; print-color-adjust: exact; -webkit-print-color-adjust: exact; margin-left: auto;">
         <div style="font-size: 8pt; font-weight: 700; color: #047857; text-transform: uppercase; letter-spacing: 1px;">Venda Bruta: R$ ${fmt(settlement.grossTotal)}</div>
-        <div style="font-size: 8pt; font-weight: 700; color: #dc2626; text-transform: uppercase; letter-spacing: 1px;">Comissão (-${settlement.comissaoPct}%): - R$ ${fmt(settlement.grossTotal * (parseN(settlement.comissaoPct) / 100))}</div>
+        <div style="font-size: 8pt; font-weight: 700; color: #dc2626; text-transform: uppercase; letter-spacing: 1px;">ComissÃ£o (-${settlement.comissaoPct}%): - R$ ${fmt(settlement.grossTotal * (parseN(settlement.comissaoPct) / 100))}</div>
         <div style="height: 1px; background: rgba(0,0,0,0.1); margin: 6px 0;"></div>
-        <div style="font-size: 8pt; font-weight: 700; color: ${accentColor}; text-transform: uppercase; letter-spacing: 1px;">Valor Líquido Recebido</div>
+        <div style="font-size: 8pt; font-weight: 700; color: ${accentColor}; text-transform: uppercase; letter-spacing: 1px;">Valor LÃ­quido Recebido</div>
         <div style="font-family: 'Outfit',sans-serif; font-size: 18pt; font-weight: 900; color: ${accentColor}; margin-top: 2px;">R$ ${fmt(settlement.netTotal)}</div>
       </div>
     ` : `
@@ -115,7 +115,7 @@ export default function Acertos() {
     <html lang="pt-BR">
     <head>
       <meta charset="UTF-8"/>
-      <title>Comprovante de Acerto — AM3D</title>
+      <title>Comprovante de Acerto â€” AM3D</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@700;900&display=swap" rel="stylesheet">
       <style>
@@ -162,38 +162,38 @@ export default function Acertos() {
             <div class="logo-box">3D</div>
             <div class="company-info-text" translate="no">
               <div class="company-title">Amaro & Mateu 3D</div>
-              <div class="company-subtitle">Produtos em Impressão 3D</div>
-              <div class="company-slogan">Funcionais, criativos e prontos para você!</div>
+              <div class="company-subtitle">Produtos em ImpressÃ£o 3D</div>
+              <div class="company-slogan">Funcionais, criativos e prontos para vocÃª!</div>
               <div class="company-details-row" style="white-space: nowrap;">
-                📸 Instagram: <span>@aem3d_</span> | ✉️ E-mail: <span>amaroemateu3d@gmail.com</span>
+                ðŸ“¸ Instagram: <span>@aem3d_</span> | âœ‰ï¸ E-mail: <span>amaroemateu3d@gmail.com</span>
               </div>
               <div class="company-contacts-row" style="white-space: nowrap;">
-                <svg viewBox="0 0 24 24" width="11" height="11" style="fill: #25D366; vertical-align: middle; margin-right: 3px; display: inline-block;"><path d="M12.004 0C5.378 0 .004 5.374.004 12.004c0 2.115.548 4.183 1.588 6.006L.004 24l6.17-1.619c1.767.964 3.765 1.47 5.83 1.474h.005c6.626 0 12-5.374 12-12.004C24.009 5.374 18.63 0 12.004 0zm6.815 17.382c-.296.83-1.72 1.572-2.393 1.674-.46.069-.912.127-2.955-.674-2.613-1.023-4.298-3.687-4.43-3.86-.13-.173-1.077-1.43-1.077-2.729 0-1.3.676-1.939.917-2.204.24-.266.526-.333.7-.333h.498c.12 0 .28-.046.439.34.16.386.548 1.343.598 1.445.05.102.083.22.016.353-.067.133-.1.22-.2.339-.1.119-.21.266-.3.353-.1.102-.204.213-.087.414.117.2.52 1.83.82 2.102.302.27.564.385.803.486.24.1.385.053.53-.119.146-.173.628-.73 1.077-1.42.067-.102.133-.12.23-.083.1.037.628.297.747.353.12.057.2.087.23.137.03.05.03.287-.07.618z"/></svg> Cíntia: <span>19 9 8143-2080</span> | <svg viewBox="0 0 24 24" width="11" height="11" style="fill: #25D366; vertical-align: middle; margin-right: 3px; display: inline-block;"><path d="M12.004 0C5.378 0 .004 5.374.004 12.004c0 2.115.548 4.183 1.588 6.006L.004 24l6.17-1.619c1.767.964 3.765 1.47 5.83 1.474h.005c6.626 0 12-5.374 12-12.004C24.009 5.374 18.63 0 12.004 0zm6.815 17.382c-.296.83-1.72 1.572-2.393 1.674-.46.069-.912.127-2.955-.674-2.613-1.023-4.298-3.687-4.43-3.86-.13-.173-1.077-1.43-1.077-2.729 0-1.3.676-1.939.917-2.204.24-.266.526-.333.7-.333h.498c.12 0 .28-.046.439.34.16.386.548 1.343.598 1.445.05.102.083.22.016.353-.067.133-.1.22-.2.339-.1.119-.21.266-.3.353-.1.102-.204.213-.087.414.117.2.52 1.83.82 2.102.302.27.564.385.803.486.24.1.385.053.53-.119.146-.173.628-.73 1.077-1.42.067-.102.133-.12.23-.083.1.037.628.297.747.353.12.057.2.087.23.137.03.05.03.287-.07.618z"/></svg> Daniel: <span>19 9 9672-5045</span>
+                <svg viewBox="0 0 24 24" width="11" height="11" style="fill: #25D366; vertical-align: middle; margin-right: 3px; display: inline-block;"><path d="M12.004 0C5.378 0 .004 5.374.004 12.004c0 2.115.548 4.183 1.588 6.006L.004 24l6.17-1.619c1.767.964 3.765 1.47 5.83 1.474h.005c6.626 0 12-5.374 12-12.004C24.009 5.374 18.63 0 12.004 0zm6.815 17.382c-.296.83-1.72 1.572-2.393 1.674-.46.069-.912.127-2.955-.674-2.613-1.023-4.298-3.687-4.43-3.86-.13-.173-1.077-1.43-1.077-2.729 0-1.3.676-1.939.917-2.204.24-.266.526-.333.7-.333h.498c.12 0 .28-.046.439.34.16.386.548 1.343.598 1.445.05.102.083.22.016.353-.067.133-.1.22-.2.339-.1.119-.21.266-.3.353-.1.102-.204.213-.087.414.117.2.52 1.83.82 2.102.302.27.564.385.803.486.24.1.385.053.53-.119.146-.173.628-.73 1.077-1.42.067-.102.133-.12.23-.083.1.037.628.297.747.353.12.057.2.087.23.137.03.05.03.287-.07.618z"/></svg> CÃ­ntia: <span>19 9 8143-2080</span> | <svg viewBox="0 0 24 24" width="11" height="11" style="fill: #25D366; vertical-align: middle; margin-right: 3px; display: inline-block;"><path d="M12.004 0C5.378 0 .004 5.374.004 12.004c0 2.115.548 4.183 1.588 6.006L.004 24l6.17-1.619c1.767.964 3.765 1.47 5.83 1.474h.005c6.626 0 12-5.374 12-12.004C24.009 5.374 18.63 0 12.004 0zm6.815 17.382c-.296.83-1.72 1.572-2.393 1.674-.46.069-.912.127-2.955-.674-2.613-1.023-4.298-3.687-4.43-3.86-.13-.173-1.077-1.43-1.077-2.729 0-1.3.676-1.939.917-2.204.24-.266.526-.333.7-.333h.498c.12 0 .28-.046.439.34.16.386.548 1.343.598 1.445.05.102.083.22.016.353-.067.133-.1.22-.2.339-.1.119-.21.266-.3.353-.1.102-.204.213-.087.414.117.2.52 1.83.82 2.102.302.27.564.385.803.486.24.1.385.053.53-.119.146-.173.628-.73 1.077-1.42.067-.102.133-.12.23-.083.1.037.628.297.747.353.12.057.2.087.23.137.03.05.03.287-.07.618z"/></svg> Daniel: <span>19 9 9672-5045</span>
               </div>
             </div>
           </div>
           <div class="doc-badge-wrap">
             <div class="doc-badge">COMPROVANTE DE ACERTO</div>
             <div class="doc-num">#${Date.now().toString().slice(-6)}</div>
-            <div class="doc-date">📅 ${dateStr}</div>
+            <div class="doc-date">ðŸ“… ${dateStr}</div>
           </div>
         </div>
         <div class="divider-accent"></div>
         <div class="section-label">Dados do Cliente</div>
         <div class="client-card">
-          <div class="client-field"><span class="field-label">Nome:</span><span class="field-value">${settlement.cliente.nome || '—'}</span></div>
-          <div class="client-field"><span class="field-label">Telefone:</span><span class="field-value">${settlement.cliente.telefone || '—'}</span></div>
-          <div class="client-field"><span class="field-label">E-mail:</span><span class="field-value">${settlement.cliente.email || '—'}</span></div>
-          <div class="client-field client-full"><span class="field-label">Endereço:</span><span class="field-value">${settlement.cliente.endereco || '—'}</span></div>
+          <div class="client-field"><span class="field-label">Nome:</span><span class="field-value">${settlement.cliente.nome || 'â€”'}</span></div>
+          <div class="client-field"><span class="field-label">Telefone:</span><span class="field-value">${settlement.cliente.telefone || 'â€”'}</span></div>
+          <div class="client-field"><span class="field-label">E-mail:</span><span class="field-value">${settlement.cliente.email || 'â€”'}</span></div>
+          <div class="client-field client-full"><span class="field-label">EndereÃ§o:</span><span class="field-value">${settlement.cliente.endereco || 'â€”'}</span></div>
         </div>
         <table style="width:100%; border-collapse: collapse;">
           <thead>
             <tr>
               <th style="width:30px; text-align: center;">#</th>
               <th style="width:60px">ID</th>
-              <th>Descrição</th>
+              <th>DescriÃ§Ã£o</th>
               <th style="width:70px; text-align: center;">Qtd</th>
-              <th style="width:90px; text-align: right;">Preço Unit.</th>
+              <th style="width:90px; text-align: right;">PreÃ§o Unit.</th>
               <th style="width:105px; text-align: right;">Subtotal</th>
             </tr>
           </thead>
@@ -203,7 +203,7 @@ export default function Acertos() {
           ${totalsHtml}
         </div>
         <div class="footer">
-          <span class="footer-brand">AM3D — Impressão 3D Profissional</span>
+          <span class="footer-brand">AM3D â€” ImpressÃ£o 3D Profissional</span>
           <span>Gerado em ${new Date().toLocaleString('pt-BR')}</span>
         </div>
       </div>
@@ -265,7 +265,7 @@ export default function Acertos() {
   };
 
   const calculateAccountStats = (acc) => {
-    // Soma apenas os itens não retirados (qtd - qtdRetirado) × preço
+    // Soma apenas os itens nÃ£o retirados (qtd - qtdRetirado) Ã— preÃ§o
     const totalNetSent = (acc.batches || []).reduce((sum, batch) => {
       return sum + (batch.items || []).reduce((bsum, it) => {
         const liquido = parseN(it.qtd) - parseN(it.qtdRetirado);
@@ -294,7 +294,7 @@ export default function Acertos() {
         }
         aggregated[it.indiceFt].totalQtd     += parseN(it.qtd);
         aggregated[it.indiceFt].totalPago    += parseN(it.qtdPago);
-        aggregated[it.indiceFt].totalRetirado += parseN(it.qtdRetirado); // ← contabiliza retiradas
+        aggregated[it.indiceFt].totalRetirado += parseN(it.qtdRetirado); // â† contabiliza retiradas
         aggregated[it.indiceFt].totalValue   += parseN(it.qtd) * parseN(it.precoUnit);
       });
     });
@@ -302,7 +302,7 @@ export default function Acertos() {
     return Object.values(aggregated)
       .map(it => ({
         ...it,
-        emAberto: it.totalQtd - it.totalPago - it.totalRetirado // ← subtrai retiradas
+        emAberto: it.totalQtd - it.totalPago - it.totalRetirado // â† subtrai retiradas
       }))
       .filter(it => it.emAberto > 0)
       .sort((a, b) => String(a.indiceFt).localeCompare(String(b.indiceFt), undefined, { numeric: true }));
@@ -346,13 +346,14 @@ export default function Acertos() {
       return alert("Por favor, preencha a quantidade vendida de pelo menos 1 item.");
     }
 
-    if (!window.confirm(`💰 REGISTRAR ACERTO?\n\nConfirmar venda dos itens informados e o recebimento de R$ ${fmt(currentTotalReceipt)}?`)) {
+    if (!window.confirm(`ðŸ’° REGISTRAR ACERTO?\n\nConfirmar venda dos itens informados e o recebimento de R$ ${fmt(currentTotalReceipt)}?`)) {
       return;
     }
 
     setSaving(true);
     try {
       let totalAmount = 0;
+      let rawGross = 0;
       const paymentItemsRecord = [];
       const updatedBatches = JSON.parse(JSON.stringify(selectedAccount.batches || []));
 
@@ -369,7 +370,7 @@ export default function Acertos() {
           if (item) {
             const qTotal    = parseN(item.qtd);
             const qPago     = parseN(item.qtdPago);
-            const qRetirado = parseN(item.qtdRetirado); // ← considera retiradas
+            const qRetirado = parseN(item.qtdRetirado); // â† considera retiradas
             const open = qTotal - qPago - qRetirado;
 
             if (open > 0) {
@@ -388,6 +389,7 @@ export default function Acertos() {
               });
 
               totalAmount += toAllocate * netPrecoUnit;
+              rawGross += toAllocate * parseN(item.precoUnit);
             }
           }
         }
@@ -422,11 +424,6 @@ export default function Acertos() {
       });
 
       if (!resp.ok) throw new Error("Erro ao salvar dados no Supabase.");
-
-      const rawGross = selectedVendas.reduce((sum, [ftId, qtyToSettle]) => {
-        const item = openItems.find(it => it.indiceFt === ftId);
-        return sum + (qtyToSettle * parseN(item?.precoUnit));
-      }, 0);
 
       setReceiptData({
         cliente: selectedAccount.cliente,
@@ -476,7 +473,7 @@ export default function Acertos() {
           <div className="logo-badge">3D</div>
           <div>
             <h1>AM3D Operacional</h1>
-            <p>Olá, {profile?.nome || 'Operador'}</p>
+            <p>OlÃ¡, {profile?.nome || 'Operador'}</p>
           </div>
         </div>
         <button className="logout-circle-btn" onClick={signOut} title="Sair do Sistema">
@@ -547,10 +544,10 @@ export default function Acertos() {
           )}
         </main>
       ) : (
-        /* VISTA 2: DETALHES E FORMULÁRIO DE ACERTO */
+        /* VISTA 2: DETALHES E FORMULÃRIO DE ACERTO */
         <main className="acertos-main">
           <button className="back-btn" onClick={() => setSelectedAccount(null)}>
-            ← Voltar para a lista de clientes
+            â† Voltar para a lista de clientes
           </button>
 
           {(() => {
@@ -570,7 +567,7 @@ export default function Acertos() {
                       </span>
                     )}
                   </div>
-                  <p style={{ marginTop: '4px' }}>📞 {selectedAccount.cliente?.telefone || 'Sem telefone'}</p>
+                  <p style={{ marginTop: '4px' }}>ðŸ“ž {selectedAccount.cliente?.telefone || 'Sem telefone'}</p>
                   {selectedAccount.cliente?.obs && (
                     <div className="client-obs-badge">
                       <strong>Obs:</strong> {selectedAccount.cliente.obs}
@@ -586,8 +583,8 @@ export default function Acertos() {
           })()}
 
           <div className="items-section-header">
-            <h3>Peças em Aberto com o Cliente</h3>
-            <span className="items-count-badge">{openItems.length} tipos de peça</span>
+            <h3>PeÃ§as em Aberto com o Cliente</h3>
+            <span className="items-count-badge">{openItems.length} tipos de peÃ§a</span>
           </div>
 
           {openItems.length > 0 && (
@@ -595,7 +592,7 @@ export default function Acertos() {
               <Search size={18} className="search-icon" />
               <input
                 type="text"
-                placeholder="Buscar peça por nome ou ID..."
+                placeholder="Buscar peÃ§a por nome ou ID..."
                 value={itemSearchTerm}
                 onChange={(e) => setItemSearchTerm(e.target.value)}
                 style={{ color: 'var(--acerto-text-primary)' }}
@@ -615,8 +612,8 @@ export default function Acertos() {
               return (
                 <div className="all-settled-card">
                   <CheckCircle2 size={48} className="success-icon" />
-                  <h3>Tudo em dia! 🎉</h3>
-                  <p>Este cliente não possui nenhuma peça pendente de acerto no momento.</p>
+                  <h3>Tudo em dia! ðŸŽ‰</h3>
+                  <p>Este cliente nÃ£o possui nenhuma peÃ§a pendente de acerto no momento.</p>
                 </div>
               );
             }
@@ -624,7 +621,7 @@ export default function Acertos() {
             if (filteredOpenItems.length === 0) {
               return (
                 <div className="empty-route-card">
-                  <p>Nenhuma peça encontrada para "{itemSearchTerm}".</p>
+                  <p>Nenhuma peÃ§a encontrada para "{itemSearchTerm}".</p>
                 </div>
               );
             }
@@ -648,12 +645,12 @@ export default function Acertos() {
                         <span>Em Aberto: <strong className="red-txt">{it.emAberto}</strong></span>
                       </div>
                       <div className="price-tag-row">
-                        <span>Preço de Venda: <strong>R$ {fmt(it.precoUnit)}</strong></span>
+                        <span>PreÃ§o de Venda: <strong>R$ {fmt(it.precoUnit)}</strong></span>
                       </div>
                     </div>
 
                       <div className="item-action-controls">
-                        {/* Nome visível próximo à quantidade para celular */}
+                        {/* Nome visÃ­vel prÃ³ximo Ã  quantidade para celular */}
                         <div style={{ fontSize: '0.85rem', color: 'var(--acerto-primary)', fontWeight: '600', marginBottom: '0.25rem', textAlign: 'right', display: 'flex', gap: '4px', justifyContent: 'flex-end', width: '100%' }}>
                           <span>{it.indiceFt} -</span>
                           <span style={{color: 'var(--acerto-text-primary)'}}>{displayNome}</span>
@@ -695,22 +692,22 @@ export default function Acertos() {
             );
           })()}
 
-          {/* BARRA DE AÇÃO FLUTUANTE / RODAPÉ */}
+          {/* BARRA DE AÃ‡ÃƒO FLUTUANTE / RODAPÃ‰ */}
           {currentTotalReceipt > 0 && (
             <div className="acerto-checkout-bar" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.6rem' }}>
               {selectedAccount.cliente?.tipoAcerto === 'comissionado' && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.4rem', color: 'var(--acerto-text-muted)' }}>
-                  <span>Venda Bruta: R$ {fmt(openItems.reduce((sum, it) => sum + ((salesToRegister[it.indiceFt] || 0) * parseN(it.precoUnit)), 0))}</span>
-                  <span>Comissão ({comissaoPct}%): - R$ {fmt(openItems.reduce((sum, it) => sum + ((salesToRegister[it.indiceFt] || 0) * parseN(it.precoUnit)), 0) * (comissaoPct / 100))}</span>
+                  <span>Venda Bruta: R$ {fmt(currentGrossPreview)}</span>
+                  <span>ComissÃ£o ({comissaoPct}%): - R$ {fmt(openItems.reduce((sum, it) => sum + ((salesToRegister[it.indiceFt] || 0) * parseN(it.precoUnit)), 0) * (comissaoPct / 100))}</span>
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                 <div className="checkout-info">
-                  <span>{selectedAccount.cliente?.tipoAcerto === 'comissionado' ? 'Valor com Desconto de Comissão' : 'Total a Receber'}</span>
+                  <span>{selectedAccount.cliente?.tipoAcerto === 'comissionado' ? 'Valor com Desconto de ComissÃ£o' : 'Total a Receber'}</span>
                   <h3>R$ {fmt(currentTotalReceipt)}</h3>
                 </div>
                 <button className="confirm-acerto-btn" onClick={handleSaveAcerto} disabled={saving}>
-                  {saving ? 'Registrando...' : '💰 Confirmar Acerto'}
+                  {saving ? 'Registrando...' : 'ðŸ’° Confirmar Acerto'}
                 </button>
               </div>
             </div>
@@ -722,7 +719,7 @@ export default function Acertos() {
         <div className="receipt-modal-overlay">
           <div className="receipt-modal-card" translate="no">
             <div className="receipt-modal-header">
-              <div className="receipt-success-badge">✓</div>
+              <div className="receipt-success-badge">âœ“</div>
               <h2>Acerto Confirmado!</h2>
               <p>Recebimento registrado com sucesso.</p>
             </div>
@@ -748,12 +745,12 @@ export default function Acertos() {
                   </div>
                   {receiptData.tipoAcerto === 'comissionado' && (
                     <div className="receipt-summary-line">
-                      <span>Comissão (-{receiptData.comissaoPct}%):</span>
+                      <span>ComissÃ£o (-{receiptData.comissaoPct}%):</span>
                       <span>- R$ {fmt(receiptData.grossTotal * (parseN(receiptData.comissaoPct) / 100))}</span>
                     </div>
                   )}
                   <div className="receipt-summary-line bold">
-                    <span>{receiptData.tipoAcerto === 'comissionado' ? 'Valor Líquido:' : 'Valor Recebido:'}</span>
+                    <span>{receiptData.tipoAcerto === 'comissionado' ? 'Valor LÃ­quido:' : 'Valor Recebido:'}</span>
                     <span>R$ {fmt(receiptData.netTotal)}</span>
                   </div>
                 </div>
@@ -761,16 +758,16 @@ export default function Acertos() {
             </div>
             <div className="receipt-modal-actions">
               <button className="action-btn-whatsapp" onClick={() => shareWhatsApp(receiptData)}>
-                💬 Compartilhar Comprovante
+                ðŸ’¬ Compartilhar Comprovante
               </button>
               <button className="action-btn-pdf" onClick={() => printLastSettlement(receiptData)}>
-                📄 Imprimir / Salvar PDF
+                ðŸ“„ Imprimir / Salvar PDF
               </button>
               <button className="action-btn-close" onClick={() => {
                 setShowReceiptModal(false);
                 setReceiptData(null);
               }}>
-                ✕ Fechar
+                âœ• Fechar
               </button>
             </div>
           </div>
@@ -779,3 +776,5 @@ export default function Acertos() {
     </div>
   );
 }
+
+
