@@ -1073,49 +1073,67 @@ export default function Pedidos() {
 
 
   const togglePaymentStatus = async (id, currentStatus) => {
-    let newStatus, paymentDate = null;
-    
-    if (currentStatus === 'paid') {
-      if (!window.confirm("Voltar o pedido para 'Pendente'? A data de pagamento será removida.")) return;
-      newStatus = 'pending';
-    } else {
-      const defaultDate = new Date().toLocaleDateString('pt-BR');
-      const dateStr = window.prompt("Informe a data do pagamento (DD/MM/AAAA):", defaultDate);
-      if (dateStr === null) return; // Cancelou
-      
+    // Se já está pago ou recusado, volta para pendente com confirmação
+    if (currentStatus === 'paid' || currentStatus === 'refused') {
+      const label = currentStatus === 'paid' ? 'Pago' : 'Recusado';
+      if (!window.confirm(`Voltar o pedido para 'Pendente'? O status '${label}' e a data registrada serão removidos.`)) return;
       try {
-        if (dateStr.trim() !== "") {
-          const parts = dateStr.split('/');
-          if (parts.length !== 3) throw new Error('Formato inválido');
-          paymentDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-        } else {
-          paymentDate = new Date().toISOString().split('T')[0];
-        }
+        const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+        const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const resp = await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${id}`, {
+          method: 'PATCH',
+          headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'pending', payment_date: null })
+        });
+        if (!resp.ok) throw new Error('Falha ao atualizar status');
+        setPedidos(prev => prev.map(p => p.id === id ? { ...p, status: 'pending', payment_date: null } : p));
       } catch (e) {
-        alert('Data inválida! Use o formato DD/MM/AAAA (ex: 25/04/2024)');
-        return;
+        alert('Erro ao atualizar pagamento: ' + e.message);
       }
-      newStatus = 'paid';
+      return;
+    }
+
+    // Status é 'pending' → abre modal de escolha
+    setPaymentModal({ open: true, pedidoId: id });
+  };
+
+  const [paymentModal, setPaymentModal] = useState({ open: false, pedidoId: null });
+
+  const handleConfirmPayment = async (newStatus) => {
+    const { pedidoId } = paymentModal;
+    setPaymentModal({ open: false, pedidoId: null });
+
+    const defaultDate = new Date().toLocaleDateString('pt-BR');
+    const label = newStatus === 'paid' ? 'pagamento' : 'recusa';
+    const dateStr = window.prompt(`Informe a data do ${label} (DD/MM/AAAA):`, defaultDate);
+    if (dateStr === null) return;
+
+    let paymentDate;
+    try {
+      if (dateStr.trim() !== '') {
+        const parts = dateStr.split('/');
+        if (parts.length !== 3) throw new Error('Formato inválido');
+        paymentDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      } else {
+        paymentDate = new Date().toISOString().split('T')[0];
+      }
+    } catch (e) {
+      alert('Data inválida! Use o formato DD/MM/AAAA (ex: 25/04/2024)');
+      return;
     }
 
     try {
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const resp = await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${id}`, {
+      const resp = await fetch(`${SUPA_URL}/rest/v1/orders?id=eq.${pedidoId}`, {
         method: 'PATCH',
-        headers: { 
-          'apikey': SUPA_KEY, 
-          'Authorization': `Bearer ${SUPA_KEY}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus, payment_date: paymentDate })
       });
       if (!resp.ok) throw new Error('Falha ao atualizar status');
-      
-      // Atualiza localmente
-      setPedidos(prev => prev.map(p => p.id === id ? { ...p, status: newStatus, payment_date: paymentDate } : p));
+      setPedidos(prev => prev.map(p => p.id === pedidoId ? { ...p, status: newStatus, payment_date: paymentDate } : p));
     } catch (e) {
-      alert('Erro ao atualizar pagamento: ' + e.message);
+      alert('Erro ao atualizar: ' + e.message);
     }
   };
 
@@ -1162,8 +1180,8 @@ export default function Pedidos() {
       <div className="page-wrapper pedidos-page">
         <div className="pedidos-header">
           <div>
-            <h1 className="page-title">Pedidos &amp; Consignados</h1>
-            <p className="page-description">Gere documentos de venda ou consignado com base nas suas Fichas Técnicas.</p>
+            <h1 className="page-title">Pedidos</h1>
+            <p className="page-description">Gere documentos de venda com base nas suas Fichas Técnicas.</p>
           </div>
           <button className="btn-primary" onClick={() => { setEditingPedido(null); setShowModal(true); }}>
             + Novo Documento
@@ -1223,6 +1241,13 @@ export default function Pedidos() {
                                 {p.payment_date ? p.payment_date.split('-').reverse().join('/') : '-'}
                               </span>
                             </>
+                          ) : p.status === 'refused' ? (
+                            <>
+                              <span>❌ Recusado</span>
+                              <span style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>
+                                {p.payment_date ? p.payment_date.split('-').reverse().join('/') : '-'}
+                              </span>
+                            </>
                           ) : '⏳ Pendente'}
                         </span>
                       </td>
@@ -1270,6 +1295,34 @@ export default function Pedidos() {
         onConfirm={confirmModal.onConfirm}
         onCancel={closeConfirm}
       />
+
+      {paymentModal.open && (
+        <div className="modal-overlay" style={{ zIndex: 9998 }}>
+          <div className="modal-content" style={{ maxWidth: '340px', textAlign: 'center' }}>
+            <div className="modal-header">
+              <h3>Atualizar Pagamento</h3>
+              <button className="btn-close" onClick={() => setPaymentModal({ open: false, pedidoId: null })}>×</button>
+            </div>
+            <div className="modal-body" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>Selecione o novo status para este pedido:</p>
+              <button
+                className="btn-primary"
+                onClick={() => handleConfirmPayment('paid')}
+                style={{ background: 'var(--success)', borderColor: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '1rem', padding: '0.75rem' }}
+              >
+                ✅ Marcar como Pago
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => handleConfirmPayment('refused')}
+                style={{ background: 'var(--danger)', borderColor: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '1rem', padding: '0.75rem' }}
+              >
+                ❌ Marcar como Recusado
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

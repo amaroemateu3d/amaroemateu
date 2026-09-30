@@ -1538,9 +1538,51 @@ export default function Consignados() {
                         {p.obs && <div style={{ marginTop: '4px', fontStyle: 'italic' }}>Obs: {p.obs}</div>}
                       </td>
                       <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>
-                        <button className="btn-icon" onClick={() => handleDeletePayment(p.id)} title="Excluir Pagamento">
-                          <Trash2 size={16} color="var(--danger)" />
-                        </button>
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                          <button
+                            className="btn-icon"
+                            title="Imprimir Recibo de Pagamento"
+                            onClick={() => {
+                              const cliente = selectedAccount.cliente;
+                              const tenant = profile?.tenants || {};
+                              const itensList = (p.itemsPaid || []).map(it => `<tr><td>${it.nomePeca}</td><td style="text-align:center">${it.qtd}</td></tr>`).join('');
+                              const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recibo de Pagamento</title>
+<style>
+  @media print { body { margin: 0; } .no-print { display: none; } }
+  body { font-family: Arial, sans-serif; color: #1e293b; padding: 2rem; }
+  h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+  .meta { color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+  th { background: #1e293b; color: white; padding: 8px; text-align: left; font-size: 0.85rem; }
+  td { padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 0.9rem; }
+  .total { text-align: right; font-size: 1.1rem; font-weight: bold; color: #059669; margin-top: 1rem; }
+  .footer { margin-top: 2rem; font-size: 0.75rem; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 0.5rem; }
+</style></head><body>
+  <h1>Recibo de Pagamento — Consignado</h1>
+  <div class="meta">
+    <div><strong>Cliente:</strong> ${cliente?.nome || '—'}</div>
+    <div><strong>Data do Pagamento:</strong> ${new Date(p.date).toLocaleDateString('pt-BR')}</div>
+    ${p.obs ? `<div><strong>Obs:</strong> ${p.obs}</div>` : ''}
+  </div>
+  <table>
+    <thead><tr><th>Produto</th><th style="text-align:center">Qtd</th></tr></thead>
+    <tbody>${itensList}</tbody>
+  </table>
+  <div class="total">Total: R$ ${Number(p.amount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+  <div class="footer">${tenant.name || 'AM3D'} — Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+  <script>window.onload = () => window.print();<\/script>
+</body></html>`;
+                              const win = window.open('', '_blank', 'width=700,height=600');
+                              win.document.write(html);
+                              win.document.close();
+                            }}
+                          >
+                            <Printer size={16} />
+                          </button>
+                          <button className="btn-icon" onClick={() => handleDeletePayment(p.id)} title="Excluir Pagamento">
+                            <Trash2 size={16} color="var(--danger)" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

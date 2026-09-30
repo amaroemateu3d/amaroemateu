@@ -75,6 +75,7 @@
 .status-badge { transition: all 0.2s; padding: 0.2rem 0.6rem; border-radius: 20px; font-weight: 700; }
 .status-badge.paid    { background: #D1FAE5; color: #059669; }
 .status-badge.pending { background: #FEF3C7; color: #D97706; }
+.status-badge.refused { background: #FEE2E2; color: #DC2626; }
 .status-badge:hover   { filter: brightness(0.95); transform: scale(1.02); }
 
 .cliente-cell { font-weight: 600; }
