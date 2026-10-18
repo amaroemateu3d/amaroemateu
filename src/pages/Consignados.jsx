@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getResultados } from '../utils/financeCalculators';
 import { supabase } from '../supabaseClient';
 import { Loader, Trash2, Calendar, Printer } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -517,13 +518,18 @@ export default function Consignados() {
       cleanFts.sort((a, b) => String(a.indiceFt).localeCompare(String(b.indiceFt), undefined, { numeric: true }));
       
       const orcsData = orcsResp.status === 'fulfilled' && orcsResp.value.ok ? await orcsResp.value.json() : [];
-      const cleanOrcs = orcsData.map(r => ({
-        indiceFt: r.id,
-        nomePeca: r.name,
-        _custoFinal: 0,
-        isOrcamento: true,
-        precoSugerido: r.data?.price || 0
-      }));
+      const cleanOrcs = orcsData.map(r => {
+        const orcResults = r.data ? getResultados(r.data) : null;
+        const custoUnit = orcResults?.custoFisicoUnit || 0;
+        const precoCalc = parseN(r.data?.precoVendaManual) || orcResults?.precoPraticado || parseN(r.data?.price) || (custoUnit * 3) || 0;
+        return {
+          indiceFt: r.id,
+          nomePeca: r.name,
+          _custoFinal: custoUnit,
+          isOrcamento: true,
+          precoSugerido: precoCalc
+        };
+      });
 
       setFts([...cleanFts, ...cleanOrcs]);
     } catch (e) {

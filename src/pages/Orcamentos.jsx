@@ -223,7 +223,8 @@ function ModalOrcamento({ fts, customProducts, onSave, onCancel, initialData }) 
     } else {
       found = customProducts.find(c => c.id === val);
       if (found) {
-        preco = parseN(found.data?.precoVendaManual) || parseN(found.data?.precoPraticado) || 0;
+        const orcResults = found.data ? getResultados(found.data) : null;
+        preco = parseN(found.data?.precoVendaManual) || orcResults?.precoPraticado || parseN(found.data?.price) || ((orcResults?.custoFisicoUnit || 0) * 3) || 0;
         isCustom = true;
       }
     }
