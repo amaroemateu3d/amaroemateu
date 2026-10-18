@@ -1,4 +1,4 @@
-﻿import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 
 const AuthContext = createContext(null);
@@ -20,7 +20,7 @@ export function AuthProvider({ children }) {
         .single();
 
       if (profileError || !profileData) {
-        console.warn('AuthContext: Perfil nÃ£o encontrado para', userId);
+        console.warn('AuthContext: Perfil não encontrado para', userId);
         return null;
       }
 
@@ -49,11 +49,11 @@ export function AuthProvider({ children }) {
           endereco: 'Campinas, SP',
           email: 'amaroemateu3d@gmail.com',
           documento: '',
-          custom_header: 'Produtos em ImpressÃ£o 3D'
+          custom_header: 'Produtos em Impressão 3D'
         }
       };
 
-      // Carrega permissÃµes
+      // Carrega permissões
       const { data: permsData } = await supabase
         .from('user_permissions')
         .select('*')
@@ -68,7 +68,7 @@ export function AuthProvider({ children }) {
 
       return { fullProfile, perms };
     } catch (err) {
-      console.error('AuthContext: Erro ao carregar perfil/permissÃµes:', err);
+      console.error('AuthContext: Erro ao carregar perfil/permissões:', err);
       return null;
     }
   }
@@ -76,14 +76,14 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
-    // Fallback de seguranÃ§a: se tudo travar, libera em 8s
+    // Fallback de segurança: se tudo travar, libera em 8s
     const fallback = setTimeout(() => {
       console.warn('AuthContext: Fallback de 8s ativado - liberando app');
       if (mounted) setLoading(false);
     }, 8000);
 
-    // Ãšnica fonte de verdade: onAuthStateChange
-    // O evento INITIAL_SESSION dispara automaticamente na inicializaÃ§Ã£o
+    // Única fonte de verdade: onAuthStateChange
+    // O evento INITIAL_SESSION dispara automaticamente na inicialização
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
       setTimeout(async () => {
       if (!mounted) return;
@@ -100,7 +100,7 @@ export function AuthProvider({ children }) {
           setProfile(result.fullProfile);
           setPermissions(result.perms);
         } else {
-          // Perfil nÃ£o encontrado: faz logout
+          // Perfil não encontrado: faz logout
           setSession(null);
           setProfile(null);
           setPermissions({});
