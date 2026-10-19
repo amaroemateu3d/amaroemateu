@@ -964,18 +964,39 @@ export default function Pedidos() {
 
   const updateFtStock = async (ftId, delta) => {
     if (delta === 0) return;
-    if (String(ftId).startsWith('ORC-')) return;
+    if (String(ftId).startsWith('ORC-') || String(ftId).startsWith('CFT-')) return;
     try {
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
       const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
       
-      const getResp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${ftId}&select=estoque`, {
+      const getResp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${ftId}&select=estoque,data`, {
         headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
       });
       if (!getResp.ok) return;
       const data = await getResp.json();
-      const currentStock = data[0]?.estoque || 0;
-      const newStock = currentStock - delta;
+      const row = data[0];
+      if (!row) return;
+      const rawData = row.data || {};
+      const hasDual = rawData.estoqueGalpao !== undefined || rawData.estoqueCasa !== undefined;
+      let galpao = hasDual ? Number(rawData.estoqueGalpao || 0) : Number(row.estoque || 0);
+      let casa = hasDual ? Number(rawData.estoqueCasa || 0) : 0;
+
+      if (delta > 0) {
+        if (galpao >= delta) {
+          galpao -= delta;
+        } else if (galpao > 0) {
+          const rem = delta - galpao;
+          galpao = 0;
+          casa -= rem;
+        } else {
+          casa -= delta;
+        }
+      } else {
+        galpao -= delta; // delta negativo devolve pro galpão
+      }
+
+      const newStock = galpao + casa;
+      const newData = { ...rawData, estoqueGalpao: galpao, estoqueCasa: casa };
 
       await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${ftId}`, {
         method: 'PATCH',
@@ -985,7 +1006,7 @@ export default function Pedidos() {
           'Content-Type': 'application/json',
           'Prefer': 'return=minimal'
         },
-        body: JSON.stringify({ estoque: newStock })
+        body: JSON.stringify({ estoque: newStock, data: newData })
       });
     } catch (e) {
       console.error('Erro ao abater estoque:', e);
