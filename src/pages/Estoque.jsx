@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Package, Search, Save, Loader, AlertCircle, Warehouse, Home as HomeIcon } from 'lucide-react';
+import { Package, Search, Save, Loader, AlertCircle, Warehouse, Home as HomeIcon, Trash2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import './Estoque.css';
@@ -11,6 +11,7 @@ export default function Estoque() {
   const [searchTerm, setSearchTerm] = useState('');
   const [adjustments, setAdjustments] = useState({});
   const [saving, setSaving] = useState(false);
+  const [zeroModalOpen, setZeroModalOpen] = useState(false);
 
   // Ordenação clicando nos títulos (ID, Produto, Estoque Galpão, Estoque Casa, Estoque Total)
   const [sortField, setSortField] = useState('id'); // 'id' | 'nome' | 'galpao' | 'casa' | 'total'
@@ -261,6 +262,66 @@ export default function Estoque() {
     }
   };
 
+  const handleZeroStock = async (targetLocation) => {
+    setZeroModalOpen(false);
+    setSaving(true);
+    try {
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const headers = { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` };
+
+      const getResp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=id,data,estoque`, { headers });
+      if (!getResp.ok) throw new Error('Falha ao buscar itens para zerar');
+      const rows = await getResp.json();
+
+      let errorCount = 0;
+      for (const r of rows) {
+        const currentData = r.data || {};
+        const hasDual = currentData.estoqueGalpao !== undefined || currentData.estoqueCasa !== undefined;
+        let galpao = hasDual ? Number(currentData.estoqueGalpao || 0) : Number(r.estoque || 0);
+        let casa = hasDual ? Number(currentData.estoqueCasa || 0) : 0;
+
+        if (targetLocation === 'ambos') {
+          galpao = 0;
+          casa = 0;
+        } else if (targetLocation === 'galpao') {
+          galpao = 0;
+        } else if (targetLocation === 'casa') {
+          casa = 0;
+        }
+
+        const totalEstoque = galpao + casa;
+        const newData = {
+          ...currentData,
+          estoqueGalpao: galpao,
+          estoqueCasa: casa
+        };
+
+        const patchResp = await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${r.id}`, {
+          method: 'PATCH',
+          headers: {
+            ...headers,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({ estoque: totalEstoque, data: newData })
+        });
+        if (!patchResp.ok) errorCount++;
+      }
+
+      if (errorCount > 0) {
+        alert(`Houve erro ao zerar ${errorCount} itens.`);
+      }
+      await fetchEstoque();
+      setAdjustments({});
+    } catch (e) {
+      console.error('Erro ao zerar estoque:', e);
+      alert('Erro ao zerar o estoque.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Filtra pelo campo de busca + aplica a ordenação escolhida no título
   const filteredFts = fts
     .filter(f => {
@@ -307,8 +368,8 @@ export default function Estoque() {
           <h1 className="page-title"><Package size={28} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '10px' }} />Controle de Estoque</h1>
           <p className="page-description">Gerencie a quantidade física disponível das suas peças no <strong>Galpão</strong> e em <strong>Casa</strong>.</p>
         </div>
-        <div style={{ display: 'flex', gap: '15px' }}>
-          <div className="search-bar" style={{ width: '300px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="search-bar" style={{ width: '280px' }}>
             <span className="search-icon"><Search size={18} /></span>
             <input
               type="text"
@@ -325,6 +386,28 @@ export default function Estoque() {
           >
             {saving ? <Loader size={18} className="spin" /> : <Save size={18} />}
             Salvar Lote
+          </button>
+          <button
+            type="button"
+            onClick={() => setZeroModalOpen(true)}
+            disabled={saving || fts.length === 0}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '0.6rem 1rem',
+              borderRadius: '10px',
+              background: '#FEE2E2',
+              color: '#DC2626',
+              border: '1px solid #FECACA',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              cursor: saving ? 'not-allowed' : 'pointer'
+            }}
+            title="Zerar todo o estoque físico para iniciar contagem do zero"
+          >
+            <Trash2 size={16} />
+            Zerar Estoque
           </button>
         </div>
       </div>
@@ -559,6 +642,82 @@ export default function Estoque() {
                 className="cm-btn-cancel"
                 style={{ width: '100%', marginTop: '4px' }}
                 onClick={closeLocationModal}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmação para Zerar o Estoque */}
+      {zeroModalOpen && (
+        <div className="cm-overlay" onClick={(e) => e.target === e.currentTarget && setZeroModalOpen(false)}>
+          <div className="cm-modal cm-delete" style={{ maxWidth: '480px' }}>
+            <div className="cm-header">
+              <span className="cm-icon">🧹</span>
+              <div className="cm-title-block">
+                <span className="cm-badge cm-delete">ZERAR ESTOQUE</span>
+                <h3 className="cm-title">Qual estoque você deseja zerar?</h3>
+              </div>
+              <button className="cm-close" onClick={() => setZeroModalOpen(false)} aria-label="Fechar">×</button>
+            </div>
+
+            <div className="cm-details">
+              <div className="cm-detail-row cm-delete">
+                <span className="cm-detail-label">Total de Produtos</span>
+                <span className="cm-detail-value">{fts.length} itens cadastrados</span>
+              </div>
+              <div className="cm-detail-row cm-delete">
+                <span className="cm-detail-label">Pedidos e Consignados</span>
+                <span className="cm-detail-value" style={{ color: '#059669', fontWeight: 700 }}>
+                  ✅ Não serão afetados
+                </span>
+              </div>
+            </div>
+
+            <div className="cm-warning">
+              ⚠️ Escolha abaixo se deseja zerar apenas o <strong>Galpão</strong>, apenas a <strong>Casa</strong> ou <strong>Ambos (Tudo = 0)</strong>.
+            </div>
+
+            <div style={{ padding: '0 1.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="stock-choice-btn galpao"
+                  onClick={() => handleZeroStock('galpao')}
+                >
+                  <Warehouse size={20} />
+                  <div>
+                    <strong>Zerar Só Galpão</strong>
+                    <span>Casa permanece intacto</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  className="stock-choice-btn casa"
+                  onClick={() => handleZeroStock('casa')}
+                >
+                  <HomeIcon size={20} />
+                  <div>
+                    <strong>Zerar Só Casa</strong>
+                    <span>Galpão permanece intacto</span>
+                  </div>
+                </button>
+              </div>
+              <button
+                type="button"
+                className="cm-btn-confirm cm-delete"
+                style={{ width: '100%', padding: '12px', fontSize: '0.95rem', justifyContent: 'center' }}
+                onClick={() => handleZeroStock('ambos')}
+              >
+                🧹 Zerar AMBOS (Galpão = 0 e Casa = 0)
+              </button>
+              <button
+                type="button"
+                className="cm-btn-cancel"
+                style={{ width: '100%' }}
+                onClick={() => setZeroModalOpen(false)}
               >
                 Cancelar
               </button>

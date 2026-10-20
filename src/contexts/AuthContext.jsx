@@ -145,12 +145,14 @@ export function AuthProvider({ children }) {
   const isPessoal = isDaniel || isCintia;
 
   async function signOut() {
+    const savedFontScale = localStorage.getItem('am3d_font_scale');
     try {
       await supabase.auth.signOut();
     } catch (e) {
       console.error('Erro no signOut:', e);
     }
     localStorage.clear();
+    if (savedFontScale) localStorage.setItem('am3d_font_scale', savedFontScale);
     window.location.href = '/';
   }
 

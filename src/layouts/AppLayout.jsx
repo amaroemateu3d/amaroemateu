@@ -1,14 +1,31 @@
+import { useState, useEffect } from 'react';
 import { Outlet, NavLink, Link } from 'react-router-dom';
 import {
   LayoutDashboard, Calculator,
   ShoppingCart, TrendingDown, ClipboardList, BarChart3,
-  Download, LogOut, Users, Package, Search, Wallet
+  Download, LogOut, Users, Package, Search, Wallet, Type
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import './AppLayout.css';
 
 export default function AppLayout() {
   const { signOut, profile, isAdmin, isDaniel, isPessoal } = useAuth();
+  const [fontScale, setFontScale] = useState(() => {
+    const saved = Number(localStorage.getItem('am3d_font_scale'));
+    return saved && saved >= 85 && saved <= 150 ? saved : 100;
+  });
+
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${fontScale}%`;
+    localStorage.setItem('am3d_font_scale', String(fontScale));
+  }, [fontScale]);
+
+  const changeFontScale = (delta) => {
+    setFontScale(prev => {
+      if (delta === 0) return 100;
+      return Math.min(140, Math.max(85, prev + delta));
+    });
+  };
 
   const handleBackup = () => {
     try {
@@ -133,6 +150,18 @@ export default function AppLayout() {
         </nav>
 
         <div className="sidebar-footer">
+          <div className="nav-item font-scaler-sidebar" title="Tamanho da Fonte do Sistema">
+            <Type size={20} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+            <span className="font-scaler-controls">
+              <strong style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Fonte: {fontScale}%</strong>
+              <div style={{ display: 'flex', gap: '4px', marginTop: '3px' }}>
+                <button type="button" className="font-btn-mini" onClick={() => changeFontScale(-5)} title="Diminuir fonte">A-</button>
+                <button type="button" className="font-btn-mini" onClick={() => changeFontScale(0)} title="Tamanho padrão (100%)">100%</button>
+                <button type="button" className="font-btn-mini" onClick={() => changeFontScale(5)} title="Aumentar fonte">A+</button>
+              </div>
+            </span>
+          </div>
+
           <button
             onClick={handleBackup}
             className="nav-item"
@@ -158,6 +187,36 @@ export default function AppLayout() {
       <main className="content-area">
         <Outlet />
       </main>
+
+      {/* Controle flutuante na direita (visível em todas as telas) para ajustar o tamanho da letra */}
+      <div className="floating-font-widget" title="Ajustar tamanho das letras (salvo neste computador)">
+        <button
+          type="button"
+          className="ffw-btn"
+          onClick={() => changeFontScale(-5)}
+          disabled={fontScale <= 85}
+          title="Diminuir tamanho da letra"
+        >
+          A-
+        </button>
+        <button
+          type="button"
+          className="ffw-pct"
+          onClick={() => changeFontScale(0)}
+          title="Clique para voltar ao tamanho padrão (100%)"
+        >
+          {fontScale}%
+        </button>
+        <button
+          type="button"
+          className="ffw-btn"
+          onClick={() => changeFontScale(5)}
+          disabled={fontScale >= 140}
+          title="Aumentar tamanho da letra"
+        >
+          A+
+        </button>
+      </div>
     </div>
   );
 }
