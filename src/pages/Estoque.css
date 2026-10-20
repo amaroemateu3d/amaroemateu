@@ -25,6 +25,72 @@
   color: var(--text-secondary);
   border-bottom: 2px solid var(--border-color);
   text-align: left;
+  user-select: none;
+}
+
+.estoque-table th.sortable-th {
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.estoque-table th.sortable-th:hover {
+  color: var(--accent-primary);
+  background-color: rgba(124, 58, 237, 0.05);
+}
+
+.estoque-table th.active-sort {
+  color: var(--accent-primary);
+}
+
+.sort-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 0.72rem;
+}
+
+.sort-indicator.inactive {
+  opacity: 0.35;
+}
+
+.sort-indicator.active {
+  color: var(--accent-primary);
+  font-weight: 900;
+}
+
+.th-stock-filters {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.th-sort-pill {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 4px 10px;
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.th-sort-pill:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.th-sort-pill.active {
+  background: rgba(124, 58, 237, 0.12);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 .estoque-table td {
@@ -54,10 +120,10 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
+  padding: 5px 10px;
   border-radius: 20px;
   font-weight: 700;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   white-space: nowrap;
 }
 
@@ -72,6 +138,12 @@
   background-color: #D1FAE5;
   color: #047857;
   border: 1px solid #A7F3D0;
+}
+
+.stock-total {
+  background-color: #EDE9FE;
+  color: #6D28D9;
+  border: 1px solid #DDD6FE;
 }
 
 .stock-zero {

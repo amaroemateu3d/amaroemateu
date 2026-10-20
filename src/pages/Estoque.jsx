@@ -12,6 +12,26 @@ export default function Estoque() {
   const [adjustments, setAdjustments] = useState({});
   const [saving, setSaving] = useState(false);
 
+  // Ordenação clicando nos títulos (ID, Produto, Estoque Galpão, Estoque Casa, Estoque Total)
+  const [sortField, setSortField] = useState('id'); // 'id' | 'nome' | 'galpao' | 'casa' | 'total'
+  const [sortAsc, setSortAsc] = useState(true);
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortField(field);
+      // Para estoque, é mais intuitivo ordenar do maior para o menor no primeiro clique, ou menor/maior?
+      // Vamos usar crescente para texto/ID e decrescente (maior estoque primeiro) no primeiro clique em estoque, alternando ao clicar novamente!
+      setSortAsc(field === 'id' || field === 'nome');
+    }
+  };
+
+  const renderSortIcon = (field) => {
+    if (sortField !== field) return <span className="sort-indicator inactive">↕</span>;
+    return <span className="sort-indicator active">{sortAsc ? '▲' : '▼'}</span>;
+  };
+
   // Modal de confirmação com escolha de local (Galpão ou Casa)
   const [locationModal, setLocationModal] = useState({
     isOpen: false,
@@ -241,10 +261,35 @@ export default function Estoque() {
     }
   };
 
-  const filteredFts = fts.filter(f =>
-    f.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    f.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filtra pelo campo de busca + aplica a ordenação escolhida no título
+  const filteredFts = fts
+    .filter(f => {
+      const term = searchTerm.toLowerCase().trim();
+      if (!term) return true;
+      return (
+        f.nome.toLowerCase().includes(term) ||
+        f.id.toLowerCase().includes(term) ||
+        String(f.estoque).includes(term)
+      );
+    })
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'id') {
+        cmp = String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
+      } else if (sortField === 'nome') {
+        cmp = String(a.nome).localeCompare(String(b.nome), 'pt-BR', { sensitivity: 'base' });
+      } else if (sortField === 'galpao') {
+        cmp = (a.estoqueGalpao || 0) - (b.estoqueGalpao || 0);
+      } else if (sortField === 'casa') {
+        cmp = (a.estoqueCasa || 0) - (b.estoqueCasa || 0);
+      } else if (sortField === 'total') {
+        cmp = (a.estoque || 0) - (b.estoque || 0);
+      }
+      if (cmp === 0) {
+        cmp = String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
+      }
+      return sortAsc ? cmp : -cmp;
+    });
 
   // Dados para exibir no modal de escolha de estoque
   const activeModalItem = locationModal.mode === 'single' && locationModal.targetId
@@ -288,7 +333,7 @@ export default function Estoque() {
         <div className="alert alert-info" style={{ marginBottom: '1.5rem', display: 'flex', gap: '10px', alignItems: 'center', backgroundColor: '#EFF6FF', color: '#1E40AF', padding: '12px 16px', borderRadius: '8px', border: '1px solid #BFDBFE' }}>
           <AlertCircle size={20} />
           <div>
-            <strong>Dica de Ajuste:</strong> Digite um número para somar/subtrair (ex: <code>5</code>, <code>-2</code>) ou use <code>=</code> para definir um valor exato (ex: <code>=10</code>). Pressione <strong>Enter</strong> ou clique no botão de salvar e escolha se o ajuste vai para o <strong>Galpão</strong> ou <strong>Casa</strong>.
+            <strong>Dica:</strong> Clique nos títulos da tabela (<strong>ID</strong>, <strong>Produto</strong>, <strong>Galpão</strong>, <strong>Casa</strong> ou <strong>Total</strong>) para ordenar a exibição combinada com a sua busca. Para ajustar o saldo, digite ex: <code>5</code>, <code>-2</code> ou <code>=10</code> e pressione <strong>Enter</strong>.
           </div>
         </div>
 
@@ -302,12 +347,52 @@ export default function Estoque() {
             <table className="estoque-table">
               <thead>
                 <tr>
-                  <th style={{ width: '90px' }}>ID</th>
-                  <th>Produto</th>
-                  <th style={{ width: '280px', textAlign: 'center' }}>Em Estoque (Galpão / Casa)</th>
-                  <th style={{ width: '180px' }}>Ajuste</th>
-                  <th style={{ width: '170px', textAlign: 'center' }}>Novo Saldo</th>
-                  <th style={{ width: '90px', textAlign: 'right' }}>Ação</th>
+                  <th
+                    className={`sortable-th ${sortField === 'id' ? 'active-sort' : ''}`}
+                    style={{ width: '95px' }}
+                    onClick={() => handleSort('id')}
+                    title="Clique para ordenar por ID"
+                  >
+                    ID {renderSortIcon('id')}
+                  </th>
+                  <th
+                    className={`sortable-th ${sortField === 'nome' ? 'active-sort' : ''}`}
+                    onClick={() => handleSort('nome')}
+                    title="Clique para ordenar por Nome do Produto"
+                  >
+                    Produto {renderSortIcon('nome')}
+                  </th>
+                  <th style={{ width: '360px', textAlign: 'center' }}>
+                    <div className="th-stock-filters">
+                      <button
+                        type="button"
+                        className={`th-sort-pill ${sortField === 'galpao' ? 'active' : ''}`}
+                        onClick={() => handleSort('galpao')}
+                        title="Ordenar por Estoque Galpão"
+                      >
+                        🏭 Galpão {renderSortIcon('galpao')}
+                      </button>
+                      <button
+                        type="button"
+                        className={`th-sort-pill ${sortField === 'casa' ? 'active' : ''}`}
+                        onClick={() => handleSort('casa')}
+                        title="Ordenar por Estoque Casa"
+                      >
+                        🏠 Casa {renderSortIcon('casa')}
+                      </button>
+                      <button
+                        type="button"
+                        className={`th-sort-pill ${sortField === 'total' ? 'active' : ''}`}
+                        onClick={() => handleSort('total')}
+                        title="Ordenar por Estoque Total (Casa + Galpão)"
+                      >
+                        📦 Total {renderSortIcon('total')}
+                      </button>
+                    </div>
+                  </th>
+                  <th style={{ width: '160px' }}>Ajuste</th>
+                  <th style={{ width: '175px', textAlign: 'center' }}>Novo Saldo</th>
+                  <th style={{ width: '80px', textAlign: 'right' }}>Ação</th>
                 </tr>
               </thead>
               <tbody>
@@ -316,6 +401,7 @@ export default function Estoque() {
                   const isModified = String(adjustment).trim() !== '';
                   const newGalpao = calculateNewStock(item.estoqueGalpao, adjustment);
                   const newCasa = calculateNewStock(item.estoqueCasa, adjustment);
+                  const totalItem = (item.estoqueGalpao || 0) + (item.estoqueCasa || 0);
 
                   return (
                     <tr key={item.id} className={isModified ? 'row-modified' : ''}>
@@ -328,6 +414,9 @@ export default function Estoque() {
                           </span>
                           <span className={`stock-badge stock-loc-badge ${item.estoqueCasa <= 0 ? 'stock-zero' : 'stock-casa'}`} title="Estoque em Casa">
                             🏠 Casa: {item.estoqueCasa} un
+                          </span>
+                          <span className={`stock-badge stock-loc-badge ${totalItem <= 0 ? 'stock-zero' : 'stock-total'}`} title="Estoque Total (Casa + Galpão)">
+                            📦 Total: {totalItem} un
                           </span>
                         </div>
                       </td>
@@ -343,11 +432,11 @@ export default function Estoque() {
                           }}
                         />
                       </td>
-                      <td style={{ textAlign: 'center', fontWeight: 'bold', color: isModified ? 'var(--accent-primary)' : 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                      <td style={{ textAlign: 'center', fontWeight: 'bold', color: isModified ? 'var(--accent-primary)' : 'var(--text-secondary)', fontSize: '0.8rem' }}>
                         {isModified ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
-                            <span>🏭 Galpão: {newGalpao} un</span>
-                            <span>🏠 Casa: {newCasa} un</span>
+                            <span>🏭 se Galpão: {newGalpao} (Total: {newGalpao + item.estoqueCasa})</span>
+                            <span>🏠 se Casa: {newCasa} (Total: {item.estoqueGalpao + newCasa})</span>
                           </div>
                         ) : '-'}
                       </td>
@@ -404,13 +493,13 @@ export default function Estoque() {
                 <div className="cm-detail-row cm-edit">
                   <span className="cm-detail-label">Se escolher 🏭 Galpão</span>
                   <span className="cm-detail-value">
-                    {activeModalItem.estoqueGalpao} un → <strong>{calculateNewStock(activeModalItem.estoqueGalpao, activeModalAdj)} un</strong>
+                    {activeModalItem.estoqueGalpao} un → <strong>{calculateNewStock(activeModalItem.estoqueGalpao, activeModalAdj)} un</strong> (Total: {calculateNewStock(activeModalItem.estoqueGalpao, activeModalAdj) + activeModalItem.estoqueCasa} un)
                   </span>
                 </div>
                 <div className="cm-detail-row cm-edit">
                   <span className="cm-detail-label">Se escolher 🏠 Casa</span>
                   <span className="cm-detail-value">
-                    {activeModalItem.estoqueCasa} un → <strong>{calculateNewStock(activeModalItem.estoqueCasa, activeModalAdj)} un</strong>
+                    {activeModalItem.estoqueCasa} un → <strong>{calculateNewStock(activeModalItem.estoqueCasa, activeModalAdj)} un</strong> (Total: {activeModalItem.estoqueGalpao + calculateNewStock(activeModalItem.estoqueCasa, activeModalAdj)} un)
                   </span>
                 </div>
               </div>
