@@ -106,6 +106,7 @@ export default function Vendas() {
   const [autoCanais, setAutoCanais] = useState(['ml']);
   const [autoFiltro, setAutoFiltro] = useState('');
   const [apenasComPreco, setApenasComPreco] = useState(false);
+  const [filterCadastrados, setFilterCadastrados] = useState(false);
 
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'save', title: '', details: [], onConfirm: null });
   const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
@@ -467,6 +468,36 @@ export default function Vendas() {
     setOverrides(nov);
   };
 
+  const handleToggleCadastrado = async (ftId) => {
+    const nov = { ...overrides };
+    if (!nov[activeChannel]) nov[activeChannel] = {};
+    const currentOps = nov[activeChannel][ftId] || {};
+    const newVal = !currentOps.cadastrado;
+    
+    const finalOps = { ...currentOps };
+    if (newVal) {
+      finalOps.cadastrado = true;
+    } else {
+      delete finalOps.cadastrado;
+    }
+    
+    if (Object.keys(finalOps).length === 0) {
+      delete nov[activeChannel][ftId];
+      await supaWrite('ecommerce_overrides', 'DELETE', null, {
+        channel_id: activeChannel,
+        ft_id: ftId
+      });
+    } else {
+      nov[activeChannel][ftId] = finalOps;
+      await supaWrite('ecommerce_overrides', 'POST', {
+        channel_id: activeChannel,
+        ft_id: ftId,
+        settings: finalOps
+      }, {}, 'channel_id,ft_id');
+    }
+    setOverrides(nov);
+  };
+
   const handleOpenOverride = (ft) => {
     const merged = getFtWithOverrides(ft);
     setEditingOverride({ ftBase: ft, customData: merged });
@@ -510,6 +541,11 @@ export default function Vendas() {
       if (isSet && isDifferentFromGlobal) finalOps[k] = val;
     });
 
+    const existingOps = overrides[activeChannel]?.[ftBase.indiceFt] || {};
+    if (existingOps.cadastrado) {
+      finalOps.cadastrado = true;
+    }
+
     const newOverrides = { ...overrides };
     if (!newOverrides[activeChannel]) newOverrides[activeChannel] = {};
     
@@ -552,13 +588,24 @@ export default function Vendas() {
   const _doResetOverride = async () => {
     const { ftBase } = editingOverride;
     const newOverrides = { ...overrides };
-    if (newOverrides[activeChannel]) delete newOverrides[activeChannel][ftBase.indiceFt];
-    setOverrides(newOverrides);
-    setEditingOverride(null);
-    await supaWrite('ecommerce_overrides', 'DELETE', null, {
+    const wasCadastrado = newOverrides[activeChannel]?.[ftBase.indiceFt]?.cadastrado;
+    
+    if (wasCadastrado) {
+      newOverrides[activeChannel][ftBase.indiceFt] = { cadastrado: true };
+      await supaWrite('ecommerce_overrides', 'POST', {
+        channel_id: activeChannel,
+        ft_id: ftBase.indiceFt,
+        settings: { cadastrado: true }
+      }, {}, 'channel_id,ft_id');
+    } else {
+      if (newOverrides[activeChannel]) delete newOverrides[activeChannel][ftBase.indiceFt];
+      await supaWrite('ecommerce_overrides', 'DELETE', null, {
         channel_id: activeChannel,
         ft_id: ftBase.indiceFt
-    });
+      });
+    }
+    setOverrides(newOverrides);
+    setEditingOverride(null);
   };
 
   const handleResetOverride = () => {
@@ -639,10 +686,17 @@ export default function Vendas() {
     return acc + (unitTime * qty);
   }, 0);
 
-  const filteredFts = savedFts.filter(ft => 
-    ft.nomePeca.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    ft.indiceFt.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredFts = savedFts.filter(ft => {
+    if (filterCadastrados && !overrides[activeChannel]?.[ft.indiceFt]?.cadastrado) {
+      return false;
+    }
+    return (
+      ft.nomePeca.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      ft.indiceFt.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
+
+  const totalCadastrados = savedFts.filter(ft => overrides[activeChannel]?.[ft.indiceFt]?.cadastrado).length;
 
   return (
     <div className="page-wrapper vendas-page">
@@ -714,7 +768,31 @@ export default function Vendas() {
            </div>
         ) : (
           <div className="table-responsive">
-            <div style={{padding: '1.25rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end'}}>
+            <div style={{padding: '1.25rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem'}}>
+               <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                 <button
+                   onClick={() => setFilterCadastrados(p => !p)}
+                   style={{
+                     background: filterCadastrados ? 'var(--success)' : 'var(--bg-secondary)',
+                     color: filterCadastrados ? 'white' : 'var(--text-primary)',
+                     border: `1px solid ${filterCadastrados ? 'var(--success)' : 'var(--border-color)'}`,
+                     borderRadius: '8px',
+                     padding: '0.5rem 1rem',
+                     fontWeight: 600,
+                     fontSize: '0.85rem',
+                     cursor: 'pointer',
+                     display: 'flex',
+                     alignItems: 'center',
+                     gap: '6px',
+                     transition: 'all 0.2s'
+                   }}
+                 >
+                   {filterCadastrados ? '✅' : '☐'} Apenas Cadastrados ({totalCadastrados})
+                 </button>
+                 <span style={{fontSize: '0.78rem', color: 'var(--text-secondary)'}}>
+                   💡 Marque a coluna <strong>"No Ar"</strong> para fixar os produtos à venda no topo da lista de <strong>{CHANNELS.find(c => c.id === activeChannel)?.label}</strong>.
+                 </span>
+               </div>
                <div className="search-bar" style={{maxWidth: '300px'}}>
                   <span className="search-icon">🔍</span>
                   <input type="text" placeholder="Buscar peça ou código..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
@@ -724,6 +802,7 @@ export default function Vendas() {
               <thead>
                 <tr>
                   <th style={{textAlign: 'center'}}><input type="checkbox" onChange={toggleSelectAll} checked={selectedFts.length === savedFts.length && savedFts.length > 0} /></th>
+                  <th style={{textAlign: 'center', width: '70px'}} title="Marcar se o produto está cadastrado à venda nesta plataforma">No Ar</th>
                   <th className="col-id">ID</th>
                   <th className="col-product">Produto</th>
                   <th className="col-time">Tempo</th>
@@ -739,6 +818,10 @@ export default function Vendas() {
               </thead>
               <tbody>
                 {[...filteredFts].sort((a, b) => {
+                  const cadA = overrides[activeChannel]?.[a.indiceFt]?.cadastrado ? 1 : 0;
+                  const cadB = overrides[activeChannel]?.[b.indiceFt]?.cadastrado ? 1 : 0;
+                  if (cadA !== cadB) return cadB - cadA;
+
                   const qtyA = getChannelQty(a.indiceFt);
                   const qtyB = getChannelQty(b.indiceFt);
                   if (qtyA > 0 && qtyB === 0) return -1;
@@ -748,12 +831,27 @@ export default function Vendas() {
                   const channelFt = getFtWithOverrides(baseFt);
                   const res = getResultados(channelFt);
                   const qty = getChannelQty(baseFt.indiceFt);
-                  const hasCustom = !!(overrides[activeChannel]?.[baseFt.indiceFt] && Object.keys(overrides[activeChannel][baseFt.indiceFt]).length > 0);
+                  const isCadastrado = !!overrides[activeChannel]?.[baseFt.indiceFt]?.cadastrado;
+                  const customKeys = Object.keys(overrides[activeChannel]?.[baseFt.indiceFt] || {}).filter(k => k !== 'cadastrado');
+                  const hasCustom = customKeys.length > 0;
                   return (
-                    <tr key={baseFt.indiceFt} className={selectedFts.includes(baseFt.indiceFt) ? 'row-selected' : ''}>
+                    <tr key={baseFt.indiceFt} className={selectedFts.includes(baseFt.indiceFt) ? 'row-selected' : ''} style={isCadastrado ? {background: 'rgba(16, 185, 129, 0.04)'} : {}}>
                       <td style={{textAlign: 'center'}}><input type="checkbox" checked={selectedFts.includes(baseFt.indiceFt)} onChange={() => toggleSelect(baseFt.indiceFt)} /></td>
+                      <td style={{textAlign: 'center'}}>
+                        <input
+                          type="checkbox"
+                          checked={isCadastrado}
+                          onChange={() => handleToggleCadastrado(baseFt.indiceFt)}
+                          title={isCadastrado ? "Produto cadastrado nesta plataforma (clique para desmarcar)" : "Marcar como cadastrado nesta plataforma"}
+                          style={{width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--success)'}}
+                        />
+                      </td>
                       <td><span className="badge">{baseFt.indiceFt}</span></td>
-                      <td style={{fontWeight: '600'}}>{baseFt.nomePeca}{hasCustom && <span className="override-badge" title="Possui custos editados isoladamente para este canal.">⚙️ Customizado</span>}</td>
+                      <td style={{fontWeight: '600'}}>
+                        {baseFt.nomePeca}
+                        {isCadastrado && <span className="override-badge" style={{background: 'rgba(16, 185, 129, 0.15)', color: '#059669', borderColor: '#059669'}} title="Produto ativo/cadastrado nesta plataforma">✅ Ativo</span>}
+                        {hasCustom && <span className="override-badge" title="Possui custos editados isoladamente para este canal.">⚙️ Customizado</span>}
+                      </td>
                       <td style={{color: 'var(--text-secondary)'}}>{formatTime(getUnitProductionTime(baseFt))}</td>
                       <td style={{color: 'var(--text-secondary)'}}>R$ {res.despesasProducao.toFixed(2)}</td>
                       <td style={{color: 'var(--danger)'}}>R$ {res.despesasVenda.toFixed(2)}</td>
@@ -768,7 +866,7 @@ export default function Vendas() {
                              <span title="Valor Sugerido de Anúncio (Venda / 0,70)">📢 Anúncio: <strong>R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</strong></span>
                              <span title="Valor de Rankeamento (Margem de Contribuição 0%)">🚀 Rank: <strong>R$ {(() => {
                                 const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(channelFt.taxaFixaVenda);
-                                const aliquotasPerc = (parseNumber(channelFt.impostosNF) + parseNumber(channelFt.taxaMLPerc)) / 100;
+                                const aliquotasPerc = (parseNumber(channelFt.impostosNF) + parseNumber(channelFt.taxaMLPerc) + parseNumber(channelFt.custoEnvioPerc)) / 100;
                                 const rankVal = aliquotasPerc < 1 ? custosFixos / (1 - aliquotasPerc) : 0;
                                 return String(rankVal.toFixed(2)).replace('.', ',');
                              })()}</strong></span>
