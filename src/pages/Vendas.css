@@ -609,10 +609,13 @@
   font-size: 0.74rem !important;
   font-weight: 600;
   background: var(--bg-secondary);
-  padding: 2px 6px !important;
-  border-radius: 5px;
+  padding: 5px 6px !important;
+  border-radius: 6px;
   border: 1px solid var(--border-color);
   white-space: nowrap;
+  display: inline-block;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .vendas-page .fts-table td span.override-badge {
@@ -658,7 +661,7 @@
 .col-cost { width: 75px; min-width: 75px; white-space: nowrap; }
 .col-sell { width: 75px; min-width: 75px; white-space: nowrap; }
 .col-final { width: 90px; min-width: 90px; white-space: nowrap; }
-.col-price { min-width: 310px; }
+.col-price { min-width: 340px; }
 .col-marg { width: 75px; min-width: 75px; white-space: nowrap; }
 .col-profit { width: 85px; min-width: 85px; white-space: nowrap; }
 .col-qty { width: 80px; min-width: 80px; }

@@ -812,7 +812,7 @@ export default function Vendas() {
                   <th className="col-price" style={{color: 'var(--accent-primary)', textAlign: 'center'}}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', lineHeight: '1.1' }}>
                       <span>VALOR DE VENDA:</span>
-                      <div style={{ display: 'grid', gridTemplateColumns: '88px 110px 88px', gap: '8px', fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 700, width: '100%', textAlign: 'center' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '105px 110px 105px', gap: '8px', fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 700, width: '100%', textAlign: 'center' }}>
                         <span>CADASTRO</span>
                         <span style={{ color: 'var(--accent-primary)' }}>DE VENDA</span>
                         <span>DE QUEIMA</span>
@@ -866,7 +866,7 @@ export default function Vendas() {
                       <td style={{color: 'var(--danger)', whiteSpace: 'nowrap'}}>R$ {res.despesasVenda.toFixed(2)}</td>
                       <td style={{whiteSpace: 'nowrap'}}><strong>R$ {res.custoUnitario.toFixed(2)}</strong></td>
                       <td>
-                         <div style={{ display: 'grid', gridTemplateColumns: '88px 110px 88px', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', justifyContent: 'center' }}>
+                         <div style={{ display: 'grid', gridTemplateColumns: '105px 110px 105px', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', justifyContent: 'center' }}>
                            {channelFt.precoVendaManual ? (
                              <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Cadastro / Anúncio (Venda / 0,70)">📢 R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</span>
                            ) : (
