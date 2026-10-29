@@ -34,7 +34,7 @@ function PriceInput({ initialValue, onSave }) {
   };
 
   return (
-    <div className="input-wrapper" style={{maxWidth: '140px', margin: '0 auto'}}>
+    <div className="input-wrapper" style={{maxWidth: '110px'}}>
       <span className="prefix" style={{color: 'var(--accent-primary)', fontWeight: 'bold'}}>R$</span>
       <input 
         type="text" 
@@ -847,34 +847,36 @@ export default function Vendas() {
                         />
                       </td>
                       <td><span className="badge">{baseFt.indiceFt}</span></td>
-                      <td style={{fontWeight: '600'}}>
+                      <td style={{fontWeight: '600', whiteSpace: 'nowrap'}}>
                         {baseFt.nomePeca}
-                        {isCadastrado && <span className="override-badge" style={{background: 'rgba(16, 185, 129, 0.15)', color: '#059669', borderColor: '#059669'}} title="Produto ativo/cadastrado nesta plataforma">✅ Ativo</span>}
-                        {hasCustom && <span className="override-badge" title="Possui custos editados isoladamente para este canal.">⚙️ Customizado</span>}
+                        {isCadastrado && <span className="override-badge" style={{background: 'rgba(16, 185, 129, 0.15)', color: '#059669', borderColor: '#059669', padding: '2px 5px'}} title="Produto ativo/cadastrado nesta plataforma">✅</span>}
+                        {hasCustom && <span className="override-badge" style={{padding: '2px 5px'}} title="Possui custos editados isoladamente para este canal.">⚙️</span>}
                       </td>
-                      <td style={{color: 'var(--text-secondary)'}}>{formatTime(getUnitProductionTime(baseFt))}</td>
-                      <td style={{color: 'var(--text-secondary)'}}>R$ {res.despesasProducao.toFixed(2)}</td>
-                      <td style={{color: 'var(--danger)'}}>R$ {res.despesasVenda.toFixed(2)}</td>
-                      <td><strong>R$ {res.custoUnitario.toFixed(2)}</strong></td>
+                      <td style={{color: 'var(--text-secondary)', whiteSpace: 'nowrap'}}>{formatTime(getUnitProductionTime(baseFt))}</td>
+                      <td style={{color: 'var(--text-secondary)', whiteSpace: 'nowrap'}}>R$ {res.despesasProducao.toFixed(2)}</td>
+                      <td style={{color: 'var(--danger)', whiteSpace: 'nowrap'}}>R$ {res.despesasVenda.toFixed(2)}</td>
+                      <td style={{whiteSpace: 'nowrap'}}><strong>R$ {res.custoUnitario.toFixed(2)}</strong></td>
                       <td>
-                         <PriceInput 
-                            initialValue={channelFt.precoVendaManual} 
-                            onSave={(val) => handlePriceChange(baseFt.indiceFt, val)} 
-                         />
-                         {channelFt.precoVendaManual && (
-                           <div style={{ fontSize: '0.72rem', marginTop: '4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: 'var(--text-secondary)', lineHeight: '1.2' }}>
-                             <span title="Valor Sugerido de Anúncio (Venda / 0,70)">📢 Anúncio: <strong>R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</strong></span>
-                             <span title="Valor de Rankeamento (Margem de Contribuição 0%)">🚀 Rank: <strong>R$ {(() => {
-                                const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(channelFt.taxaFixaVenda);
-                                const aliquotasPerc = (parseNumber(channelFt.impostosNF) + parseNumber(channelFt.taxaMLPerc) + parseNumber(channelFt.custoEnvioPerc)) / 100;
-                                const rankVal = aliquotasPerc < 1 ? custosFixos / (1 - aliquotasPerc) : 0;
-                                return String(rankVal.toFixed(2)).replace('.', ',');
-                             })()}</strong></span>
-                           </div>
-                         )}
+                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+                           <PriceInput 
+                              initialValue={channelFt.precoVendaManual} 
+                              onSave={(val) => handlePriceChange(baseFt.indiceFt, val)} 
+                           />
+                           {channelFt.precoVendaManual && (
+                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
+                               <span className="mini-price-tag" title="Valor Sugerido de Anúncio (Venda / 0,70)">📢 R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</span>
+                               <span className="mini-price-tag" title="Valor de Rankeamento (Margem de Contribuição 0%)">🚀 R$ {(() => {
+                                  const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(channelFt.taxaFixaVenda);
+                                  const aliquotasPerc = (parseNumber(channelFt.impostosNF) + parseNumber(channelFt.taxaMLPerc) + parseNumber(channelFt.custoEnvioPerc)) / 100;
+                                  const rankVal = aliquotasPerc < 1 ? custosFixos / (1 - aliquotasPerc) : 0;
+                                  return String(rankVal.toFixed(2)).replace('.', ',');
+                               })()}</span>
+                             </div>
+                           )}
+                         </div>
                       </td>
-                      <td><strong style={{color: res.margemContribuicaoPerc > 0 ? 'var(--success)' : (res.margemContribuicaoPerc === 0 ? 'var(--text-secondary)' : 'var(--danger)')}}>{res.margemContribuicaoPerc.toFixed(1)}%</strong></td>
-                      <td><strong style={{color: res.lucroLiquido >= 0 ? 'var(--success)' : 'var(--danger)'}}>R$ {res.lucroLiquido.toFixed(2)}</strong></td>
+                      <td style={{whiteSpace: 'nowrap'}}><strong style={{color: res.margemContribuicaoPerc > 0 ? 'var(--success)' : (res.margemContribuicaoPerc === 0 ? 'var(--text-secondary)' : 'var(--danger)')}}>{res.margemContribuicaoPerc.toFixed(1)}%</strong></td>
+                      <td style={{whiteSpace: 'nowrap'}}><strong style={{color: res.lucroLiquido >= 0 ? 'var(--success)' : 'var(--danger)'}}>R$ {res.lucroLiquido.toFixed(2)}</strong></td>
                       <td style={{textAlign: 'center'}}>
                          <QtyInput 
                             initialValue={qty === 0 ? '' : qty} 

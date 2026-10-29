@@ -593,12 +593,31 @@
 }
 
 .vendas-page .fts-table th, 
-.vendas-page .fts-table td,
-.vendas-page .fts-table td strong,
-.vendas-page .fts-table td span,
-.vendas-page .fts-table td input {
-  padding: 0.6rem 0.8rem !important; /* Aumentado de 0.4rem para 0.8rem */
+.vendas-page .fts-table td {
+  padding: 0.45rem 0.6rem !important;
   font-size: 0.85rem !important;
+  vertical-align: middle;
+}
+
+.vendas-page .fts-table td strong,
+.vendas-page .fts-table td span {
+  padding: 0 !important;
+  font-size: 0.85rem !important;
+}
+
+.vendas-page .fts-table td span.mini-price-tag {
+  font-size: 0.74rem !important;
+  font-weight: 600;
+  background: var(--bg-secondary);
+  padding: 2px 6px !important;
+  border-radius: 5px;
+  border: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.vendas-page .fts-table td span.override-badge {
+  padding: 2px 5px !important;
+  font-size: 0.72rem !important;
 }
 
 .vendas-page .badge {
@@ -634,16 +653,16 @@
 
 /* Definições de Colunas */
 .col-id { width: 60px; min-width: 60px; }
-.col-product { min-width: 200px; }
-.col-time { width: 70px; min-width: 70px; white-space: nowrap; }
-.col-cost { width: 80px; min-width: 80px; white-space: nowrap; }
-.col-sell { width: 80px; min-width: 80px; white-space: nowrap; }
-.col-final { width: 100px; min-width: 100px; white-space: nowrap; }
-.col-price { width: 140px; min-width: 140px; }
-.col-marg { width: 80px; min-width: 80px; white-space: nowrap; }
-.col-profit { width: 100px; min-width: 100px; white-space: nowrap; }
-.col-qty { width: 90px; min-width: 90px; }
-.col-actions { width: 100px; min-width: 100px; }
+.col-product { min-width: 170px; }
+.col-time { width: 65px; min-width: 65px; white-space: nowrap; }
+.col-cost { width: 75px; min-width: 75px; white-space: nowrap; }
+.col-sell { width: 75px; min-width: 75px; white-space: nowrap; }
+.col-final { width: 90px; min-width: 90px; white-space: nowrap; }
+.col-price { min-width: 280px; }
+.col-marg { width: 75px; min-width: 75px; white-space: nowrap; }
+.col-profit { width: 85px; min-width: 85px; white-space: nowrap; }
+.col-qty { width: 80px; min-width: 80px; }
+.col-actions { width: 90px; min-width: 90px; }
 
 .vendas-page .input-wrapper {
   max-width: 130px !important;
