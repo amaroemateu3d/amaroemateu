@@ -809,7 +809,16 @@ export default function Vendas() {
                   <th className="col-cost">Prod.</th>
                   <th className="col-sell">Venda</th>
                   <th className="col-final">Custo Final</th>
-                  <th className="col-price" style={{color: 'var(--accent-primary)'}}>Preço</th>
+                  <th className="col-price" style={{color: 'var(--accent-primary)', textAlign: 'center'}}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', lineHeight: '1.1' }}>
+                      <span>VALOR DE VENDA:</span>
+                      <div style={{ display: 'grid', gridTemplateColumns: '88px 110px 88px', gap: '8px', fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 700, width: '100%', textAlign: 'center' }}>
+                        <span>CADASTRO</span>
+                        <span style={{ color: 'var(--accent-primary)' }}>DE VENDA</span>
+                        <span>DE QUEIMA</span>
+                      </div>
+                    </div>
+                  </th>
                   <th className="col-marg" style={{color: 'var(--success)'}}>% Marg.</th>
                   <th className="col-profit" style={{color: 'var(--success)'}}>Lucro</th>
                   <th className="col-qty" style={{textAlign: 'center'}}>Qtd.</th>
@@ -857,21 +866,25 @@ export default function Vendas() {
                       <td style={{color: 'var(--danger)', whiteSpace: 'nowrap'}}>R$ {res.despesasVenda.toFixed(2)}</td>
                       <td style={{whiteSpace: 'nowrap'}}><strong>R$ {res.custoUnitario.toFixed(2)}</strong></td>
                       <td>
-                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+                         <div style={{ display: 'grid', gridTemplateColumns: '88px 110px 88px', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', justifyContent: 'center' }}>
+                           {channelFt.precoVendaManual ? (
+                             <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Cadastro / Anúncio (Venda / 0,70)">📢 R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</span>
+                           ) : (
+                             <span className="mini-price-tag" style={{ textAlign: 'center', opacity: 0.45 }}>—</span>
+                           )}
                            <PriceInput 
                               initialValue={channelFt.precoVendaManual} 
                               onSave={(val) => handlePriceChange(baseFt.indiceFt, val)} 
                            />
-                           {channelFt.precoVendaManual && (
-                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                               <span className="mini-price-tag" title="Valor Sugerido de Anúncio (Venda / 0,70)">📢 R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</span>
-                               <span className="mini-price-tag" title="Valor de Rankeamento (Margem de Contribuição 0%)">🚀 R$ {(() => {
-                                  const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(channelFt.taxaFixaVenda);
-                                  const aliquotasPerc = (parseNumber(channelFt.impostosNF) + parseNumber(channelFt.taxaMLPerc) + parseNumber(channelFt.custoEnvioPerc)) / 100;
-                                  const rankVal = aliquotasPerc < 1 ? custosFixos / (1 - aliquotasPerc) : 0;
-                                  return String(rankVal.toFixed(2)).replace('.', ',');
-                               })()}</span>
-                             </div>
+                           {channelFt.precoVendaManual ? (
+                             <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Queima / Rankeamento (Margem 0%)">🚀 R$ {(() => {
+                                const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(channelFt.taxaFixaVenda);
+                                const aliquotasPerc = (parseNumber(channelFt.impostosNF) + parseNumber(channelFt.taxaMLPerc) + parseNumber(channelFt.custoEnvioPerc)) / 100;
+                                const rankVal = aliquotasPerc < 1 ? custosFixos / (1 - aliquotasPerc) : 0;
+                                return String(rankVal.toFixed(2)).replace('.', ',');
+                             })()}</span>
+                           ) : (
+                             <span className="mini-price-tag" style={{ textAlign: 'center', opacity: 0.45 }}>—</span>
                            )}
                          </div>
                       </td>
@@ -1018,14 +1031,31 @@ export default function Vendas() {
                             </div>
 
                             {/* Seção de Precificação Tripla */}
-                            <div className="override-highlight" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '10px', textAlign: 'left' }}>
-                              <h5 style={{ margin: 0, color: 'var(--accent-primary)', fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>🏷️ Precificação Tripla</h5>
+                            <div className="override-highlight" style={{ gridColumn: 'span 3', display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '10px', textAlign: 'left' }}>
+                              <h5 style={{ margin: 0, color: 'var(--accent-primary)', fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>🏷️ VALOR DE VENDA:</h5>
                               
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.8rem' }}>
                                 
-                                {/* 1. Valor de Venda (Preço Ideal) */}
+                                {/* 1. Valor de Cadastro (Auto-calculado) */}
                                 <div className="input-group" style={{ margin: 0 }}>
-                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>Valor de Venda (Ideal)</label>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>CADASTRO</label>
+                                  <div className="input-wrapper" style={{ marginTop: '4px' }}>
+                                    <span className="prefix">R$</span>
+                                    <input 
+                                      type="text" 
+                                      name="precoAnuncio" 
+                                      className="has-prefix" 
+                                      value={editingOverride.customData.precoVendaManual ? String((parseNumber(editingOverride.customData.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',') : '0,00'} 
+                                      disabled 
+                                      style={{ background: 'var(--bg-primary)', opacity: 0.85, fontWeight: 'bold', color: 'var(--text-secondary)', cursor: 'not-allowed' }}
+                                    />
+                                  </div>
+                                  <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>Venda / 0,70 (Margem 30%)</span>
+                                </div>
+
+                                {/* 2. Valor de Venda (Preço Ideal) */}
+                                <div className="input-group" style={{ margin: 0 }}>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--accent-primary)' }}>DE VENDA</label>
                                   <div className="input-wrapper" style={{ marginTop: '4px' }}>
                                     <span className="prefix">R$</span>
                                     <input 
@@ -1041,26 +1071,9 @@ export default function Vendas() {
                                   <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>Preço ideal praticado</span>
                                 </div>
 
-                                {/* 2. Valor de Anúncio (Auto-calculado) */}
+                                {/* 3. Valor de Queima (Auto-calculado) */}
                                 <div className="input-group" style={{ margin: 0 }}>
-                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>Valor de Anúncio</label>
-                                  <div className="input-wrapper" style={{ marginTop: '4px' }}>
-                                    <span className="prefix">R$</span>
-                                    <input 
-                                      type="text" 
-                                      name="precoAnuncio" 
-                                      className="has-prefix" 
-                                      value={editingOverride.customData.precoVendaManual ? String((parseNumber(editingOverride.customData.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',') : '0,00'} 
-                                      disabled 
-                                      style={{ background: 'var(--bg-primary)', opacity: 0.85, fontWeight: 'bold', color: 'var(--text-secondary)', cursor: 'not-allowed' }}
-                                    />
-                                  </div>
-                                  <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>Venda / 0,70 (Margem 30%)</span>
-                                </div>
-
-                                {/* 3. Valor de Rankeamento (Auto-calculado) */}
-                                <div className="input-group" style={{ margin: 0 }}>
-                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>Valor de Rankeamento</label>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>DE QUEIMA</label>
                                   <div className="input-wrapper" style={{ marginTop: '4px' }}>
                                     <span className="prefix">R$</span>
                                     <input 
