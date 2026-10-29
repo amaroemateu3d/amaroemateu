@@ -661,7 +661,7 @@
 .col-cost { width: 75px; min-width: 75px; white-space: nowrap; }
 .col-sell { width: 75px; min-width: 75px; white-space: nowrap; }
 .col-final { width: 90px; min-width: 90px; white-space: nowrap; }
-.col-price { min-width: 340px; }
+.col-price { min-width: 310px; }
 .col-marg { width: 75px; min-width: 75px; white-space: nowrap; }
 .col-profit { width: 85px; min-width: 85px; white-space: nowrap; }
 .col-qty { width: 80px; min-width: 80px; }

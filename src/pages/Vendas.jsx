@@ -802,17 +802,19 @@ export default function Vendas() {
               <thead>
                 <tr>
                   <th style={{textAlign: 'center'}}><input type="checkbox" onChange={toggleSelectAll} checked={selectedFts.length === savedFts.length && savedFts.length > 0} /></th>
-                  <th style={{textAlign: 'center', width: '70px'}} title="Marcar se o produto está cadastrado à venda nesta plataforma">No Ar</th>
+                  <th style={{textAlign: 'center', width: '50px'}} title="Marcar se o produto está cadastrado à venda nesta plataforma">No Ar</th>
+                  <th style={{textAlign: 'center', width: '40px'}} title="Status Ativo na Plataforma">✅</th>
+                  <th style={{textAlign: 'center', width: '40px'}} title="Regras Customizadas no Canal">⚙️</th>
                   <th className="col-id">ID</th>
                   <th className="col-product">Produto</th>
-                  <th className="col-time">Tempo</th>
+                  <th className="col-time">Peso</th>
                   <th className="col-cost">Prod.</th>
                   <th className="col-sell">Venda</th>
                   <th className="col-final">Custo Final</th>
                   <th className="col-price" style={{color: 'var(--accent-primary)', textAlign: 'center'}}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', lineHeight: '1.1' }}>
                       <span>VALOR DE VENDA:</span>
-                      <div style={{ display: 'grid', gridTemplateColumns: '105px 110px 105px', gap: '8px', fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 700, width: '100%', textAlign: 'center' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 90px', gap: '8px', fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 700, width: '100%', textAlign: 'center' }}>
                         <span>CADASTRO</span>
                         <span style={{ color: 'var(--accent-primary)' }}>DE VENDA</span>
                         <span>DE QUEIMA</span>
@@ -843,6 +845,7 @@ export default function Vendas() {
                   const isCadastrado = !!overrides[activeChannel]?.[baseFt.indiceFt]?.cadastrado;
                   const customKeys = Object.keys(overrides[activeChannel]?.[baseFt.indiceFt] || {}).filter(k => k !== 'cadastrado');
                   const hasCustom = customKeys.length > 0;
+                  const pesoUnit = (parseNumber(baseFt.pesoGramas) / Math.max(1, parseNumber(baseFt.quantidade))).toFixed(1);
                   return (
                     <tr key={baseFt.indiceFt} className={selectedFts.includes(baseFt.indiceFt) ? 'row-selected' : ''} style={isCadastrado ? {background: 'rgba(16, 185, 129, 0.04)'} : {}}>
                       <td style={{textAlign: 'center'}}><input type="checkbox" checked={selectedFts.includes(baseFt.indiceFt)} onChange={() => toggleSelect(baseFt.indiceFt)} /></td>
@@ -855,20 +858,24 @@ export default function Vendas() {
                           style={{width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--success)'}}
                         />
                       </td>
+                      <td style={{textAlign: 'center', width: '40px'}}>
+                        {isCadastrado ? <span className="override-badge" style={{marginLeft: 0, background: 'rgba(16, 185, 129, 0.15)', color: '#059669', borderColor: '#059669', padding: '2px 5px'}} title="Produto ativo/cadastrado nesta plataforma">✅</span> : <span style={{color: 'var(--border-color)', fontSize: '0.75rem'}}>—</span>}
+                      </td>
+                      <td style={{textAlign: 'center', width: '40px'}}>
+                        {hasCustom ? <span className="override-badge" style={{marginLeft: 0, padding: '2px 5px'}} title="Possui custos editados isoladamente para este canal.">⚙️</span> : <span style={{color: 'var(--border-color)', fontSize: '0.75rem'}}>—</span>}
+                      </td>
                       <td><span className="badge">{baseFt.indiceFt}</span></td>
                       <td style={{fontWeight: '600', whiteSpace: 'nowrap'}}>
                         {baseFt.nomePeca}
-                        {isCadastrado && <span className="override-badge" style={{background: 'rgba(16, 185, 129, 0.15)', color: '#059669', borderColor: '#059669', padding: '2px 5px'}} title="Produto ativo/cadastrado nesta plataforma">✅</span>}
-                        {hasCustom && <span className="override-badge" style={{padding: '2px 5px'}} title="Possui custos editados isoladamente para este canal.">⚙️</span>}
                       </td>
-                      <td style={{color: 'var(--text-secondary)', whiteSpace: 'nowrap'}}>{formatTime(getUnitProductionTime(baseFt))}</td>
+                      <td style={{color: 'var(--text-secondary)', whiteSpace: 'nowrap'}}>{pesoUnit}g</td>
                       <td style={{color: 'var(--text-secondary)', whiteSpace: 'nowrap'}}>R$ {res.despesasProducao.toFixed(2)}</td>
                       <td style={{color: 'var(--danger)', whiteSpace: 'nowrap'}}>R$ {res.despesasVenda.toFixed(2)}</td>
                       <td style={{whiteSpace: 'nowrap'}}><strong>R$ {res.custoUnitario.toFixed(2)}</strong></td>
                       <td>
-                         <div style={{ display: 'grid', gridTemplateColumns: '105px 110px 105px', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', justifyContent: 'center' }}>
+                         <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 90px', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', justifyContent: 'center' }}>
                            {channelFt.precoVendaManual ? (
-                             <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Cadastro / Anúncio (Venda / 0,70)">📢 R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</span>
+                             <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Cadastro / Anúncio (Venda / 0,70)">R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</span>
                            ) : (
                              <span className="mini-price-tag" style={{ textAlign: 'center', opacity: 0.45 }}>—</span>
                            )}
@@ -877,7 +884,7 @@ export default function Vendas() {
                               onSave={(val) => handlePriceChange(baseFt.indiceFt, val)} 
                            />
                            {channelFt.precoVendaManual ? (
-                             <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Queima / Rankeamento (Margem 0%)">🚀 R$ {(() => {
+                             <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Queima / Rankeamento (Margem 0%)">R$ {(() => {
                                 const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(channelFt.taxaFixaVenda);
                                 const aliquotasPerc = (parseNumber(channelFt.impostosNF) + parseNumber(channelFt.taxaMLPerc) + parseNumber(channelFt.custoEnvioPerc)) / 100;
                                 const rankVal = aliquotasPerc < 1 ? custosFixos / (1 - aliquotasPerc) : 0;
