@@ -821,13 +821,13 @@ export default function Vendas() {
                   <th className="col-cost" onClick={() => handleMainSort('prod')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Custo de Produção">Prod.{renderMainSortArrow('prod')}</th>
                   <th className="col-sell" onClick={() => handleMainSort('venda')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Despesas de Venda">Venda{renderMainSortArrow('venda')}</th>
                   <th className="col-final" onClick={() => handleMainSort('custoFinal')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Custo Final">Custo Final{renderMainSortArrow('custoFinal')}</th>
-                  <th className="col-price" style={{color: 'var(--accent-primary)', textAlign: 'center'}}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', lineHeight: '1.1' }}>
-                      <span onClick={() => handleMainSort('precoVenda')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Valor de Venda">VALOR DE VENDA:</span>
+                  <th className="col-price" style={{color: 'var(--text-secondary)', textAlign: 'center'}}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', lineHeight: '1.1', color: 'var(--text-secondary)' }}>
+                      <span onClick={() => handleMainSort('precoVenda')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Valor de Venda">VALOR DE:</span>
                       <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 90px', gap: '8px', fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 700, width: '100%', textAlign: 'center' }}>
-                        <span onClick={() => handleMainSort('precoCadastro')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Cadastro">CADASTRO{renderMainSortArrow('precoCadastro')}</span>
-                        <span onClick={() => handleMainSort('precoVenda')} style={{ color: 'var(--accent-primary)', cursor: 'pointer', userSelect: 'none' }} title="Clique para ordenar por Valor de Venda">DE VENDA{renderMainSortArrow('precoVenda')}</span>
-                        <span onClick={() => handleMainSort('precoQueima')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Queima">DE QUEIMA{renderMainSortArrow('precoQueima')}</span>
+                        <span onClick={() => handleMainSort('precoCadastro')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Cadastro">CADASTRO{renderMainSortArrow('precoCadastro')}</span>
+                        <span onClick={() => handleMainSort('precoVenda')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Valor de Venda">DE VENDA{renderMainSortArrow('precoVenda')}</span>
+                        <span onClick={() => handleMainSort('precoQueima')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Queima">DE QUEIMA{renderMainSortArrow('precoQueima')}</span>
                       </div>
                     </div>
                   </th>
@@ -1081,13 +1081,13 @@ export default function Vendas() {
 
                             {/* Seção de Precificação Tripla */}
                             <div className="override-highlight" style={{ gridColumn: 'span 3', display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '10px', textAlign: 'left' }}>
-                              <h5 style={{ margin: 0, color: 'var(--accent-primary)', fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>🏷️ VALOR DE VENDA:</h5>
+                              <h5 style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>🏷️ VALOR DE:</h5>
                               
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.8rem' }}>
                                 
                                 {/* 1. Valor de Cadastro (Auto-calculado) */}
                                 <div className="input-group" style={{ margin: 0 }}>
-                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>CADASTRO</label>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>CADASTRO</label>
                                   <div className="input-wrapper" style={{ marginTop: '4px' }}>
                                     <span className="prefix">R$</span>
                                     <input 
@@ -1104,7 +1104,7 @@ export default function Vendas() {
 
                                 {/* 2. Valor de Venda (Preço Ideal) */}
                                 <div className="input-group" style={{ margin: 0 }}>
-                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--accent-primary)' }}>DE VENDA</label>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>DE VENDA</label>
                                   <div className="input-wrapper" style={{ marginTop: '4px' }}>
                                     <span className="prefix">R$</span>
                                     <input 
@@ -1122,7 +1122,7 @@ export default function Vendas() {
 
                                 {/* 3. Valor de Queima (Auto-calculado) */}
                                 <div className="input-group" style={{ margin: 0 }}>
-                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>DE QUEIMA</label>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>DE QUEIMA</label>
                                   <div className="input-wrapper" style={{ marginTop: '4px' }}>
                                     <span className="prefix">R$</span>
                                     <input 
