@@ -107,6 +107,16 @@ export default function Vendas() {
   const [autoFiltro, setAutoFiltro] = useState('');
   const [apenasComPreco, setApenasComPreco] = useState(false);
   const [filterCadastrados, setFilterCadastrados] = useState(false);
+  const [mainSort, setMainSort] = useState({ key: null, dir: 'desc' });
+
+  const handleMainSort = (key) => {
+    setMainSort(prev => {
+      if (prev.key !== key) return { key, dir: 'desc' };
+      if (prev.dir === 'desc') return { key, dir: 'asc' };
+      return { key: null, dir: 'desc' };
+    });
+  };
+  const renderMainSortArrow = (key) => mainSort.key === key ? (mainSort.dir === 'desc' ? ' ▼' : ' ▲') : '';
 
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'save', title: '', details: [], onConfirm: null });
   const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
@@ -805,25 +815,25 @@ export default function Vendas() {
                   <th style={{textAlign: 'center', width: '50px'}} title="Marcar se o produto está cadastrado à venda nesta plataforma">No Ar</th>
                   <th style={{textAlign: 'center', width: '40px'}} title="Status Ativo na Plataforma">✅</th>
                   <th style={{textAlign: 'center', width: '40px'}} title="Regras Customizadas no Canal">⚙️</th>
-                  <th className="col-id">ID</th>
-                  <th className="col-product">Produto</th>
-                  <th className="col-time">Peso</th>
-                  <th className="col-cost">Prod.</th>
-                  <th className="col-sell">Venda</th>
-                  <th className="col-final">Custo Final</th>
+                  <th className="col-id" onClick={() => handleMainSort('id')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por ID">ID{renderMainSortArrow('id')}</th>
+                  <th className="col-product" onClick={() => handleMainSort('nome')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Produto">Produto{renderMainSortArrow('nome')}</th>
+                  <th className="col-time" onClick={() => handleMainSort('peso')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Peso">Peso{renderMainSortArrow('peso')}</th>
+                  <th className="col-cost" onClick={() => handleMainSort('prod')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Custo de Produção">Prod.{renderMainSortArrow('prod')}</th>
+                  <th className="col-sell" onClick={() => handleMainSort('venda')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Despesas de Venda">Venda{renderMainSortArrow('venda')}</th>
+                  <th className="col-final" onClick={() => handleMainSort('custoFinal')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Custo Final">Custo Final{renderMainSortArrow('custoFinal')}</th>
                   <th className="col-price" style={{color: 'var(--accent-primary)', textAlign: 'center'}}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', lineHeight: '1.1' }}>
-                      <span>VALOR DE VENDA:</span>
+                      <span onClick={() => handleMainSort('precoVenda')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Valor de Venda">VALOR DE VENDA:</span>
                       <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 90px', gap: '8px', fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 700, width: '100%', textAlign: 'center' }}>
-                        <span>CADASTRO</span>
-                        <span style={{ color: 'var(--accent-primary)' }}>DE VENDA</span>
-                        <span>DE QUEIMA</span>
+                        <span onClick={() => handleMainSort('precoCadastro')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Cadastro">CADASTRO{renderMainSortArrow('precoCadastro')}</span>
+                        <span onClick={() => handleMainSort('precoVenda')} style={{ color: 'var(--accent-primary)', cursor: 'pointer', userSelect: 'none' }} title="Clique para ordenar por Valor de Venda">DE VENDA{renderMainSortArrow('precoVenda')}</span>
+                        <span onClick={() => handleMainSort('precoQueima')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Queima">DE QUEIMA{renderMainSortArrow('precoQueima')}</span>
                       </div>
                     </div>
                   </th>
-                  <th className="col-marg" style={{color: 'var(--success)'}}>% Marg.</th>
-                  <th className="col-profit" style={{color: 'var(--success)'}}>Lucro</th>
-                  <th className="col-qty" style={{textAlign: 'center'}}>Qtd.</th>
+                  <th className="col-marg" onClick={() => handleMainSort('margem')} style={{color: 'var(--success)', cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por % Margem">% Marg.{renderMainSortArrow('margem')}</th>
+                  <th className="col-profit" onClick={() => handleMainSort('lucro')} style={{color: 'var(--success)', cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Lucro">Lucro{renderMainSortArrow('lucro')}</th>
+                  <th className="col-qty" onClick={() => handleMainSort('qty')} style={{textAlign: 'center', cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Quantidade">Qtd.{renderMainSortArrow('qty')}</th>
                   <th className="col-actions" style={{textAlign: 'right'}}>Ações</th>
                 </tr>
               </thead>
@@ -832,6 +842,38 @@ export default function Vendas() {
                   const cadA = overrides[activeChannel]?.[a.indiceFt]?.cadastrado ? 1 : 0;
                   const cadB = overrides[activeChannel]?.[b.indiceFt]?.cadastrado ? 1 : 0;
                   if (cadA !== cadB) return cadB - cadA;
+
+                  if (mainSort.key) {
+                    const mult = mainSort.dir === 'desc' ? -1 : 1;
+                    if (mainSort.key === 'id') return mult * (a.indiceFt || '').localeCompare(b.indiceFt || '', undefined, { numeric: true });
+                    if (mainSort.key === 'nome') return mult * (a.nomePeca || '').localeCompare(b.nomePeca || '');
+                    if (mainSort.key === 'peso') {
+                      const pA = parseNumber(a.pesoGramas) / Math.max(1, parseNumber(a.quantidade));
+                      const pB = parseNumber(b.pesoGramas) / Math.max(1, parseNumber(b.quantidade));
+                      return mult * (pA - pB);
+                    }
+                    const chA = getFtWithOverrides(a);
+                    const chB = getFtWithOverrides(b);
+                    const resA = getResultados(chA);
+                    const resB = getResultados(chB);
+                    if (mainSort.key === 'prod') return mult * (resA.despesasProducao - resB.despesasProducao);
+                    if (mainSort.key === 'venda') return mult * (resA.despesasVenda - resB.despesasVenda);
+                    if (mainSort.key === 'custoFinal') return mult * (resA.custoUnitario - resB.custoUnitario);
+                    if (mainSort.key === 'precoVenda') return mult * (parseNumber(chA.precoVendaManual) - parseNumber(chB.precoVendaManual));
+                    if (mainSort.key === 'precoCadastro') return mult * ((parseNumber(chA.precoVendaManual) / 0.7) - (parseNumber(chB.precoVendaManual) / 0.7));
+                    if (mainSort.key === 'precoQueima') {
+                      const cfA = resA.custoFisicoUnit + resA.custosExtras + parseNumber(chA.taxaFixaVenda);
+                      const alA = (parseNumber(chA.impostosNF) + parseNumber(chA.taxaMLPerc) + parseNumber(chA.custoEnvioPerc)) / 100;
+                      const rkA = parseNumber(chA.precoVendaManual) > 0 && alA < 1 ? cfA / (1 - alA) : 0;
+                      const cfB = resB.custoFisicoUnit + resB.custosExtras + parseNumber(chB.taxaFixaVenda);
+                      const alB = (parseNumber(chB.impostosNF) + parseNumber(chB.taxaMLPerc) + parseNumber(chB.custoEnvioPerc)) / 100;
+                      const rkB = parseNumber(chB.precoVendaManual) > 0 && alB < 1 ? cfB / (1 - alB) : 0;
+                      return mult * (rkA - rkB);
+                    }
+                    if (mainSort.key === 'margem') return mult * (resA.margemContribuicaoPerc - resB.margemContribuicaoPerc);
+                    if (mainSort.key === 'lucro') return mult * (resA.lucroLiquido - resB.lucroLiquido);
+                    if (mainSort.key === 'qty') return mult * (getChannelQty(a.indiceFt) - getChannelQty(b.indiceFt));
+                  }
 
                   const qtyA = getChannelQty(a.indiceFt);
                   const qtyB = getChannelQty(b.indiceFt);
@@ -1172,6 +1214,22 @@ export default function Vendas() {
 }
 
 function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, setAutoCanais, autoFiltro, setAutoFiltro, apenasComPreco, setApenasComPreco, onPriceChange, onClose, getFtWithOverridesForChannel }) {
+  const [sortCfg, setSortCfg] = useState({ key: null, channelId: null, dir: 'desc' });
+
+  const handleSort = (key, channelId = null) => {
+    setSortCfg(prev => {
+      if (prev.key === key && prev.channelId === channelId) {
+        if (prev.dir === 'desc') return { key, channelId, dir: 'asc' };
+        return { key: null, channelId: null, dir: 'desc' };
+      }
+      return { key, channelId, dir: 'desc' };
+    });
+  };
+
+  const renderSortArrow = (key, channelId = null) => {
+    if (sortCfg.key !== key || sortCfg.channelId !== channelId) return '';
+    return sortCfg.dir === 'desc' ? ' ▼' : ' ▲';
+  };
 
   const toggleCanal = (id) => {
     setAutoCanais(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
@@ -1205,6 +1263,32 @@ function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, s
     const cadA = autoCanais.some(chId => overrides[chId]?.[a.indiceFt]?.cadastrado) ? 1 : 0;
     const cadB = autoCanais.some(chId => overrides[chId]?.[b.indiceFt]?.cadastrado) ? 1 : 0;
     if (cadA !== cadB) return cadB - cadA;
+
+    if (sortCfg.key) {
+      const mult = sortCfg.dir === 'desc' ? -1 : 1;
+      if (sortCfg.key === 'id') return mult * (a.indiceFt || '').localeCompare(b.indiceFt || '', undefined, { numeric: true });
+      if (sortCfg.key === 'nome') return mult * (a.nomePeca || '').localeCompare(b.nomePeca || '');
+      if (sortCfg.key === 'tempo') return mult * (getUnitProductionTime(a) - getUnitProductionTime(b));
+
+      const chId = sortCfg.channelId || autoCanais[0] || 'ml';
+      const mA = getFtWithOverridesForChannel(a, chId);
+      const mB = getFtWithOverridesForChannel(b, chId);
+      const rA = getResultados(mA);
+      const rB = getResultados(mB);
+      const pA = parseNumber(mA.precoVendaManual);
+      const pB = parseNumber(mB.precoVendaManual);
+      const tA = getUnitProductionTime(a);
+      const tB = getUnitProductionTime(b);
+      const u24A = tA > 0 ? Math.floor(24 / tA) : 0;
+      const u24B = tB > 0 ? Math.floor(24 / tB) : 0;
+
+      if (sortCfg.key === 'preco') return mult * (pA - pB);
+      if (sortCfg.key === 'margem') return mult * ((pA > 0 ? rA.margemContribuicaoPerc : -999999) - (pB > 0 ? rB.margemContribuicaoPerc : -999999));
+      if (sortCfg.key === 'lucro') return mult * ((pA > 0 ? rA.lucroLiquido : -999999) - (pB > 0 ? rB.lucroLiquido : -999999));
+      if (sortCfg.key === 'lucro24h') return mult * ((pA > 0 ? rA.lucroLiquido * u24A : -999999) - (pB > 0 ? rB.lucroLiquido * u24B : -999999));
+      if (sortCfg.key === 'lucroMes') return mult * ((pA > 0 ? rA.lucroLiquido * u24A * 30 : -999999) - (pB > 0 ? rB.lucroLiquido * u24B * 30 : -999999));
+    }
+
     return (a.indiceFt || '').localeCompare(b.indiceFt || '', undefined, { numeric: true });
   });
 
@@ -1275,9 +1359,9 @@ function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, s
             <thead>
               <tr style={{ background: 'var(--bg-secondary)', position: 'sticky', top: 0, zIndex: 10 }}>
                 <th style={{ padding: '0.6rem 0.5rem', textAlign: 'center', borderBottom: '2px solid var(--border-color)', width: '40px', color: 'var(--text-secondary)', fontWeight: 700 }} title="Produto Cadastrado / No Ar nos Canais Selecionados">✅</th>
-                <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left', borderBottom: '2px solid var(--border-color)', whiteSpace: 'nowrap', color: 'var(--text-secondary)', fontWeight: 700 }}>ID</th>
-                <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontWeight: 700 }}>Produto</th>
-                <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontWeight: 700 }}>⏱ Tempo</th>
+                <th onClick={() => handleSort('id')} style={{ padding: '0.6rem 0.8rem', textAlign: 'left', borderBottom: '2px solid var(--border-color)', whiteSpace: 'nowrap', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer', userSelect: 'none' }} title="Clique para ordenar por ID">ID{renderSortArrow('id')}</th>
+                <th onClick={() => handleSort('nome')} style={{ padding: '0.6rem 0.8rem', textAlign: 'left', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer', userSelect: 'none' }} title="Clique para ordenar por Produto">Produto{renderSortArrow('nome')}</th>
+                <th onClick={() => handleSort('tempo')} style={{ padding: '0.6rem 0.8rem', textAlign: 'center', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} title="Clique para ordenar por Tempo">⏱ Tempo{renderSortArrow('tempo')}</th>
                 {activeChannelList.map(ch => (
                   <th key={ch.id} colSpan={5} style={{ padding: '0.6rem 0.8rem', textAlign: 'center', borderBottom: '2px solid var(--border-color)', borderLeft: '2px solid var(--border-color)', color: 'var(--accent-primary)', fontWeight: 700, background: 'var(--bg-surface)' }}>
                     {ch.icon} {ch.label}
@@ -1288,11 +1372,11 @@ function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, s
                 <th colSpan={4} style={{ borderBottom: '1px solid var(--border-color)' }}></th>
                 {activeChannelList.map(ch => (
                   <>
-                    <th key={ch.id + '_preco'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', borderLeft: '2px solid var(--border-color)', color: 'var(--accent-primary)', fontWeight: 600, fontSize: '0.75rem' }}>Preço Venda</th>
-                    <th key={ch.id + '_marg'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: 'var(--success)', fontWeight: 600, fontSize: '0.75rem' }}>Margem %</th>
-                    <th key={ch.id + '_lucro'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: 'var(--success)', fontWeight: 600, fontSize: '0.75rem' }}>Lucro R$</th>
-                    <th key={ch.id + '_24h'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#F59E0B', fontWeight: 600, fontSize: '0.75rem', background: 'rgba(245,158,11,0.06)' }}>🕒 Lucro 24h</th>
-                    <th key={ch.id + '_mes'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#8B5CF6', fontWeight: 600, fontSize: '0.75rem', background: 'rgba(139,92,246,0.06)' }}>📅 Lucro Mensal</th>
+                    <th key={ch.id + '_preco'} onClick={() => handleSort('preco', ch.id)} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', borderLeft: '2px solid var(--border-color)', color: 'var(--accent-primary)', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} title="Clique para ordenar por Preço de Venda">Preço Venda{renderSortArrow('preco', ch.id)}</th>
+                    <th key={ch.id + '_marg'} onClick={() => handleSort('margem', ch.id)} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: 'var(--success)', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} title="Clique para ordenar por Margem %">Margem %{renderSortArrow('margem', ch.id)}</th>
+                    <th key={ch.id + '_lucro'} onClick={() => handleSort('lucro', ch.id)} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: 'var(--success)', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} title="Clique para ordenar por Lucro R$">Lucro R${renderSortArrow('lucro', ch.id)}</th>
+                    <th key={ch.id + '_24h'} onClick={() => handleSort('lucro24h', ch.id)} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#F59E0B', fontWeight: 600, fontSize: '0.75rem', background: 'rgba(245,158,11,0.06)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} title="Clique para ordenar por Lucro 24h">🕒 Lucro 24h{renderSortArrow('lucro24h', ch.id)}</th>
+                    <th key={ch.id + '_mes'} onClick={() => handleSort('lucroMes', ch.id)} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#8B5CF6', fontWeight: 600, fontSize: '0.75rem', background: 'rgba(139,92,246,0.06)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} title="Clique para ordenar por Lucro Mensal">📅 Lucro Mensal{renderSortArrow('lucroMes', ch.id)}</th>
                   </>
                 ))}
               </tr>
