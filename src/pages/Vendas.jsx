@@ -826,8 +826,8 @@ export default function Vendas() {
                       <span onClick={() => handleMainSort('precoVenda')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Valor de Venda">VALOR DE:</span>
                       <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 90px', gap: '8px', fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 700, width: '100%', textAlign: 'center' }}>
                         <span onClick={() => handleMainSort('precoCadastro')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Cadastro">CADASTRO{renderMainSortArrow('precoCadastro')}</span>
-                        <span onClick={() => handleMainSort('precoVenda')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Valor de Venda">DE VENDA{renderMainSortArrow('precoVenda')}</span>
-                        <span onClick={() => handleMainSort('precoQueima')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Queima">DE QUEIMA{renderMainSortArrow('precoQueima')}</span>
+                        <span onClick={() => handleMainSort('precoVenda')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Valor de Venda">VENDA{renderMainSortArrow('precoVenda')}</span>
+                        <span onClick={() => handleMainSort('precoQueima')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Queima">QUEIMA{renderMainSortArrow('precoQueima')}</span>
                       </div>
                     </div>
                   </th>
@@ -1104,7 +1104,7 @@ export default function Vendas() {
 
                                 {/* 2. Valor de Venda (Preço Ideal) */}
                                 <div className="input-group" style={{ margin: 0 }}>
-                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>DE VENDA</label>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>VENDA</label>
                                   <div className="input-wrapper" style={{ marginTop: '4px' }}>
                                     <span className="prefix">R$</span>
                                     <input 
@@ -1122,7 +1122,7 @@ export default function Vendas() {
 
                                 {/* 3. Valor de Queima (Auto-calculado) */}
                                 <div className="input-group" style={{ margin: 0 }}>
-                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>DE QUEIMA</label>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>QUEIMA</label>
                                   <div className="input-wrapper" style={{ marginTop: '4px' }}>
                                     <span className="prefix">R$</span>
                                     <input 
