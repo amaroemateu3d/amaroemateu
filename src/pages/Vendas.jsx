@@ -1201,6 +1201,11 @@ function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, s
       (preco > 0 && String(preco.toFixed(2)).includes(q)) ||
       (String(margem.toFixed(1)).includes(q))
     );
+  }).sort((a, b) => {
+    const cadA = autoCanais.some(chId => overrides[chId]?.[a.indiceFt]?.cadastrado) ? 1 : 0;
+    const cadB = autoCanais.some(chId => overrides[chId]?.[b.indiceFt]?.cadastrado) ? 1 : 0;
+    if (cadA !== cadB) return cadB - cadA;
+    return (a.indiceFt || '').localeCompare(b.indiceFt || '', undefined, { numeric: true });
   });
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1269,23 +1274,25 @@ function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, s
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
             <thead>
               <tr style={{ background: 'var(--bg-secondary)', position: 'sticky', top: 0, zIndex: 10 }}>
+                <th style={{ padding: '0.6rem 0.5rem', textAlign: 'center', borderBottom: '2px solid var(--border-color)', width: '40px', color: 'var(--text-secondary)', fontWeight: 700 }} title="Produto Cadastrado / No Ar nos Canais Selecionados">✅</th>
                 <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left', borderBottom: '2px solid var(--border-color)', whiteSpace: 'nowrap', color: 'var(--text-secondary)', fontWeight: 700 }}>ID</th>
                 <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontWeight: 700 }}>Produto</th>
                 <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center', borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontWeight: 700 }}>⏱ Tempo</th>
                 {activeChannelList.map(ch => (
-                  <th key={ch.id} colSpan={4} style={{ padding: '0.6rem 0.8rem', textAlign: 'center', borderBottom: '2px solid var(--border-color)', borderLeft: '2px solid var(--border-color)', color: 'var(--accent-primary)', fontWeight: 700, background: 'var(--bg-surface)' }}>
+                  <th key={ch.id} colSpan={5} style={{ padding: '0.6rem 0.8rem', textAlign: 'center', borderBottom: '2px solid var(--border-color)', borderLeft: '2px solid var(--border-color)', color: 'var(--accent-primary)', fontWeight: 700, background: 'var(--bg-surface)' }}>
                     {ch.icon} {ch.label}
                   </th>
                 ))}
               </tr>
               <tr style={{ background: 'var(--bg-secondary)', position: 'sticky', top: '37px', zIndex: 9 }}>
-                <th colSpan={3} style={{ borderBottom: '1px solid var(--border-color)' }}></th>
+                <th colSpan={4} style={{ borderBottom: '1px solid var(--border-color)' }}></th>
                 {activeChannelList.map(ch => (
                   <>
                     <th key={ch.id + '_preco'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', borderLeft: '2px solid var(--border-color)', color: 'var(--accent-primary)', fontWeight: 600, fontSize: '0.75rem' }}>Preço Venda</th>
                     <th key={ch.id + '_marg'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: 'var(--success)', fontWeight: 600, fontSize: '0.75rem' }}>Margem %</th>
                     <th key={ch.id + '_lucro'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: 'var(--success)', fontWeight: 600, fontSize: '0.75rem' }}>Lucro R$</th>
                     <th key={ch.id + '_24h'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#F59E0B', fontWeight: 600, fontSize: '0.75rem', background: 'rgba(245,158,11,0.06)' }}>🕒 Lucro 24h</th>
+                    <th key={ch.id + '_mes'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#8B5CF6', fontWeight: 600, fontSize: '0.75rem', background: 'rgba(139,92,246,0.06)' }}>📅 Lucro Mensal</th>
                   </>
                 ))}
               </tr>
@@ -1294,9 +1301,14 @@ function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, s
               {filteredFts.map((ft, idx) => {
                 const unitTimeHours = getUnitProductionTime(ft);
                 const unidades24h = unitTimeHours > 0 ? Math.floor(24 / unitTimeHours) : 0;
+                const unidadesMes = unidades24h * 30;
+                const isAtivoAlgumCanal = autoCanais.some(chId => overrides[chId]?.[ft.indiceFt]?.cadastrado);
 
                 return (
-                  <tr key={ft.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
+                  <tr key={ft.indiceFt} style={{ borderBottom: '1px solid var(--border-color)', background: isAtivoAlgumCanal ? 'rgba(16, 185, 129, 0.04)' : (idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)') }}>
+                    <td style={{ padding: '0.55rem 0.5rem', textAlign: 'center' }}>
+                      {isAtivoAlgumCanal ? <span style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#059669', border: '1px solid #059669', padding: '2px 5px', borderRadius: '4px', fontSize: '0.72rem' }} title="Produto cadastrado / no ar">✅</span> : <span style={{ color: 'var(--border-color)', fontSize: '0.75rem' }}>—</span>}
+                    </td>
                     <td style={{ padding: '0.55rem 0.8rem', whiteSpace: 'nowrap' }}>
                       <span style={{ background: 'var(--bg-secondary)', color: 'var(--accent-primary)', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '0.78rem' }}>{ft.indiceFt}</span>
                     </td>
@@ -1310,6 +1322,7 @@ function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, s
                       const marg = res.margemContribuicaoPerc;
                       const lucro = res.lucroLiquido;
                       const lucro24h = lucro * unidades24h;
+                      const lucroMes = lucro * unidadesMes;
                       const margColor = marg > 20 ? 'var(--success)' : marg > 0 ? '#F59E0B' : 'var(--danger)';
 
                       return (
@@ -1331,6 +1344,14 @@ function AutoPrecosOverlay({ savedFts, overrides, channelDefaults, autoCanais, s
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
                                 <span style={{ fontWeight: 700, color: lucro24h >= 0 ? '#F59E0B' : 'var(--danger)', fontSize: '0.88rem' }}>R$ {fmt(lucro24h)}</span>
                                 <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{unidades24h} un/dia</span>
+                              </div>
+                            ) : <span style={{ color: 'var(--text-secondary)' }}>—</span>}
+                          </td>
+                          <td key={ch.id + '_mes'} style={{ padding: '0.4rem 0.6rem', textAlign: 'center', background: 'rgba(139,92,246,0.06)', whiteSpace: 'nowrap' }}>
+                            {preco > 0 && unidadesMes > 0 ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
+                                <span style={{ fontWeight: 700, color: lucroMes >= 0 ? '#8B5CF6' : 'var(--danger)', fontSize: '0.88rem' }}>R$ {fmt(lucroMes)}</span>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{unidadesMes} un/mês</span>
                               </div>
                             ) : <span style={{ color: 'var(--text-secondary)' }}>—</span>}
                           </td>
