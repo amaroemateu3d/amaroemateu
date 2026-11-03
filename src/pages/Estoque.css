@@ -235,3 +235,39 @@
   border-color: #059669;
   transform: translateY(-1px);
 }
+
+.btn-add-var {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px dashed var(--accent-primary);
+  background: rgba(124, 58, 237, 0.06);
+  color: var(--accent-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.btn-add-var:hover {
+  background: var(--accent-primary);
+  color: white;
+  border-style: solid;
+  transform: scale(1.06);
+}
+
+.mkt-channel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
