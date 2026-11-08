@@ -813,15 +813,6 @@ export default function Estoque() {
             />
           </div>
           <button
-            className="btn-primary"
-            onClick={openBatchConfirm}
-            disabled={saving || batchKeys.length === 0}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-          >
-            {saving ? <Loader size={18} className="spin" /> : <Save size={18} />}
-            Salvar Lote
-          </button>
-          <button
             type="button"
             onClick={() => setZeroModalOpen(true)}
             disabled={saving || fts.length === 0}
@@ -918,24 +909,16 @@ export default function Estoque() {
                       </button>
                     </div>
                   </th>
-                  <th style={{ width: '150px' }}>Ajuste</th>
-                  <th style={{ width: '165px', textAlign: 'center' }}>Novo Saldo</th>
-                  <th style={{ width: '70px', textAlign: 'right' }}>Ação</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRows.length > 0 ? filteredRows.map(item => {
-                  const adjustment = adjustments[item.rowKey] || '';
-                  const isModified = String(adjustment).trim() !== '';
-                  const newGalpao = calculateNewStock(item.estoqueGalpao, adjustment);
-                  const newCasa = calculateNewStock(item.estoqueCasa, adjustment);
                   const totalItem = (item.estoqueGalpao || 0) + (item.estoqueCasa || 0);
 
                   return (
                     <tr
                       key={item.rowKey}
-                      className={isModified ? 'row-modified' : ''}
-                      style={item.isAnunciado && !isModified ? { backgroundColor: 'rgba(16, 185, 129, 0.03)' } : {}}
+                      style={item.isAnunciado ? { backgroundColor: 'rgba(16, 185, 129, 0.03)' } : {}}
                     >
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <span className="badge" style={item.hasVariacoes ? { background: 'rgba(124, 58, 237, 0.12)', color: 'var(--accent-primary)', border: '1px solid rgba(124, 58, 237, 0.3)' } : {}}>
@@ -995,41 +978,11 @@ export default function Estoque() {
                           </span>
                         </div>
                       </td>
-                      <td>
-                        <input
-                          type="text"
-                          className="adjustment-input"
-                          placeholder="ex: +5, -2, =10"
-                          value={adjustment}
-                          onChange={(e) => handleAdjustmentChange(item.rowKey, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') applyAdjustments(item.rowKey);
-                          }}
-                        />
-                      </td>
-                      <td style={{ textAlign: 'center', fontWeight: 'bold', color: isModified ? 'var(--accent-primary)' : 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                        {isModified ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
-                            <span>🏭 se Galpão: {newGalpao} (Total: {newGalpao + item.estoqueCasa})</span>
-                            <span>🏠 se Casa: {newCasa} (Total: {item.estoqueGalpao + newCasa})</span>
-                          </div>
-                        ) : '-'}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button
-                          className={`btn-icon ${isModified ? 'btn-save-active' : ''}`}
-                          disabled={!isModified || saving}
-                          onClick={() => applyAdjustments(item.rowKey)}
-                          title="Salvar ajuste"
-                        >
-                          <Save size={18} />
-                        </button>
-                      </td>
                     </tr>
                   );
                 }) : (
                   <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>Nenhum produto encontrado.</td>
+                    <td colSpan="5" style={{ textAlign: 'center', padding: '2rem' }}>Nenhum produto encontrado.</td>
                   </tr>
                 )}
               </tbody>
@@ -1247,11 +1200,13 @@ export default function Estoque() {
                     </div>
                   </div>
 
-                  {String(directStockModal.inputValue || '').trim() !== '' && (
-                    <div style={{ background: isGalpao ? '#EFF6FF' : '#ECFDF5', border: `1px solid ${isGalpao ? '#BFDBFE' : '#A7F3D0'}`, color: isGalpao ? '#1D4ED8' : '#047857', padding: '10px 12px', borderRadius: '8px', fontSize: '0.88rem', textAlign: 'center', fontWeight: 600 }}>
-                      Novo saldo em {locLabel}: <strong>{currentLocStock} un → {previewLocStock} un</strong> (Total Geral: {previewTotalStock} un)
-                    </div>
-                  )}
+                  <div style={{ background: isGalpao ? '#EFF6FF' : '#ECFDF5', border: `1px solid ${isGalpao ? '#BFDBFE' : '#A7F3D0'}`, color: isGalpao ? '#1D4ED8' : '#047857', padding: '10px 12px', borderRadius: '8px', fontSize: '0.88rem', textAlign: 'center', fontWeight: 600, minHeight: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {String(directStockModal.inputValue || '').trim() !== '' ? (
+                      <span>Novo saldo em {locLabel}: <strong>{currentLocStock} un → {previewLocStock} un</strong> (Total Geral: {previewTotalStock} un)</span>
+                    ) : (
+                      <span style={{ opacity: 0.7 }}>Novo saldo em {locLabel}: <strong>{currentLocStock} un</strong> (Total Geral: {currentLocStock + otherLocStock} un)</span>
+                    )}
+                  </div>
 
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
                     <button type="button" className="cm-btn-cancel" onClick={closeDirectStockModal}>
