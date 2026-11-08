@@ -58,6 +58,15 @@ export default function Estoque() {
     targetKey: null,
   });
 
+  // Modal de clique direto no badge de Galpão ou Casa (Passo 1: Informar unidades -> Passo 2: Confirmação)
+  const [directStockModal, setDirectStockModal] = useState({
+    isOpen: false,
+    step: 'input', // 'input' | 'confirm'
+    rowKey: null,
+    location: 'galpao', // 'galpao' | 'casa'
+    inputValue: '',
+  });
+
   useEffect(() => {
     fetchEstoque();
 
@@ -445,6 +454,58 @@ export default function Estoque() {
     setLocationModal({ isOpen: false, mode: 'single', targetKey: null });
   };
 
+  const openDirectStockModal = (rowKey, location) => {
+    setDirectStockModal({
+      isOpen: true,
+      step: 'input',
+      rowKey,
+      location,
+      inputValue: '',
+    });
+  };
+
+  const closeDirectStockModal = () => {
+    setDirectStockModal({
+      isOpen: false,
+      step: 'input',
+      rowKey: null,
+      location: 'galpao',
+      inputValue: '',
+    });
+  };
+
+  const handleDirectStockOk = () => {
+    const val = String(directStockModal.inputValue || '').trim();
+    if (!val) {
+      alert('Digite a quantidade para adicionar (ex: 5), retirar (ex: -2) ou definir saldo exato (ex: =10).');
+      return;
+    }
+    const numCheck = val.startsWith('=') ? parseInt(val.substring(1), 10) : parseInt(val, 10);
+    if (isNaN(numCheck)) {
+      alert('Valor inválido. Digite um número válido (ex: +5, -2 ou =10).');
+      return;
+    }
+    setDirectStockModal(prev => ({ ...prev, step: 'confirm' }));
+  };
+
+  const handleDirectStockConfirm = async () => {
+    const { rowKey, location, inputValue } = directStockModal;
+    const item = allRows.find(r => r.rowKey === rowKey);
+    closeDirectStockModal();
+    if (!item || !inputValue) return;
+
+    setSaving(true);
+    try {
+      await updateRowInSupabase(item, location, inputValue);
+      await fetchEstoque();
+    } catch (e) {
+      console.error('Erro ao salvar ajuste direto de estoque:', e);
+      alert('Erro ao salvar estoque.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const updateRowInSupabase = async (rowItem, location, adjustmentStr) => {
     const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
     const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -789,7 +850,7 @@ export default function Estoque() {
         <div className="alert alert-info" style={{ marginBottom: '1.5rem', display: 'flex', gap: '10px', alignItems: 'center', backgroundColor: '#EFF6FF', color: '#1E40AF', padding: '12px 16px', borderRadius: '8px', border: '1px solid #BFDBFE' }}>
           <AlertCircle size={20} />
           <div>
-            <strong>Dica:</strong> Clique no botão <strong><code>+</code></strong> entre o ID e o nome do produto para cadastrar variações de estoque (ex: <code>FT-01 - Azul</code>). A coluna <strong>Anunciado (Mkt)</strong> exibe em quais plataformas o item está ativo à venda.
+            <strong>Dica:</strong> Clique diretamente sobre <strong>🏭 Galpão</strong> ou <strong>🏠 Casa</strong> em qualquer linha para abrir a caixa de adicionar/retirar unidades daquele estoque. Use o botão <strong><code>+</code></strong> ao lado do ID para cadastrar variações.
           </div>
         </div>
 
@@ -913,12 +974,22 @@ export default function Estoque() {
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <div className="dual-stock-wrap">
-                          <span className={`stock-badge stock-loc-badge ${item.estoqueGalpao <= 0 ? 'stock-zero' : 'stock-galpao'}`} title="Estoque no Galpão">
+                          <button
+                            type="button"
+                            className={`stock-badge stock-loc-badge stock-clickable ${item.estoqueGalpao <= 0 ? 'stock-zero' : 'stock-galpao'}`}
+                            onClick={() => openDirectStockModal(item.rowKey, 'galpao')}
+                            title="Clique para adicionar ou retirar unidades do Galpão"
+                          >
                             🏭 Galpão: {item.estoqueGalpao} un
-                          </span>
-                          <span className={`stock-badge stock-loc-badge ${item.estoqueCasa <= 0 ? 'stock-zero' : 'stock-casa'}`} title="Estoque em Casa">
+                          </button>
+                          <button
+                            type="button"
+                            className={`stock-badge stock-loc-badge stock-clickable ${item.estoqueCasa <= 0 ? 'stock-zero' : 'stock-casa'}`}
+                            onClick={() => openDirectStockModal(item.rowKey, 'casa')}
+                            title="Clique para adicionar ou retirar unidades de Casa"
+                          >
                             🏠 Casa: {item.estoqueCasa} un
-                          </span>
+                          </button>
                           <span className={`stock-badge stock-loc-badge ${totalItem <= 0 ? 'stock-zero' : 'stock-total'}`} title="Estoque Total (Casa + Galpão)">
                             📦 Total: {totalItem} un
                           </span>
@@ -1092,6 +1163,171 @@ export default function Estoque() {
           </div>
         </div>
       )}
+
+      {/* Modal de Clique Direto em Galpão ou Casa (Passo 1: Digitar Unidades -> Passo 2: Confirmação) */}
+      {directStockModal.isOpen && (() => {
+        const directItem = allRows.find(r => r.rowKey === directStockModal.rowKey);
+        if (!directItem) return null;
+        const isGalpao = directStockModal.location === 'galpao';
+        const locLabel = isGalpao ? '🏭 Estoque Galpão' : '🏠 Estoque Casa';
+        const currentLocStock = isGalpao ? directItem.estoqueGalpao : directItem.estoqueCasa;
+        const otherLocStock = isGalpao ? directItem.estoqueCasa : directItem.estoqueGalpao;
+        const previewLocStock = calculateNewStock(currentLocStock, directStockModal.inputValue);
+        const previewTotalStock = previewLocStock + otherLocStock;
+
+        return (
+          <div className="cm-overlay" onClick={(e) => e.target === e.currentTarget && closeDirectStockModal()}>
+            <div className="cm-modal cm-edit" style={{ maxWidth: '460px' }}>
+              <div className="cm-header">
+                <span className="cm-icon">{isGalpao ? '🏭' : '🏠'}</span>
+                <div className="cm-title-block">
+                  <span className="cm-badge cm-edit">
+                    {directStockModal.step === 'input' ? `AJUSTAR ${isGalpao ? 'GALPÃO' : 'CASA'}` : 'CONFIRMAR ALTERAÇÃO'}
+                  </span>
+                  <h3 className="cm-title">
+                    {directStockModal.step === 'input'
+                      ? `Adicionar ou retirar em ${isGalpao ? 'Galpão' : 'Casa'}`
+                      : `Confirmar ajuste no ${locLabel}?`}
+                  </h3>
+                </div>
+                <button className="cm-close" onClick={closeDirectStockModal} aria-label="Fechar">×</button>
+              </div>
+
+              {directStockModal.step === 'input' ? (
+                <div style={{ padding: '1rem 1.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div className="cm-details" style={{ margin: 0 }}>
+                    <div className="cm-detail-row cm-edit">
+                      <span className="cm-detail-label">Produto</span>
+                      <span className="cm-detail-value">{directItem.displayId} — {directItem.nome}</span>
+                    </div>
+                    <div className="cm-detail-row cm-edit">
+                      <span className="cm-detail-label">Saldo Atual ({locLabel})</span>
+                      <span className="cm-detail-value"><strong>{currentLocStock} un</strong></span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                      Unidades para adicionar ou retirar (ex: <code>+5</code>, <code>-2</code> ou <code>=10</code>):
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cur = parseInt(directStockModal.inputValue, 10) || 0;
+                          setDirectStockModal(prev => ({ ...prev, inputValue: String(cur - 1) }));
+                        }}
+                        style={{ width: '40px', height: '40px', borderRadius: '8px', border: '1px solid var(--border-color)', background: '#FEE2E2', color: '#DC2626', fontWeight: 900, fontSize: '1.2rem', cursor: 'pointer' }}
+                        title="Retirar 1 unidade"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="text"
+                        className="adjustment-input"
+                        style={{ textAlign: 'center', fontSize: '1.1rem', fontWeight: 700 }}
+                        placeholder="Ex: 5, -2 ou =10"
+                        value={directStockModal.inputValue}
+                        onChange={e => setDirectStockModal(prev => ({ ...prev, inputValue: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') handleDirectStockOk(); }}
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cur = parseInt(directStockModal.inputValue, 10) || 0;
+                          const nextVal = cur + 1;
+                          setDirectStockModal(prev => ({ ...prev, inputValue: nextVal > 0 ? `+${nextVal}` : String(nextVal) }));
+                        }}
+                        style={{ width: '40px', height: '40px', borderRadius: '8px', border: '1px solid var(--border-color)', background: '#DCFCE7', color: '#15803D', fontWeight: 900, fontSize: '1.2rem', cursor: 'pointer' }}
+                        title="Adicionar 1 unidade"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {String(directStockModal.inputValue || '').trim() !== '' && (
+                    <div style={{ background: isGalpao ? '#EFF6FF' : '#ECFDF5', border: `1px solid ${isGalpao ? '#BFDBFE' : '#A7F3D0'}`, color: isGalpao ? '#1D4ED8' : '#047857', padding: '10px 12px', borderRadius: '8px', fontSize: '0.88rem', textAlign: 'center', fontWeight: 600 }}>
+                      Novo saldo em {locLabel}: <strong>{currentLocStock} un → {previewLocStock} un</strong> (Total Geral: {previewTotalStock} un)
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+                    <button type="button" className="cm-btn-cancel" onClick={closeDirectStockModal}>
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={handleDirectStockOk}
+                      style={{ minWidth: '110px', justifyContent: 'center' }}
+                    >
+                      OK
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: '1rem 1.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div className="cm-details" style={{ margin: 0 }}>
+                    <div className="cm-detail-row cm-edit">
+                      <span className="cm-detail-label">Produto</span>
+                      <span className="cm-detail-value">{directItem.displayId} — {directItem.nome}</span>
+                    </div>
+                    <div className="cm-detail-row cm-edit">
+                      <span className="cm-detail-label">Local Escolhido</span>
+                      <span className="cm-detail-value"><strong>{locLabel}</strong></span>
+                    </div>
+                    <div className="cm-detail-row cm-edit">
+                      <span className="cm-detail-label">Movimentação</span>
+                      <span className="cm-detail-value"><strong>{directStockModal.inputValue}</strong></span>
+                    </div>
+                    <div className="cm-detail-row cm-edit">
+                      <span className="cm-detail-label">Saldo Anterior → Novo</span>
+                      <span className="cm-detail-value">
+                        {currentLocStock} un → <strong style={{ color: 'var(--accent-primary)', fontSize: '1rem' }}>{previewLocStock} un</strong>
+                      </span>
+                    </div>
+                    <div className="cm-detail-row cm-edit">
+                      <span className="cm-detail-label">Estoque Total Final</span>
+                      <span className="cm-detail-value"><strong>📦 {previewTotalStock} un</strong></span>
+                    </div>
+                  </div>
+
+                  <div className="cm-warning" style={{ background: '#FEF3C7', color: '#92400E', borderColor: '#FDE68A' }}>
+                    ⚠️ Confirma a atualização do estoque de <strong>{directItem.displayId}</strong> em <strong>{locLabel}</strong> para <strong>{previewLocStock} unidades</strong>?
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', marginTop: '4px' }}>
+                    <button
+                      type="button"
+                      className="cm-btn-cancel"
+                      onClick={() => setDirectStockModal(prev => ({ ...prev, step: 'input' }))}
+                    >
+                      ← Voltar
+                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button type="button" className="cm-btn-cancel" onClick={closeDirectStockModal}>
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={handleDirectStockConfirm}
+                        disabled={saving}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        {saving ? <Loader size={16} className="spin" /> : <Save size={16} />}
+                        Confirmar e Salvar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal para escolher entre Estoque Galpão ou Estoque Casa */}
       {locationModal.isOpen && (

@@ -125,6 +125,17 @@
   font-weight: 700;
   font-size: 0.8rem;
   white-space: nowrap;
+  font-family: inherit;
+}
+
+.stock-clickable {
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.stock-clickable:hover {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
 }
 
 .stock-ok,
