@@ -282,3 +282,120 @@
   font-weight: 700;
   white-space: nowrap;
 }
+
+
+/* ============================================================================
+   ABAS E PAINEL DE INTEGRAÇÃO MERCADO LIVRE (ESTOQUE)
+   ============================================================================ */
+
+.estoque-tabs-bar {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.estoque-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.7rem 1.25rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.estoque-tab-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.estoque-tab-btn.active {
+  background: var(--accent-primary);
+  color: #FFFFFF;
+  border-color: var(--accent-hover);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.28);
+}
+
+.estoque-tab-btn.active-ml {
+  background: #FACC15;
+  color: #0F172A;
+  border-color: #EAB308;
+  box-shadow: 0 4px 12px rgba(234, 179, 8, 0.3);
+}
+
+.ml-connection-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  margin-bottom: 1.25rem;
+  background: linear-gradient(135deg, #FEFCE8, #FEF9C3);
+  border: 1px solid #FDE047;
+}
+
+.ml-logistic-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ml-logistic-badge.full {
+  background: #DCFCE7;
+  color: #15803D;
+  border: 1px solid #86EFAC;
+}
+
+.ml-logistic-badge.fast {
+  background: #DBEAFE;
+  color: #1D4ED8;
+  border: 1px solid #93C5FD;
+}
+
+.ml-logistic-badge.normal {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+}
+
+.ml-var-subrow {
+  background-color: rgba(248, 250, 252, 0.9);
+}
+
+.ml-var-subrow td {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+  font-size: 0.86rem !important;
+}
+
+.ml-stock-inline-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ml-stock-inline-input {
+  width: 72px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 0.88rem;
+  text-align: center;
+}

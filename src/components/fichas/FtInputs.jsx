@@ -153,10 +153,16 @@ export default function FtInputs({ inputs, onChange, savedFts = [], onManageInsu
               )}
             </div>
           </div>
-          <div className="input-group" style={{gridColumn: 'span 2'}}>
+          <div className="input-group">
             <label>Nome do Projeto/Peça</label>
             <div className="input-wrapper">
                <input type="text" name="nomePeca" value={inputs.nomePeca} onChange={onChange} />
+            </div>
+          </div>
+          <div className="input-group">
+            <label>SKU do Produto</label>
+            <div className="input-wrapper">
+               <input type="text" name="sku" value={inputs.sku || ''} onChange={onChange} placeholder="Ex: AM3D-PORTA-BATOM" />
             </div>
           </div>
           

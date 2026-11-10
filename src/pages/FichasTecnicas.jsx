@@ -11,6 +11,7 @@ import './FichasTecnicas.css';
 const INITIAL_STATE = {
   indiceFt: 'FT-01',
   nomePeca: 'Nova Impressão',
+  sku: '',
   quantidade: 1,
   pesoGramas: 50,
   tempoImpressao: '01:30', 
@@ -367,7 +368,7 @@ export default function FichasTecnicas() {
       return;
     }
 
-    if (typeof value === 'string') {
+    if (typeof value === 'string' && name !== 'nomePeca' && name !== 'sku') {
       value = value.replace(',', '.');
     }
 
@@ -489,6 +490,7 @@ export default function FichasTecnicas() {
             ...c,
             indiceFt: getNextFtId(novaLista),
             nomePeca: '',
+            sku: '',
             quantidade: 1,
             pesoGramas: '',
             tempoImpressao: '',
@@ -532,6 +534,7 @@ export default function FichasTecnicas() {
       ...INITIAL_STATE,
       indiceFt: getNextFtId(savedFts),
       nomePeca: '',
+      sku: '',
       quantidade: 1,
       pesoGramas: '',
       tempoImpressao: '',
@@ -660,8 +663,9 @@ export default function FichasTecnicas() {
   const filteredFts = savedFts.filter(ft => {
     const nome = ft.nomePeca ? String(ft.nomePeca).toLowerCase() : "";
     const id = ft.indiceFt ? String(ft.indiceFt).toLowerCase() : "";
+    const sku = ft.sku ? String(ft.sku).toLowerCase() : "";
     const search = searchTerm.toLowerCase();
-    return nome.includes(search) || id.includes(search);
+    return nome.includes(search) || id.includes(search) || sku.includes(search);
   });
 
   return (
@@ -848,6 +852,7 @@ export default function FichasTecnicas() {
               <thead>
                 <tr>
                   <th>ID</th>
+                  <th>SKU do Produto</th>
                   <th>Nome do Projeto</th>
                   <th>Custo Produção Físico (Unit.)</th>
                   <th style={{textAlign: 'right'}}>Ações</th>
@@ -857,6 +862,15 @@ export default function FichasTecnicas() {
                 {[...filteredFts].sort((a, b) => (a.indiceFt || '').localeCompare(b.indiceFt || '', undefined, { numeric: true })).map(ft => (
                   <tr key={ft.indiceFt}>
                     <td><span className="badge">{ft.indiceFt}</span></td>
+                    <td>
+                      {ft.sku ? (
+                        <code style={{ background: 'var(--bg-secondary)', padding: '2px 7px', borderRadius: '5px', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {ft.sku}
+                        </code>
+                      ) : (
+                        <span style={{ color: 'var(--text-secondary)', opacity: 0.45, fontSize: '0.8rem' }}>—</span>
+                      )}
+                    </td>
                     <td style={{fontWeight: '600'}}>{ft.nomePeca}</td>
                     <td>R$ {ft._custoFinal?.toFixed(2)}</td>
                     <td style={{textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '10px'}}>

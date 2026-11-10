@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { getResultados, parseNumber, getCustoUnitario, getUnitProductionTime, formatTime } from '../utils/financeCalculators';
-import { Settings, Save, X, Printer, CheckCircle2, RefreshCw, Loader } from 'lucide-react';
+import { Settings, Save, X, Printer, CheckCircle2, RefreshCw, Loader, ShoppingBag, Link2 } from 'lucide-react';
+import { fetchMlPaidOrdersForMonth, parseFtTargetKey } from '../services/mercadolivre';
+import MlFtMappingModal from '../components/vendas/MlFtMappingModal';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import './Vendas.css';
@@ -82,7 +84,7 @@ function QtyInput({ initialValue, onSave }) {
 }
 
 export default function Vendas() {
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
   const [activeChannel, setActiveChannel] = useState('ml');
   const [currentMonth, setCurrentMonth] = useState(() => {
     const d = new Date();
@@ -121,6 +123,146 @@ export default function Vendas() {
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'save', title: '', details: [], onConfirm: null });
   const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
   const closeConfirm = () => setConfirmModal(m => ({ ...m, isOpen: false }));
+
+  // Estados de integração de vendas do Mercado Livre
+  const [pullingMlSales, setPullingMlSales] = useState(false);
+  const [mlSalesModal, setMlSalesModal] = useState(null);
+  const [mlUnmappedModal, setMlUnmappedModal] = useState({ open: false, items: [], pendingResult: null });
+  const [applyingMlSales, setApplyingMlSales] = useState(false);
+
+  const buildMlSalesPreview = (result) => {
+    const byFt = {};
+    Object.entries(result.salesByFtTarget || {}).forEach(([targetKey, qty]) => {
+      const { ftId, varId } = parseFtTargetKey(targetKey);
+      if (!ftId) return;
+      const rev = Number(result.revenueByFtTarget?.[targetKey] || 0);
+      if (!byFt[ftId]) {
+        const ftObj = savedFts.find(f => f.indiceFt === ftId);
+        byFt[ftId] = {
+          ftId,
+          nomePeca: ftObj?.nomePeca || ftId,
+          sku: overrides?.ml?.[ftId]?.sku || ftObj?.sku || '',
+          oldQty: Number(vendasMensal[currentMonth]?.ml?.[ftId] || 0),
+          newQty: 0,
+          totalRevenue: 0,
+          breakdown: [],
+        };
+      }
+      byFt[ftId].newQty += Number(qty || 0);
+      byFt[ftId].totalRevenue += rev;
+      if (varId) {
+        const ftObj = savedFts.find(f => f.indiceFt === ftId);
+        const varObj = (ftObj?.variacoesEstoque || []).find(v => v.id === varId);
+        byFt[ftId].breakdown.push({
+          varId,
+          varNome: varObj?.nome || varId,
+          qty: Number(qty || 0),
+        });
+      }
+    });
+
+    const summaryList = Object.values(byFt).map(item => ({
+      ...item,
+      realUnitPrice: item.newQty > 0 ? Number((item.totalRevenue / item.newQty).toFixed(2)) : 0,
+      delta: item.newQty - item.oldQty,
+    })).sort((a, b) => a.ftId.localeCompare(b.ftId, undefined, { numeric: true }));
+
+    setMlSalesModal({
+      monthStr: currentMonth,
+      totalOrdersCount: result.totalOrdersCount || 0,
+      unmappedCount: (result.unmappedSoldItems || []).length,
+      unmappedItems: result.unmappedSoldItems || [],
+      items: summaryList,
+      deductStock: true,
+    });
+  };
+
+  const handlePullMlSales = async (skipUnmappedPrompt = false) => {
+    setPullingMlSales(true);
+    try {
+      const result = await fetchMlPaidOrdersForMonth({
+        empresaId: profile?.empresa_id,
+        monthStr: currentMonth,
+      });
+
+      if (!skipUnmappedPrompt && result.unmappedSoldItems && result.unmappedSoldItems.length > 0) {
+        setMlUnmappedModal({
+          open: true,
+          items: result.unmappedSoldItems,
+          pendingResult: result,
+        });
+      } else {
+        buildMlSalesPreview(result);
+      }
+    } catch (err) {
+      alert('Erro ao puxar vendas do Mercado Livre: ' + err.message);
+    } finally {
+      setPullingMlSales(false);
+    }
+  };
+
+  const handleApplyMlSales = async () => {
+    if (!mlSalesModal) return;
+    setApplyingMlSales(true);
+    try {
+      const newVendas = { ...vendasMensal };
+      if (!newVendas[currentMonth]) newVendas[currentMonth] = {};
+      if (!newVendas[currentMonth].ml) newVendas[currentMonth].ml = {};
+
+      const newOverrides = { ...overrides };
+      if (!newOverrides.ml) newOverrides.ml = {};
+
+      for (const item of mlSalesModal.items) {
+        newVendas[currentMonth].ml[item.ftId] = item.newQty;
+
+        // Salva quantidade vendida no mês em ecommerce_monthly_sales
+        if (item.newQty > 0) {
+          await supaWrite('ecommerce_monthly_sales', 'POST', {
+            month: currentMonth,
+            channel_id: 'ml',
+            ft_id: item.ftId,
+            quantity: item.newQty,
+          }, {}, 'month,channel_id,ft_id');
+        }
+
+        // Marca automaticamente o produto como "No Ar" (cadastrado) no ML e salva o Valor Real de Venda do ML
+        const curOps = newOverrides.ml[item.ftId] || {};
+        const realPriceStr = item.realUnitPrice > 0 ? String(item.realUnitPrice.toFixed(2)) : curOps.precoRealVenda;
+        const updatedOps = {
+          ...curOps,
+          cadastrado: true,
+          ...(realPriceStr ? { precoRealVenda: realPriceStr } : {}),
+          ...(item.realUnitPrice > 0
+            ? {
+                precoRealVendaMes: {
+                  ...(curOps.precoRealVendaMes || {}),
+                  [currentMonth]: String(item.realUnitPrice.toFixed(2)),
+                },
+              }
+            : {}),
+        };
+        newOverrides.ml[item.ftId] = updatedOps;
+        await supaWrite('ecommerce_overrides', 'POST', {
+          channel_id: 'ml',
+          ft_id: item.ftId,
+          settings: updatedOps,
+        }, {}, 'channel_id,ft_id');
+
+        // Se o usuário marcou para abater a diferença no Estoque Físico
+        if (mlSalesModal.deductStock && item.delta !== 0) {
+          await updateFtStock(item.ftId, item.delta);
+        }
+      }
+
+      setVendasMensal(newVendas);
+      setOverrides(newOverrides);
+      setMlSalesModal(null);
+    } catch (err) {
+      alert('Erro ao aplicar vendas do Mercado Livre: ' + err.message);
+    } finally {
+      setApplyingMlSales(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -431,6 +573,19 @@ export default function Vendas() {
     return { ...physicalFT, ...defaults, ...channelOps }; 
   };
 
+  const getEffectiveFtForCalc = (channelFt, month = currentMonth) => {
+    const realPrice = channelFt?.precoRealVendaMes?.[month] || channelFt?.precoRealVenda;
+    if (parseNumber(realPrice) > 0) {
+      return {
+        ...channelFt,
+        precoVendaSistema: channelFt.precoVendaManual,
+        precoRealAtivo: String(realPrice),
+        precoVendaManual: String(realPrice),
+      };
+    }
+    return channelFt;
+  };
+
   const getFtWithOverridesForChannel = (ftBase, channelId) => {
     const physicalFT = { ...ftBase };
     const defaults = channelDefaults[channelId] || {
@@ -516,7 +671,7 @@ export default function Vendas() {
   const handleOverrideChange = (e) => {
     const { name, value } = e.target;
     let safeVal = value;
-    if (typeof value === 'string') safeVal = value.replace(',', '.');
+    if (name !== 'sku' && typeof value === 'string') safeVal = value.replace(',', '.');
 
     setEditingOverride(prev => {
       const updatedData = { ...prev.customData, [name]: safeVal };
@@ -526,7 +681,7 @@ export default function Vendas() {
 
   const _doSaveOverride = async () => {
     const { ftBase, customData } = editingOverride;
-    const keysToOverride = ['custoEmbalagem', 'custoExtra', 'custoEnvio', 'custoEnvioPerc', 'taxaFixaVenda', 'impostosNF', 'taxaMLPerc', 'precoVendaManual', 'precoAnuncio', 'precoRankeamento'];
+    const keysToOverride = ['sku', 'custoEmbalagem', 'custoExtra', 'custoEnvio', 'custoEnvioPerc', 'taxaFixaVenda', 'impostosNF', 'taxaMLPerc', 'precoVendaManual', 'precoAnuncio', 'precoRankeamento'];
     const finalOps = {};
     const defaults = channelDefaults[activeChannel] || {
       custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0, custoEnvioPerc: 0,
@@ -552,6 +707,8 @@ export default function Vendas() {
     });
 
     const existingOps = overrides[activeChannel]?.[ftBase.indiceFt] || {};
+    if (existingOps.precoRealVenda) finalOps.precoRealVenda = existingOps.precoRealVenda;
+    if (existingOps.precoRealVendaMes) finalOps.precoRealVendaMes = existingOps.precoRealVendaMes;
     if (existingOps.cadastrado) {
       finalOps.cadastrado = true;
     }
@@ -646,7 +803,7 @@ export default function Vendas() {
   const handleGlobalChange = (e) => {
     const { name, value } = e.target;
     let safeVal = value;
-    if (typeof value === 'string') safeVal = value.replace(',', '.');
+    if (name !== 'sku' && typeof value === 'string') safeVal = value.replace(',', '.');
     setGlobalFormData(prev => ({ ...prev, [name]: safeVal }));
   };
 
@@ -702,7 +859,9 @@ export default function Vendas() {
     }
     return (
       ft.nomePeca.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      ft.indiceFt.toLowerCase().includes(searchTerm.toLowerCase())
+      ft.indiceFt.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (ft.sku || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (overrides[activeChannel]?.[ft.indiceFt]?.sku || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
   });
 
@@ -736,7 +895,7 @@ export default function Vendas() {
         </div>
       </div>
 
-      <div className="channels-tabs">
+      <div className="channels-tabs" style={{ flexWrap: 'wrap' }}>
         {CHANNELS.map(ch => (
           <button key={ch.id} className={`channel-tab ${activeChannel === ch.id ? 'active' : ''}`} onClick={() => setActiveChannel(ch.id)}>
             <span className="icon">{ch.icon}</span>
@@ -779,7 +938,32 @@ export default function Vendas() {
         ) : (
           <div className="table-responsive">
             <div style={{padding: '1.25rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem'}}>
-               <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+               <div style={{display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap'}}>
+                 {activeChannel === 'ml' && (
+                   <button
+                     onClick={() => handlePullMlSales(false)}
+                     disabled={pullingMlSales}
+                     style={{
+                       background: '#FFE600',
+                       color: '#1f2937',
+                       border: '1px solid #EAB308',
+                       borderRadius: '8px',
+                       padding: '0.5rem 1rem',
+                       fontWeight: 800,
+                       fontSize: '0.84rem',
+                       cursor: pullingMlSales ? 'wait' : 'pointer',
+                       display: 'flex',
+                       alignItems: 'center',
+                       gap: '6px',
+                       boxShadow: '0 2px 6px rgba(234,179,8,0.25)',
+                       whiteSpace: 'nowrap'
+                     }}
+                     title="Puxa os pedidos pagos do Mercado Livre neste mês. Na 1ª vez que um item ou variação aparecer, abre a janela para você vincular à FT correta e memoriza para sempre!"
+                   >
+                     <RefreshCw size={15} className={pullingMlSales ? 'spin' : ''} />
+                     {pullingMlSales ? 'Buscando vendas no ML...' : `📦 Puxar Vendas ML (${currentMonth})`}
+                   </button>
+                 )}
                  <button
                    onClick={() => setFilterCadastrados(p => !p)}
                    style={{
@@ -854,8 +1038,10 @@ export default function Vendas() {
                     }
                     const chA = getFtWithOverrides(a);
                     const chB = getFtWithOverrides(b);
-                    const resA = getResultados(chA);
-                    const resB = getResultados(chB);
+                    const effA = getEffectiveFtForCalc(chA);
+                    const effB = getEffectiveFtForCalc(chB);
+                    const resA = getResultados(effA);
+                    const resB = getResultados(effB);
                     if (mainSort.key === 'prod') return mult * (resA.despesasProducao - resB.despesasProducao);
                     if (mainSort.key === 'venda') return mult * (resA.despesasVenda - resB.despesasVenda);
                     if (mainSort.key === 'custoFinal') return mult * (resA.custoUnitario - resB.custoUnitario);
@@ -882,8 +1068,10 @@ export default function Vendas() {
                   return (a.indiceFt || '').localeCompare(b.indiceFt || '', undefined, { numeric: true });
                 }).map(baseFt => {
                   const channelFt = getFtWithOverrides(baseFt);
-                  const res = getResultados(channelFt);
+                  const effectiveFt = getEffectiveFtForCalc(channelFt);
+                  const res = getResultados(effectiveFt);
                   const qty = getChannelQty(baseFt.indiceFt);
+                  const precoRealVenda = effectiveFt.precoRealAtivo;
                   const isCadastrado = !!overrides[activeChannel]?.[baseFt.indiceFt]?.cadastrado;
                   const customKeys = Object.keys(overrides[activeChannel]?.[baseFt.indiceFt] || {}).filter(k => k !== 'cadastrado');
                   const hasCustom = customKeys.length > 0;
@@ -908,37 +1096,85 @@ export default function Vendas() {
                       </td>
                       <td><span className="badge">{baseFt.indiceFt}</span></td>
                       <td style={{fontWeight: '600', whiteSpace: 'nowrap'}}>
-                        {baseFt.nomePeca}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span>{baseFt.nomePeca}</span>
+                          {(channelFt.sku || baseFt.sku) && (
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontFamily: 'monospace', fontWeight: 600 }}>
+                              🏷️ SKU: {channelFt.sku || baseFt.sku}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td style={{color: 'var(--text-secondary)', whiteSpace: 'nowrap'}}>{pesoUnit}g</td>
                       <td style={{color: 'var(--text-secondary)', whiteSpace: 'nowrap'}}>R$ {res.despesasProducao.toFixed(2)}</td>
                       <td style={{color: 'var(--danger)', whiteSpace: 'nowrap'}}>R$ {res.despesasVenda.toFixed(2)}</td>
                       <td style={{whiteSpace: 'nowrap'}}><strong>R$ {res.custoUnitario.toFixed(2)}</strong></td>
                       <td>
-                         <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 90px', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', justifyContent: 'center' }}>
-                           {channelFt.precoVendaManual ? (
-                             <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Cadastro / Anúncio (Venda / 0,70)">R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</span>
-                           ) : (
-                             <span className="mini-price-tag" style={{ textAlign: 'center', opacity: 0.45 }}>—</span>
-                           )}
-                           <PriceInput 
-                              initialValue={channelFt.precoVendaManual} 
-                              onSave={(val) => handlePriceChange(baseFt.indiceFt, val)} 
-                           />
-                           {channelFt.precoVendaManual ? (
-                             <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Queima / Rankeamento (Margem 0%)">R$ {(() => {
-                                const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(channelFt.taxaFixaVenda);
-                                const aliquotasPerc = (parseNumber(channelFt.impostosNF) + parseNumber(channelFt.taxaMLPerc) + parseNumber(channelFt.custoEnvioPerc)) / 100;
-                                const rankVal = aliquotasPerc < 1 ? custosFixos / (1 - aliquotasPerc) : 0;
-                                return String(rankVal.toFixed(2)).replace('.', ',');
-                             })()}</span>
-                           ) : (
-                             <span className="mini-price-tag" style={{ textAlign: 'center', opacity: 0.45 }}>—</span>
+                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                           <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 90px', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', justifyContent: 'center' }}>
+                             {channelFt.precoVendaManual ? (
+                               <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Cadastro / Anúncio (Venda / 0,70)">R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</span>
+                             ) : (
+                               <span className="mini-price-tag" style={{ textAlign: 'center', opacity: 0.45 }}>—</span>
+                             )}
+                             <PriceInput 
+                                initialValue={channelFt.precoVendaManual} 
+                                onSave={(val) => handlePriceChange(baseFt.indiceFt, val)} 
+                             />
+                             {channelFt.precoVendaManual ? (
+                               <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Queima / Rankeamento (Margem 0%)">R$ {(() => {
+                                  const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(channelFt.taxaFixaVenda);
+                                  const aliquotasPerc = (parseNumber(channelFt.impostosNF) + parseNumber(channelFt.taxaMLPerc) + parseNumber(channelFt.custoEnvioPerc)) / 100;
+                                  const rankVal = aliquotasPerc < 1 ? custosFixos / (1 - aliquotasPerc) : 0;
+                                  return String(rankVal.toFixed(2)).replace('.', ',');
+                               })()}</span>
+                             ) : (
+                               <span className="mini-price-tag" style={{ textAlign: 'center', opacity: 0.45 }}>—</span>
+                             )}
+                           </div>
+                           {precoRealVenda && (
+                             <div
+                               style={{
+                                 fontSize: '0.68rem',
+                                 color: '#047857',
+                                 background: 'rgba(16, 185, 129, 0.12)',
+                                 border: '1px solid rgba(16, 185, 129, 0.35)',
+                                 borderRadius: '4px',
+                                 padding: '1px 6px',
+                                 fontWeight: 700,
+                                 cursor: 'help'
+                               }}
+                               title={`Vendido no Mercado Livre por R$ ${String(Number(precoRealVenda).toFixed(2)).replace('.', ',')}. Despesas, % Margem e Lucro estão calculados sobre este valor real!`}
+                             >
+                               📦 ML Real: R$ {String(Number(precoRealVenda).toFixed(2)).replace('.', ',')}
+                             </div>
                            )}
                          </div>
                       </td>
-                      <td style={{whiteSpace: 'nowrap'}}><strong style={{color: res.margemContribuicaoPerc > 0 ? 'var(--success)' : (res.margemContribuicaoPerc === 0 ? 'var(--text-secondary)' : 'var(--danger)')}}>{res.margemContribuicaoPerc.toFixed(1)}%</strong></td>
-                      <td style={{whiteSpace: 'nowrap'}}><strong style={{color: res.lucroLiquido >= 0 ? 'var(--success)' : 'var(--danger)'}}>R$ {res.lucroLiquido.toFixed(2)}</strong></td>
+                      <td style={{whiteSpace: 'nowrap'}}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <strong style={{color: res.margemContribuicaoPerc > 0 ? 'var(--success)' : (res.margemContribuicaoPerc === 0 ? 'var(--text-secondary)' : 'var(--danger)')}}>
+                            {res.margemContribuicaoPerc.toFixed(1)}%
+                          </strong>
+                          {precoRealVenda && (
+                            <span style={{ fontSize: '0.62rem', color: '#059669', fontWeight: 600 }} title="Calculado sobre o valor real vendido no Mercado Livre">
+                              (s/ ML real)
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td style={{whiteSpace: 'nowrap'}}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <strong style={{color: res.lucroLiquido >= 0 ? 'var(--success)' : 'var(--danger)'}}>
+                            R$ {res.lucroLiquido.toFixed(2)}
+                          </strong>
+                          {precoRealVenda && (
+                            <span style={{ fontSize: '0.62rem', color: '#059669', fontWeight: 600 }} title="Calculado sobre o valor real vendido no Mercado Livre">
+                              (s/ ML real)
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td style={{textAlign: 'center'}}>
                          <QtyInput 
                             initialValue={qty === 0 ? '' : qty} 
@@ -1021,6 +1257,17 @@ export default function Vendas() {
                         {/* Grupo: Configurações de Venda & Marketplace (Editável) */}
                         <div className="costs-group editable-costs">
                           <h4 className="group-title">🌐 Custos e Taxas do Marketplace (Editável)</h4>
+                          <div style={{ marginBottom: '0.85rem', padding: '0.7rem 0.9rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                            <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>🏷️ SKU do Produto ({CHANNELS.find(c => c.id === activeChannel)?.label}):</label>
+                            <input
+                              type="text"
+                              name="sku"
+                              value={editingOverride.customData.sku ?? editingOverride.ftBase.sku ?? ''}
+                              onChange={handleOverrideChange}
+                              placeholder="Ex: AM3D-FT16-ML (preenchido ao vincular ML ou manual)"
+                              style={{ flex: 1, minWidth: '200px', padding: '0.4rem 0.65rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                            />
+                          </div>
                           
                           <div className="override-grid">
                             <div className="input-group">
@@ -1183,6 +1430,130 @@ export default function Vendas() {
         </div>
       )}
       {showReport && (<MonthlyReportOverlay month={currentMonth} vendasMensal={vendasMensal[currentMonth] || {}} savedFts={savedFts} overrides={overrides} channelDefaults={channelDefaults} onClose={() => setShowReport(false)} />)}
+
+      <MlFtMappingModal
+        isOpen={mlUnmappedModal.open}
+        unmappedItems={mlUnmappedModal.items}
+        savedFts={savedFts}
+        title="🔗 Vincular Itens Vendidos no Mercado Livre à FT Correta"
+        subtitle={`Encontramos ${mlUnmappedModal.items.length} item(ns) ou variação(ões) vendidos em ${currentMonth} que ainda não têm Ficha Técnica associada. Escolha a FT abaixo (o sistema memorizará para sempre e já copiará o SKU!):`}
+        onClose={() => {
+          const pending = mlUnmappedModal.pendingResult;
+          setMlUnmappedModal({ open: false, items: [], pendingResult: null });
+          if (pending) buildMlSalesPreview(pending);
+        }}
+        onSaved={async () => {
+          setMlUnmappedModal({ open: false, items: [], pendingResult: null });
+          await fetchData();
+          await handlePullMlSales(true);
+        }}
+      />
+
+      {mlSalesModal && (
+        <div className="modal-overlay" style={{ zIndex: 9998 }}>
+          <div className="modal-content" style={{ maxWidth: '760px', width: '95%' }}>
+            <div className="modal-header" style={{ background: 'linear-gradient(135deg, rgba(250,204,21,0.16), rgba(59,130,246,0.08))' }}>
+              <div>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📦 Vendas Mercado Livre — {mlSalesModal.monthStr}
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
+                  Foram encontrados <strong>{mlSalesModal.totalOrdersCount}</strong> pedidos pagos no mês. Confira as quantidades por Ficha Técnica antes de aplicar:
+                </p>
+              </div>
+              <button className="btn-icon" onClick={() => setMlSalesModal(null)}><X size={22} /></button>
+            </div>
+
+            <div className="modal-body" style={{ maxHeight: '62vh', overflowY: 'auto' }}>
+              {mlSalesModal.unmappedCount > 0 && (
+                <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: '8px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.83rem', color: '#D97706', fontWeight: 600 }}>
+                    ⚠️ {mlSalesModal.unmappedCount} item(ns)/variação(ões) vendido(s) ainda estão sem vínculo com FT e não entraram na soma abaixo.
+                  </span>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      const items = mlSalesModal.unmappedItems;
+                      setMlSalesModal(null);
+                      setMlUnmappedModal({ open: true, items, pendingResult: null });
+                    }}
+                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem', borderColor: '#D97706', color: '#D97706', fontWeight: 700 }}
+                  >
+                    🔗 Vincular Agora
+                  </button>
+                </div>
+              )}
+
+              {mlSalesModal.items.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-secondary)' }}>
+                  Nenhuma venda vinculada a FTs encontrada para o mês <strong>{mlSalesModal.monthStr}</strong>.
+                </div>
+              ) : (
+                <table className="fts-table" style={{ width: '100%', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr>
+                      <th>FT</th>
+                      <th>Produto / Variações Vendidas</th>
+                      <th style={{ textAlign: 'center' }}>Qtd Atual na Tabela</th>
+                      <th style={{ textAlign: 'center' }}>Qtd Vendida no ML</th>
+                      <th style={{ textAlign: 'center' }}>Diferença</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mlSalesModal.items.map(item => (
+                      <tr key={item.ftId}>
+                        <td><span className="badge">{item.ftId}</span></td>
+                        <td>
+                          <div style={{ fontWeight: 700 }}>{item.nomePeca}</div>
+                          {item.sku && (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                              🏷️ SKU: {item.sku}
+                            </div>
+                          )}
+                          {item.breakdown && item.breakdown.length > 0 && (
+                            <div style={{ fontSize: '0.74rem', color: 'var(--accent-primary)', marginTop: '3px' }}>
+                              {item.breakdown.map(b => `${b.varNome}: ${b.qty} un`).join(' • ')}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-secondary)', fontWeight: 600 }}>{item.oldQty} un</td>
+                        <td style={{ textAlign: 'center', fontWeight: 800, color: 'var(--accent-primary)', fontSize: '0.95rem' }}>{item.newQty} un</td>
+                        <td style={{ textAlign: 'center', fontWeight: 700, color: item.delta > 0 ? 'var(--success)' : (item.delta < 0 ? 'var(--danger)' : 'var(--text-secondary)') }}>
+                          {item.delta > 0 ? `+${item.delta} un` : `${item.delta} un`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              {mlSalesModal.items.length > 0 && (
+                <label style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={mlSalesModal.deductStock}
+                    onChange={e => setMlSalesModal(prev => ({ ...prev, deductStock: e.target.checked }))}
+                    style={{ width: '17px', height: '17px', accentColor: 'var(--accent-primary)' }}
+                  />
+                  <span>Abater automaticamente a diferença de unidades no Estoque Físico (Galpão / Casa)</span>
+                </label>
+              )}
+            </div>
+
+            <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
+              <button className="btn-secondary" onClick={() => setMlSalesModal(null)} disabled={applyingMlSales}>
+                Cancelar
+              </button>
+              {mlSalesModal.items.length > 0 && (
+                <button className="btn-primary" onClick={handleApplyMlSales} disabled={applyingMlSales} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle2 size={17} />
+                  {applyingMlSales ? 'Aplicando vendas...' : `Aplicar ${mlSalesModal.items.length} FT(s) em Vendas (${mlSalesModal.monthStr})`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAutoPrecos && (
         <AutoPrecosOverlay
@@ -1511,7 +1882,9 @@ function MonthlyReportOverlay({ month, vendasMensal, savedFts, overrides, channe
       const baseFt = savedFts.find(f => f.indiceFt === ftId);
       if (!baseFt) return;
       const merged = getFtWithOverridesForReport(baseFt, channelId);
-      const res = getResultados(merged);
+      const realPrice = merged?.precoRealVendaMes?.[month] || merged?.precoRealVenda;
+      const effectiveMerged = parseNumber(realPrice) > 0 ? { ...merged, precoVendaManual: String(realPrice) } : merged;
+      const res = getResultados(effectiveMerged);
       const itemRevenue = res.precoPraticado * qty;
       const itemProfit = res.lucroLiquido * qty;
       channelItems.push({ id: ftId, nome: baseFt.nomePeca, qty, precoUnit: res.precoPraticado, lucroUnit: res.lucroLiquido, subtotal: itemRevenue, lucroTotal: itemProfit });
