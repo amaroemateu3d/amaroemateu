@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { X, Save, Link2, Search, CheckCircle2 } from 'lucide-react';
 import { buildFtCatalogOptions, saveFtMappingsAndPropagateSku } from '../../services/mercadolivre';
+import { saveShopeeFtMappingsAndPropagateSku } from '../../services/shopee';
 
 export default function MlFtMappingModal({
   isOpen,
@@ -9,6 +10,11 @@ export default function MlFtMappingModal({
   ftsList,
   savedFts,
   empresaId,
+  platform = 'ml',
+  customSaveFn,
+  customTitle,
+  customBadge,
+  customBadgeColor,
   onClose,
   onSaved
 }) {
@@ -107,7 +113,8 @@ export default function MlFtMappingModal({
   const handleSave = async () => {
     setSaving(true);
     try {
-      const updatedListings = await saveFtMappingsAndPropagateSku({
+      const saveFunction = customSaveFn || (platform === 'shopee' ? saveShopeeFtMappingsAndPropagateSku : saveFtMappingsAndPropagateSku);
+      const updatedListings = await saveFunction({
         empresaId,
         mappingsByKey: selections,
         skuByKey: skus,
@@ -124,6 +131,13 @@ export default function MlFtMappingModal({
       setSaving(false);
     }
   };
+
+  const isShopee = platform === 'shopee';
+  const badgeText = customBadge || (isShopee ? 'SHOPEE ↔ FT' : 'MERCADO LIVRE ↔ FT');
+  const badgeColor = customBadgeColor || (isShopee ? '#EE4D2D' : '#EAB308');
+  const badgeTextColor = isShopee ? '#FFFFFF' : '#0F172A';
+  const platformName = isShopee ? 'Shopee' : 'Mercado Livre';
+  const modalTitle = customTitle || `🔗 Vincular Anúncios / Variações da ${platformName} às Fichas Técnicas`;
 
   return (
     <div
@@ -160,22 +174,22 @@ export default function MlFtMappingModal({
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span
                 style={{
-                  background: '#EAB308',
-                  color: '#0F172A',
+                  background: badgeColor,
+                  color: badgeTextColor,
                   padding: '3px 9px',
                   borderRadius: '6px',
                   fontWeight: 800,
                   fontSize: '0.76rem'
                 }}
               >
-                MERCADO LIVRE ↔ FT
+                {badgeText}
               </span>
               <h3 style={{ margin: 0, color: 'white', fontSize: '1.1rem' }}>
-                🔗 Vincular Anúncios / Variações do Mercado Livre às Fichas Técnicas
+                {modalTitle}
               </h3>
             </div>
             <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#CBD5E1' }}>
-              Escolha qual FT (ou variação de FT) corresponde a cada item do Mercado Livre. Uma vez vinculado, o sistema memoriza para sempre no Estoque e nas Vendas!
+              Escolha qual FT (ou variação de FT) corresponde a cada item da {platformName}. Uma vez vinculado, o sistema memoriza para sempre no Estoque e nas Vendas!
             </p>
           </div>
           <button

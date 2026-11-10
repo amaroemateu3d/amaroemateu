@@ -24,6 +24,23 @@ import {
   upsertMlListingsToDb
 } from '../services/mercadolivre';
 import MlFtMappingModal from '../components/vendas/MlFtMappingModal';
+import {
+  getShopeeAuthUrl,
+  getShopeeAppCredentials,
+  saveShopeeAppCredentialsLocal,
+  fetchStoredShopeeToken,
+  exchangeShopeeCodeForToken,
+  disconnectShopeeAccount,
+  fetchStoredShopeeListings,
+  syncListingsFromShopee,
+  updateShopeeStock,
+  updateShopeeListingStatus,
+  collectUnmappedTargetsFromShopeeListings,
+  saveShopeeFtMappingsAndPropagateSku,
+  extractShopeeCodeAndShopId
+} from '../services/shopee';
+import ShopeeEstoquePanel from '../components/estoque/ShopeeEstoquePanel';
+import { ShopeePasteUrlModal, ShopeeAppConfigModal } from '../components/estoque/ShopeeConfigModals';
 import './Estoque.css';
 
 const CHANNELS = [
@@ -38,7 +55,13 @@ export default function Estoque() {
   const { profile } = useAuth();
   const empresaId = profile?.empresa_id || 'a0d8e8fc-66de-4e31-8c4d-eb4044c3c3a9';
 
-  const [activeViewTab, setActiveViewTab] = useState('fisico'); // 'fisico' | 'ml'
+  const [activeViewTab, setActiveViewTab] = useState('fisico'); // 'fisico' | 'ml' | 'shopee'
+  const [shopeeToken, setShopeeToken] = useState(null);
+  const [shopeeListings, setShopeeListings] = useState([]);
+  const [shopeeSyncing, setShopeeSyncing] = useState(false);
+  const [shopeePasteModalOpen, setShopeePasteModalOpen] = useState(false);
+  const [shopeeAppConfigModalOpen, setShopeeAppConfigModalOpen] = useState(false);
+  const [shopeeMappingModal, setShopeeMappingModal] = useState({ isOpen: false, items: [] });
   const [fts, setFts] = useState([]);
   const [overrides, setOverrides] = useState({});
   const [loading, setLoading] = useState(true);

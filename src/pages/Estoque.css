@@ -329,6 +329,13 @@
   box-shadow: 0 4px 12px rgba(234, 179, 8, 0.3);
 }
 
+.estoque-tab-btn.active-shopee {
+  background: #EE4D2D;
+  color: #FFFFFF;
+  border-color: #EA580C;
+  box-shadow: 0 4px 12px rgba(238, 77, 45, 0.35);
+}
+
 .ml-connection-banner {
   display: flex;
   justify-content: space-between;
@@ -340,6 +347,19 @@
   margin-bottom: 1.25rem;
   background: linear-gradient(135deg, #FEFCE8, #FEF9C3);
   border: 1px solid #FDE047;
+}
+
+.shopee-connection-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  margin-bottom: 1.25rem;
+  background: linear-gradient(135deg, #FFF7ED, #FFEDD5);
+  border: 1px solid #FDBA74;
 }
 
 .ml-logistic-badge {

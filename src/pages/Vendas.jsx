@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getResultados, parseNumber, getCustoUnitario, getUnitProductionTime, formatTime } from '../utils/financeCalculators';
 import { Settings, Save, X, Printer, CheckCircle2, RefreshCw, Loader, ShoppingBag, Link2 } from 'lucide-react';
 import { fetchMlPaidOrdersForMonth, parseFtTargetKey } from '../services/mercadolivre';
+import { fetchShopeePaidOrdersForMonth } from '../services/shopee';
 import MlFtMappingModal from '../components/vendas/MlFtMappingModal';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
@@ -129,6 +130,12 @@ export default function Vendas() {
   const [mlSalesModal, setMlSalesModal] = useState(null);
   const [mlUnmappedModal, setMlUnmappedModal] = useState({ open: false, items: [], pendingResult: null });
   const [applyingMlSales, setApplyingMlSales] = useState(false);
+
+  // Estados de Vendas Shopee
+  const [pullingShopeeSales, setPullingShopeeSales] = useState(false);
+  const [shopeeSalesModal, setShopeeSalesModal] = useState(null);
+  const [shopeeUnmappedModal, setShopeeUnmappedModal] = useState({ open: false, items: [], pendingResult: null });
+  const [applyingShopeeSales, setApplyingShopeeSales] = useState(false);
 
   const buildMlSalesPreview = (result) => {
     const byFt = {};
@@ -261,6 +268,137 @@ export default function Vendas() {
       alert('Erro ao aplicar vendas do Mercado Livre: ' + err.message);
     } finally {
       setApplyingMlSales(false);
+    }
+  };
+
+  const buildShopeeSalesPreview = (result) => {
+    const byFt = {};
+    Object.entries(result.salesByFtTarget || {}).forEach(([targetKey, qty]) => {
+      const { ftId, varId } = parseFtTargetKey(targetKey);
+      if (!ftId) return;
+      const rev = Number(result.revenueByFtTarget?.[targetKey] || 0);
+      if (!byFt[ftId]) {
+        const ftObj = savedFts.find(f => f.indiceFt === ftId);
+        byFt[ftId] = {
+          ftId,
+          nomePeca: ftObj?.nomePeca || ftId,
+          sku: overrides?.shopee?.[ftId]?.sku || ftObj?.sku || '',
+          oldQty: Number(vendasMensal[currentMonth]?.shopee?.[ftId] || 0),
+          newQty: 0,
+          totalRevenue: 0,
+          breakdown: [],
+        };
+      }
+      byFt[ftId].newQty += Number(qty || 0);
+      byFt[ftId].totalRevenue += rev;
+      if (varId) {
+        const ftObj = savedFts.find(f => f.indiceFt === ftId);
+        const varObj = (ftObj?.variacoesEstoque || []).find(v => v.id === varId);
+        byFt[ftId].breakdown.push({
+          varId,
+          varNome: varObj?.nome || varId,
+          qty: Number(qty || 0),
+        });
+      }
+    });
+
+    const summaryList = Object.values(byFt).map(item => ({
+      ...item,
+      realUnitPrice: item.newQty > 0 ? Number((item.totalRevenue / item.newQty).toFixed(2)) : 0,
+      delta: item.newQty - item.oldQty,
+    })).sort((a, b) => a.ftId.localeCompare(b.ftId, undefined, { numeric: true }));
+
+    setShopeeSalesModal({
+      monthStr: currentMonth,
+      totalOrdersCount: result.totalOrdersCount || 0,
+      unmappedCount: (result.unmappedSoldItems || []).length,
+      unmappedItems: result.unmappedSoldItems || [],
+      items: summaryList,
+      deductStock: true,
+    });
+  };
+
+  const handlePullShopeeSales = async (skipUnmappedPrompt = false) => {
+    setPullingShopeeSales(true);
+    try {
+      const result = await fetchShopeePaidOrdersForMonth({
+        empresaId: profile?.empresa_id,
+        monthStr: currentMonth,
+      });
+
+      if (!skipUnmappedPrompt && result.unmappedSoldItems && result.unmappedSoldItems.length > 0) {
+        setShopeeUnmappedModal({
+          open: true,
+          items: result.unmappedSoldItems,
+          pendingResult: result,
+        });
+      } else {
+        buildShopeeSalesPreview(result);
+      }
+    } catch (err) {
+      alert('Erro ao puxar vendas da Shopee: ' + err.message);
+    } finally {
+      setPullingShopeeSales(false);
+    }
+  };
+
+  const handleApplyShopeeSales = async () => {
+    if (!shopeeSalesModal) return;
+    setApplyingShopeeSales(true);
+    try {
+      const newVendas = { ...vendasMensal };
+      if (!newVendas[currentMonth]) newVendas[currentMonth] = {};
+      if (!newVendas[currentMonth].shopee) newVendas[currentMonth].shopee = {};
+
+      const newOverrides = { ...overrides };
+      if (!newOverrides.shopee) newOverrides.shopee = {};
+
+      for (const item of shopeeSalesModal.items) {
+        newVendas[currentMonth].shopee[item.ftId] = item.newQty;
+
+        if (item.newQty > 0) {
+          await supaWrite('ecommerce_monthly_sales', 'POST', {
+            month: currentMonth,
+            channel_id: 'shopee',
+            ft_id: item.ftId,
+            quantity: item.newQty,
+          }, {}, 'month,channel_id,ft_id');
+        }
+
+        const curOps = newOverrides.shopee[item.ftId] || {};
+        const realPriceStr = item.realUnitPrice > 0 ? String(item.realUnitPrice.toFixed(2)) : curOps.precoRealVenda;
+        const updatedOps = {
+          ...curOps,
+          cadastrado: true,
+          ...(realPriceStr ? { precoRealVenda: realPriceStr } : {}),
+          ...(item.realUnitPrice > 0
+            ? {
+                precoRealVendaMes: {
+                  ...(curOps.precoRealVendaMes || {}),
+                  [currentMonth]: String(item.realUnitPrice.toFixed(2)),
+                },
+              }
+            : {}),
+        };
+        newOverrides.shopee[item.ftId] = updatedOps;
+        await supaWrite('ecommerce_overrides', 'POST', {
+          channel_id: 'shopee',
+          ft_id: item.ftId,
+          settings: updatedOps,
+        }, {}, 'channel_id,ft_id');
+
+        if (shopeeSalesModal.deductStock && item.delta !== 0) {
+          await updateFtStock(item.ftId, item.delta);
+        }
+      }
+
+      setVendasMensal(newVendas);
+      setOverrides(newOverrides);
+      setShopeeSalesModal(null);
+    } catch (err) {
+      alert('Erro ao aplicar vendas da Shopee: ' + err.message);
+    } finally {
+      setApplyingShopeeSales(false);
     }
   };
 
@@ -1548,6 +1686,124 @@ export default function Vendas() {
                 <button className="btn-primary" onClick={handleApplyMlSales} disabled={applyingMlSales} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <CheckCircle2 size={17} />
                   {applyingMlSales ? 'Aplicando vendas...' : `Aplicar ${mlSalesModal.items.length} FT(s) em Vendas (${mlSalesModal.monthStr})`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shopeeSalesModal && (
+        <div className="modal-overlay" style={{ zIndex: 9998 }}>
+          <div className="modal-content" style={{ maxWidth: '760px', width: '95%' }}>
+            <div className="modal-header" style={{ background: 'linear-gradient(135deg, rgba(238,77,45,0.18), rgba(249,115,22,0.08))' }}>
+              <div>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: '#9A3412' }}>
+                  🛍️ Vendas Shopee — {shopeeSalesModal.monthStr}
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
+                  Foram encontrados <strong>{shopeeSalesModal.totalOrdersCount}</strong> pedidos pagos no mês. Confira as quantidades por Ficha Técnica antes de aplicar:
+                </p>
+              </div>
+              <button className="btn-icon" onClick={() => setShopeeSalesModal(null)}><X size={22} /></button>
+            </div>
+
+            <div className="modal-body" style={{ maxHeight: '62vh', overflowY: 'auto' }}>
+              {shopeeSalesModal.unmappedCount > 0 && (
+                <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: '8px', background: 'rgba(238,77,45,0.12)', border: '1px solid rgba(238,77,45,0.35)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.83rem', color: '#C2410C', fontWeight: 600 }}>
+                    ⚠️ {shopeeSalesModal.unmappedCount} item(ns)/modelo(s) vendido(s) ainda estão sem vínculo com FT e não entraram na soma abaixo.
+                  </span>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      const items = shopeeSalesModal.unmappedItems;
+                      setShopeeSalesModal(null);
+                      setShopeeUnmappedModal({ open: true, items, pendingResult: null });
+                    }}
+                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem', borderColor: '#EA580C', color: '#EA580C', fontWeight: 700 }}
+                  >
+                    🔗 Vincular Agora
+                  </button>
+                </div>
+              )}
+
+              {shopeeSalesModal.items.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-secondary)' }}>
+                  Nenhuma venda vinculada a FTs encontrada para o mês <strong>{shopeeSalesModal.monthStr}</strong> na Shopee.
+                </div>
+              ) : (
+                <table className="fts-table" style={{ width: '100%', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr>
+                      <th>FT</th>
+                      <th>Produto / Modelos Vendidos</th>
+                      <th style={{ textAlign: 'center' }}>Qtd Atual na Tabela</th>
+                      <th style={{ textAlign: 'center' }}>Qtd Vendida na Shopee</th>
+                      <th style={{ textAlign: 'center' }}>Diferença</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shopeeSalesModal.items.map(item => (
+                      <tr key={item.ftId}>
+                        <td><span className="badge">{item.ftId}</span></td>
+                        <td>
+                          <div style={{ fontWeight: 700 }}>{item.nomePeca}</div>
+                          {item.sku && (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                              🏷️ SKU: {item.sku}
+                            </div>
+                          )}
+                          {item.breakdown && item.breakdown.length > 0 && (
+                            <div style={{ fontSize: '0.74rem', color: '#EA580C', marginTop: '3px' }}>
+                              {item.breakdown.map(b => `${b.varNome}: ${b.qty} un`).join(' • ')}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-secondary)', fontWeight: 600 }}>{item.oldQty} un</td>
+                        <td style={{ textAlign: 'center', fontWeight: 800, color: '#EA580C', fontSize: '0.95rem' }}>{item.newQty} un</td>
+                        <td style={{ textAlign: 'center', fontWeight: 700, color: item.delta > 0 ? 'var(--success)' : (item.delta < 0 ? 'var(--danger)' : 'var(--text-secondary)') }}>
+                          {item.delta > 0 ? `+${item.delta} un` : `${item.delta} un`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              {shopeeSalesModal.items.length > 0 && (
+                <label style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={shopeeSalesModal.deductStock}
+                    onChange={e => setShopeeSalesModal(prev => ({ ...prev, deductStock: e.target.checked }))}
+                    style={{ width: '17px', height: '17px', accentColor: '#EE4D2D' }}
+                  />
+                  <span>Abater automaticamente a diferença de unidades no Estoque Físico (Galpão / Casa)</span>
+                </label>
+              )}
+            </div>
+
+            <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
+              <button className="btn-secondary" onClick={() => setShopeeSalesModal(null)} disabled={applyingShopeeSales}>
+                Cancelar
+              </button>
+              {shopeeSalesModal.items.length > 0 && (
+                <button
+                  className="btn-primary"
+                  onClick={handleApplyShopeeSales}
+                  disabled={applyingShopeeSales}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#EE4D2D',
+                    borderColor: '#EA580C',
+                    color: '#FFFFFF'
+                  }}
+                >
+                  <CheckCircle2 size={17} />
+                  {applyingShopeeSales ? 'Aplicando vendas...' : `Aplicar ${shopeeSalesModal.items.length} FT(s) em Vendas Shopee (${shopeeSalesModal.monthStr})`}
                 </button>
               )}
             </div>
