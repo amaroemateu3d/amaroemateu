@@ -76,7 +76,17 @@ Para rodar em outra máquina, crie o arquivo `.env.local` na raiz (veja modelo s
 
 ---
 
-## 6. Próximos Passos Recomendados
+## 6. Lembretes Imediatos para a Próxima Sessão
+
+- [ ] **Configurar Variáveis na Vercel (Produção)**:
+  - Acessar o painel da Vercel -> Projeto -> Settings -> Environment Variables.
+  - Adicionar:
+    - VITE_ML_CLIENT_ID: 5281469754637132
+    - VITE_ML_CLIENT_SECRET: 3A0Sp10rJnyUMMg9iHKGhe7vJP6sawBt
+    - VITE_ML_REDIRECT_URI: https://amaroemateu.vercel.app/estoque
+  - Fazer um novo Redeploy rápido para carregar as variáveis.
+
+## 7. Próximos Passos Recomendados
 
 1. **Shopee**:
    - Implementar a integração oficial ou módulo de importação de anúncios/vendas para a Shopee nos mesmos moldes estabelecidos para o Mercado Livre.
