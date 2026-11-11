@@ -113,6 +113,8 @@ const BLANK_CLIENTE = {
   email: '',
   endereco: '',
   obs: '',
+  temDesconto: false,
+  descontoPercent: '',
 };
 
 const formatId = (id, tipo) => {
@@ -123,7 +125,11 @@ const formatId = (id, tipo) => {
 
 // ─── Geração de impressão via nova janela ─────────────────────────────────────
 const openPrintWindow = (pedido, tenant = {}) => {
-  const total = pedido.itens.reduce((s, it) => s + parseN(it.precoUnit) * parseN(it.qtd), 0);
+  const subtotal = pedido.itens.reduce((s, it) => s + parseN(it.precoUnit) * parseN(it.qtd), 0);
+  const temDesconto = Boolean(pedido.cliente?.temDesconto);
+  const percDesconto = temDesconto ? Math.min(100, Math.max(0, parseN(pedido.cliente?.descontoPercent))) : 0;
+  const valorDesconto = temDesconto && percDesconto > 0 ? (subtotal * percDesconto) / 100 : 0;
+  const total = Math.max(0, subtotal - valorDesconto);
   const isConsignado = pedido.tipo === 'consignado';
   const label = isConsignado ? 'CONSIGNADO' : 'PEDIDO DE VENDA';
   const dateStr = new Date(pedido.createdAt).toLocaleDateString('pt-BR');
@@ -393,6 +399,16 @@ const openPrintWindow = (pedido, tenant = {}) => {
     <!-- TOTAL -->
     <div class="totals-wrap">
       <div class="total-box">
+        ${temDesconto && percDesconto > 0 ? `
+          <div style="display:flex;justify-content:space-between;gap:20px;font-size:8.5pt;color:#475569;margin-bottom:4px;">
+            <span>Subtotal dos Itens:</span>
+            <strong>R$ ${fmt(subtotal)}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:20px;font-size:8.5pt;color:#DC2626;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(0,0,0,0.1);">
+            <span>Desconto (${percDesconto}%):</span>
+            <strong>- R$ ${fmt(valorDesconto)}</strong>
+          </div>
+        ` : ''}
         <div class="total-label">Total Geral</div>
         <div class="total-value">R$ ${fmt(total)}</div>
       </div>
@@ -417,7 +433,9 @@ const openPrintWindow = (pedido, tenant = {}) => {
 
 // ─── Modal Novo/Editar Pedido (Fullscreen) ───────────────────────────────────
 function ModalPedido({ fts, onSave, onCancel, initialData }) {
-  const [cliente, setCliente] = useState(initialData ? initialData.cliente : BLANK_CLIENTE);
+  const [cliente, setCliente] = useState(() =>
+    initialData?.cliente ? { ...BLANK_CLIENTE, ...initialData.cliente } : BLANK_CLIENTE
+  );
   const [markup, setMarkup] = useState('3');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -563,7 +581,11 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
 
   const itensSelected = itens.filter(it => parseN(it.qtd) > 0);
 
-  const totalVenda = itensSelected.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
+  const totalBruto = itensSelected.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
+  const temDesconto = Boolean(cliente.temDesconto);
+  const percDesconto = temDesconto ? Math.min(100, Math.max(0, parseN(cliente.descontoPercent))) : 0;
+  const valorDesconto = temDesconto && percDesconto > 0 ? (totalBruto * percDesconto) / 100 : 0;
+  const totalVenda = Math.max(0, totalBruto - valorDesconto);
   const totalCusto = itensSelected.reduce((s, it) => s + (parseN(it.custoBase) * parseN(it.qtd)), 0);
   const totalLucro = totalVenda - totalCusto;
   const margemPerc = totalVenda > 0 ? (totalLucro / totalVenda) * 100 : 0;
@@ -631,7 +653,7 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
             </div>
           </section>
 
-          {/* ── Seção 2: Markup Global ── */}
+          {/* ── Seção 2: Markup Global & Desconto ── */}
           <section className="modal-section card">
             <h3 className="section-heading">
               <span className="section-num">2</span> Markup de Vendas
@@ -654,6 +676,50 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
               </button>
             </div>
             <p className="markup-hint">O preço final pode ser sobrescrito individualmente na tabela abaixo.</p>
+
+            <div style={{ marginTop: '1.1rem', paddingTop: '0.9rem', borderTop: '1px solid var(--border-color)' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(cliente.temDesconto)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setCliente(p => ({
+                      ...p,
+                      temDesconto: checked,
+                      descontoPercent: checked ? (p.descontoPercent || '') : ''
+                    }));
+                  }}
+                  style={{ width: '17px', height: '17px', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                />
+                <span>Desconto</span>
+              </label>
+
+              {cliente.temDesconto && (
+                <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <div className="form-group" style={{ margin: 0, width: '160px' }}>
+                    <label htmlFor="descontoPercent">Porcentagem (%)</label>
+                    <input
+                      id="descontoPercent"
+                      name="descontoPercent"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={cliente.descontoPercent || ''}
+                      onChange={handleClienteChange}
+                      placeholder="Ex: 10"
+                      autoFocus
+                    />
+                  </div>
+                  {percDesconto > 0 && totalBruto > 0 && (
+                    <div style={{ fontSize: '0.84rem', color: '#DC2626', fontWeight: 700, marginTop: '18px' }}>
+                      - R$ {fmt(valorDesconto)} de desconto
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </section>
 
           {/* ── Seção 3: Tabela de Itens ── */}
@@ -825,6 +891,12 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
             <span className="tc-label">Itens</span>
             <span className="tc-value">{itens.length}</span>
           </div>
+          {temDesconto && percDesconto > 0 && (
+            <div className="total-chip chip-red">
+              <span className="tc-label">Desconto ({percDesconto}%)</span>
+              <span className="tc-value">- R$ {fmt(valorDesconto)}</span>
+            </div>
+          )}
           <div className="total-chip">
             <span className="tc-label">Total Venda</span>
             <span className="tc-value accent">R$ {fmt(totalVenda)}</span>
@@ -1016,9 +1088,20 @@ export default function Pedidos() {
   const _doSave = useCallback(async ({ id, cliente, itens }) => {
     setLoading(true);
     try {
-      const total = itens.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
+      const totalBruto = itens.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
+      const temDesconto = Boolean(cliente?.temDesconto);
+      const percDesconto = temDesconto ? Math.min(100, Math.max(0, parseN(cliente?.descontoPercent))) : 0;
+      const valorDesconto = temDesconto && percDesconto > 0 ? (totalBruto * percDesconto) / 100 : 0;
+      const total = Math.max(0, totalBruto - valorDesconto);
+
+      const cleanCliente = {
+        ...cliente,
+        temDesconto,
+        descontoPercent: temDesconto ? cliente.descontoPercent : ''
+      };
+
       const dbRecord = {
-        client_data: cliente,
+        client_data: cleanCliente,
         items: itens,
         total: total
       };
@@ -1082,17 +1165,30 @@ export default function Pedidos() {
   }, []);
 
   const handleSave = useCallback(({ id, cliente, itens }) => {
-    const total = itens.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
+    const totalBruto = itens.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
+    const temDesconto = Boolean(cliente?.temDesconto);
+    const percDesconto = temDesconto ? Math.min(100, Math.max(0, parseN(cliente?.descontoPercent))) : 0;
+    const valorDesconto = temDesconto && percDesconto > 0 ? (totalBruto * percDesconto) / 100 : 0;
+    const total = Math.max(0, totalBruto - valorDesconto);
+
     const isEdit = !!id;
+    const details = [
+      { label: 'Cliente', value: cliente.nome || '—' },
+      { label: 'Telefone', value: cliente.telefone || '—' },
+      { label: 'Itens no Pedido', value: `${itens.length} ${itens.length === 1 ? 'item' : 'itens'}` },
+    ];
+
+    if (temDesconto && percDesconto > 0) {
+      details.push({ label: 'Subtotal', value: `R$ ${fmt(totalBruto)}` });
+      details.push({ label: `Desconto (${percDesconto}%)`, value: `- R$ ${fmt(valorDesconto)}` });
+    }
+
+    details.push({ label: 'Total', value: `R$ ${fmt(total)}` });
+
     openConfirm(
       isEdit ? 'edit' : 'save',
       isEdit ? 'Confirmar Edição de Pedido' : 'Confirmar Novo Pedido',
-      [
-        { label: 'Cliente', value: cliente.nome || '—' },
-        { label: 'Telefone', value: cliente.telefone || '—' },
-        { label: 'Itens no Pedido', value: `${itens.length} ${itens.length === 1 ? 'item' : 'itens'}` },
-        { label: 'Total', value: `R$ ${fmt(total)}` },
-      ],
+      details,
       () => { closeConfirm(); _doSave({ id, cliente, itens }); }
     );
   }, [_doSave]);
@@ -1198,7 +1294,13 @@ export default function Pedidos() {
   };
 
 
-  const totalPedido = (p) => p.total || p.itens?.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0) || 0;
+  const totalPedido = (p) => {
+    if (p.total !== undefined && p.total !== null && p.total > 0) return p.total;
+    const bruto = p.itens?.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0) || 0;
+    const temDesconto = Boolean(p.cliente?.temDesconto);
+    const percDesconto = temDesconto ? Math.min(100, Math.max(0, parseN(p.cliente?.descontoPercent))) : 0;
+    return Math.max(0, bruto - (bruto * percDesconto) / 100);
+  };
 
 
   return (
@@ -1280,7 +1382,14 @@ export default function Pedidos() {
 
                       <td>{p.itens.length} {p.itens.length === 1 ? 'item' : 'itens'}</td>
 
-                      <td className="total-cell">R$ {fmt(totalPedido(p))}</td>
+                      <td className="total-cell">
+                        R$ {fmt(totalPedido(p))}
+                        {Boolean(p.cliente?.temDesconto) && parseN(p.cliente?.descontoPercent) > 0 && (
+                          <div style={{ fontSize: '0.72rem', color: '#DC2626', fontWeight: 700 }}>
+                            (-{parseN(p.cliente.descontoPercent)}% desc.)
+                          </div>
+                        )}
+                      </td>
                       <td className="date-cell">{new Date(p.createdAt).toLocaleDateString('pt-BR')}</td>
                       <td>
                         <div className="row-actions">
