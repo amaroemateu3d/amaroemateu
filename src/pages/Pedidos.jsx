@@ -133,35 +133,36 @@ const openPrintWindow = (pedido, tenant = {}) => {
   const isConsignado = pedido.tipo === 'consignado';
   const label = isConsignado ? 'CONSIGNADO' : 'PEDIDO DE VENDA';
   const dateStr = new Date(pedido.createdAt).toLocaleDateString('pt-BR');
-  const accentColor = isConsignado ? '#475569' : '#7C3AED';
-  const accentBg    = isConsignado ? '#F1F5F9' : '#EDE9FE';
+  const accentColor = isConsignado ? '#334155' : '#6D28D9';
+  const badgeBg     = isConsignado ? '#F1F5F9' : '#F5F3FF';
+  const badgeBorder = isConsignado ? '#CBD5E1' : '#DDD6FE';
 
   const itensRows = pedido.itens.map((it, i) => `
-    <tr class="${i % 2 === 0 ? 'row-even' : ''}">
-      <td class="cell-center text-muted">${i + 1}</td>
+    <tr>
+      <td class="cell-center cell-index tabular">${i + 1}</td>
       <td class="cell-id">${it.indiceFt}</td>
       <td class="cell-name">${it.nomePeca}</td>
-      <td class="cell-right text-muted">R$ ${fmt(it.precoUnit)}</td>
-      <td class="cell-center cell-bold">${it.qtd}</td>
-      <td class="cell-right cell-bold">R$ ${fmt(parseN(it.precoUnit) * parseN(it.qtd))}</td>
+      <td class="cell-right cell-unit tabular">R$ ${fmt(it.precoUnit)}</td>
+      <td class="cell-center cell-qty tabular">${it.qtd}</td>
+      <td class="cell-right cell-subtotal tabular">R$ ${fmt(parseN(it.precoUnit) * parseN(it.qtd))}</td>
     </tr>
   `).join('');
 
-  const logoHtml = tenant.logo_url 
+  const logoHtml = tenant.logo_url
     ? `<img class="logo-img" src="${tenant.logo_url}" alt="Logo" onerror="this.style.display='none'; document.getElementById('lf').style.display='flex';"/>`
     : `<img class="logo-img" src="${window.location.origin}/logo.png" alt="Logo" onerror="this.style.display='none'; document.getElementById('lf').style.display='flex';"/>`;
 
-  const detailsHtml = `
-    ${tenant.email ? `✉️ E-mail: <span>${tenant.email}</span>` : ''}
-    ${tenant.telefone ? ` | 📞 Tel: <span>${tenant.telefone}</span>` : ''}
-  `;
+  const metaParts = [
+    tenant.documento ? `CNPJ/CPF: ${tenant.documento}` : '',
+    tenant.telefone ? `Tel: ${tenant.telefone}` : '',
+    tenant.email ? `${tenant.email}` : '',
+  ].filter(Boolean).join(' · ');
 
   const signatureName = tenant.name || 'AM3D';
   const assinaturaBlock = isConsignado ? `
     <div class="sign-section">
       <div class="sign-banner">
-        <span class="sign-icon">🤝</span>
-        <p>Declaro ter recebido os itens listados em regime de <strong>CONSIGNADO</strong>, comprometendo-me a devolver os produtos não vendidos ou efetuar o pagamento no prazo acordado.</p>
+        Declaro ter recebido os itens listados em regime de <strong>consignado</strong>, comprometendo-me a devolver os produtos não comercializados ou efetuar o acerto financeiro no prazo acordado.
       </div>
       <div class="sign-grid">
         <div class="sign-block">
@@ -172,7 +173,7 @@ const openPrintWindow = (pedido, tenant = {}) => {
         <div class="sign-block">
           <div class="sign-line"></div>
           <p class="sign-label">Responsável ${signatureName}</p>
-          <p class="sign-name">Data: _______ / _______ / _________</p>
+          <p class="sign-name">Data: _____ / _____ / _______</p>
         </div>
       </div>
     </div>
@@ -184,148 +185,182 @@ const openPrintWindow = (pedido, tenant = {}) => {
   <meta charset="UTF-8"/>
   <title>${label} ${formatId(pedido.id, pedido.tipo)} — ${tenant.name || 'AM3D'}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     @page { size: A4; margin: 0; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', Arial, sans-serif; font-size: 10pt; color: #1E293B; background: #fff; }
-
-    .top-stripe {
-      height: 6px;
-      background: linear-gradient(90deg, #8B5CF6, #60A5FA, #34D399);
-      print-color-adjust: exact; -webkit-print-color-adjust: exact;
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      font-size: 9pt;
+      color: #0F172A;
+      background: #fff;
+      -webkit-font-smoothing: antialiased;
     }
+    .tabular { font-variant-numeric: tabular-nums; }
+
     .page {
-      padding: 1.4cm 2cm 1.4cm 2cm;
-      min-height: calc(297mm - 6px);
-      display: flex; flex-direction: column; gap: 0;
+      padding: 1.3cm 1.6cm;
+      min-height: 297mm;
+      display: flex;
+      flex-direction: column;
     }
 
     /* ─ Header ─ */
-    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-    .logo-area { display: flex; align-items: center; gap: 14px; }
-    .logo-img  { max-height: 66px; max-width: 190px; object-fit: contain; }
-    .logo-fallback { display: none; align-items: center; gap: 12px; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #E2E8F0;
+    }
+    .logo-area { display: flex; align-items: center; gap: 12px; }
+    .logo-img  { max-height: 48px; max-width: 150px; object-fit: contain; }
+    .logo-fallback { display: none; align-items: center; gap: 10px; }
     .logo-box {
-      width: 52px; height: 52px;
-      background: linear-gradient(135deg,#60A5FA,#8B5CF6,#34D399);
-      border-radius: 10px; display: flex; align-items: center; justify-content: center;
-      color: #fff; font-family: 'Outfit',sans-serif; font-size: 15pt; font-weight: 900;
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, #7C3AED, #3B82F6);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 11.5pt; font-weight: 700;
+      flex-shrink: 0;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
-    .company-name { font-family: 'Outfit',sans-serif; font-size: 20pt; font-weight: 900; color: #1E293B; line-height: 1; }
-    .company-sub  { font-size: 8pt; color: #94A3B8; margin-top: 3px; }
+    .company-info { display: flex; flex-direction: column; gap: 2px; }
+    .company-name { font-size: 12pt; font-weight: 700; color: #0F172A; letter-spacing: -0.02em; line-height: 1.15; }
+    .company-sub  { font-size: 8pt; color: #64748B; font-weight: 500; }
+    .company-meta { font-size: 7.5pt; color: #64748B; margin-top: 2px; line-height: 1.35; }
 
-    .doc-badge-wrap { text-align: right; }
+    .doc-badge-wrap { text-align: right; flex-shrink: 0; }
     .doc-badge {
-      display: inline-block; padding: 5px 14px;
-      background: ${accentBg}; color: ${accentColor};
-      font-size: 8pt; font-weight: 800; letter-spacing: 1.5px;
-      border-radius: 20px; margin-bottom: 6px;
+      display: inline-block;
+      padding: 2.5px 10px;
+      background: ${badgeBg};
+      border: 1px solid ${badgeBorder};
+      color: ${accentColor};
+      font-size: 7pt; font-weight: 600; letter-spacing: 0.05em;
+      border-radius: 999px;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
-    .doc-num  { font-family: 'Outfit',sans-serif; font-size: 20pt; font-weight: 900; color: #1E293B; line-height: 1.1; }
-    .doc-date { font-size: 8.5pt; color: #64748B; margin-top: 4px; }
-
-    /* ─ Dividers ─ */
-    .divider        { height: 1px; background: #E2E8F0; margin: 16px 0; }
-    .divider-accent {
-      height: 2px; margin: 16px 0;
-      background: linear-gradient(90deg, ${accentColor}66, transparent);
-      print-color-adjust: exact; -webkit-print-color-adjust: exact;
-    }
+    .doc-num  { font-size: 15pt; font-weight: 700; color: #0F172A; letter-spacing: -0.02em; margin-top: 5px; line-height: 1.1; }
+    .doc-date { font-size: 8pt; color: #64748B; margin-top: 3px; }
 
     /* ─ Section label ─ */
+    .section-block { margin-top: 16px; }
     .section-label {
-      font-size: 7pt; font-weight: 800; text-transform: uppercase;
-      letter-spacing: 1.5px; color: ${accentColor}; margin-bottom: 10px;
-      display: flex; align-items: center; gap: 8px;
-      print-color-adjust: exact; -webkit-print-color-adjust: exact;
+      font-size: 7.5pt; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: #64748B; margin-bottom: 6px;
     }
-    .section-label::after { content: ''; flex: 1; height: 1px; background: #E2E8F0; }
 
     /* ─ Client card ─ */
-    .tipo-tag.pedido    { background: #EDE9FE; color: #7C3AED; }
-    .tipo-tag.consignado { background: #D1FAE5; color: #059669; }
-
-    .status-badge { transition: all 0.2s; }
-    .status-badge.paid    { background: #D1FAE5; color: #059669; }
-    .status-badge.pending { background: #FEF3C7; color: #D97706; }
-    .status-badge:hover   { filter: brightness(0.95); transform: scale(1.02); }
-
     .client-card {
-      background: #F8FAFC; border-radius: 10px; border: 1px solid #E2E8F0;
-      padding: 14px 18px; display: grid; grid-template-columns: 1fr 1fr;
-      gap: 8px 24px; font-size: 9.5pt;
+      background: #F8FAFC;
+      border-radius: 7px;
+      border: 1px solid #E2E8F0;
+      padding: 10px 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 20px;
+      font-size: 8.8pt;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
     .client-field { display: flex; gap: 5px; }
-    .field-label  { font-weight: 700; color: #64748B; white-space: nowrap; }
-    .field-value  { color: #1E293B; }
+    .field-label  { color: #64748B; white-space: nowrap; }
+    .field-value  { color: #0F172A; font-weight: 500; }
     .client-full  { grid-column: 1 / -1; }
 
     .obs-box {
-      background: #FFFBEB; border-left: 3px solid #FBBF24;
-      padding: 10px 14px; border-radius: 0 8px 8px 0;
-      font-size: 9pt; color: #92400E; margin-top: 4px;
+      margin-top: 14px;
+      background: #FFFDF7;
+      border: 1px solid #FDE68A;
+      border-left: 2.5px solid #F59E0B;
+      padding: 8px 12px;
+      border-radius: 5px;
+      font-size: 8.5pt; color: #78350F; line-height: 1.45;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
+    .obs-title { font-weight: 600; color: #92400E; margin-bottom: 2px; font-size: 8pt; }
 
     /* ─ Table ─ */
-    table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-    thead tr { background: #1E293B; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-    thead th {
-      padding: 9px 10px; color: #fff; font-size: 7.5pt;
-      font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; text-align: left;
+    table { width: 100%; border-collapse: collapse; }
+    thead tr {
+      background: #F8FAFC;
+      border-top: 1px solid #CBD5E1;
+      border-bottom: 1.5px solid #0F172A;
+      print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
-    tbody td { padding: 9px 10px; border-bottom: 1px solid #F1F5F9; font-size: 9.5pt; }
-    tbody tr.row-even { background: #F8FAFC; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    thead th {
+      padding: 7px 8px;
+      color: #475569;
+      font-size: 7.5pt; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      text-align: left;
+    }
+    tbody td {
+      padding: 7.5px 8px;
+      border-bottom: 1px solid #F1F5F9;
+      font-size: 8.8pt;
+    }
 
-    .cell-right  { text-align: right; }
-    .cell-center { text-align: center; }
-    .cell-bold   { font-weight: 700; }
-    .cell-name   { font-weight: 500; }
-    .text-muted  { color: #64748B; }
-
-    .cell-id { font-weight: 700; color: #1E293B; font-size: 9.5pt; }
+    .cell-right    { text-align: right; }
+    .cell-center   { text-align: center; }
+    .cell-index    { color: #94A3B8; font-size: 8pt; }
+    .cell-id       { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; color: #475569; font-size: 8.2pt; }
+    .cell-name     { font-weight: 500; color: #0F172A; }
+    .cell-unit     { color: #475569; }
+    .cell-qty      { font-weight: 600; color: #0F172A; }
+    .cell-subtotal { font-weight: 600; color: #0F172A; }
 
     /* ─ Total ─ */
-    .totals-wrap { display: flex; justify-content: flex-end; margin-top: 8px; }
+    .totals-wrap { display: flex; justify-content: flex-end; margin-top: 14px; }
     .total-box {
-      background: ${accentBg}; border-radius: 10px; padding: 13px 22px;
-      text-align: right; min-width: 220px;
+      min-width: 230px;
+      padding: 10px 14px;
+      border: 1px solid #E2E8F0;
+      border-top: 2.5px solid ${accentColor};
+      border-radius: 6px;
+      background: #FAFAFA;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
-    .total-label { font-size: 7.5pt; font-weight: 700; color: ${accentColor}; text-transform: uppercase; letter-spacing: 1px; }
-    .total-value { font-family: 'Outfit',sans-serif; font-size: 20pt; font-weight: 900; color: ${accentColor}; margin-top: 2px; }
+    .total-row {
+      display: flex; justify-content: space-between; gap: 18px;
+      font-size: 8.3pt; color: #64748B; margin-bottom: 4px;
+    }
+    .total-row-discount {
+      display: flex; justify-content: space-between; gap: 18px;
+      font-size: 8.3pt; color: #DC2626;
+      margin-bottom: 7px; padding-bottom: 7px;
+      border-bottom: 1px solid #E2E8F0;
+    }
+    .total-final-row {
+      display: flex; justify-content: space-between; align-items: baseline; gap: 20px;
+    }
+    .total-label { font-size: 7.5pt; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; }
+    .total-value { font-size: 13.5pt; font-weight: 700; color: ${accentColor}; letter-spacing: -0.02em; }
 
     /* ─ Assinatura ─ */
-    .sign-section { margin-top: 26px; }
+    .sign-section { margin-top: 22px; padding-top: 14px; border-top: 1px solid #E2E8F0; }
     .sign-banner {
-      display: flex; align-items: flex-start; gap: 12px;
-      background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px;
-      padding: 13px 16px; margin-bottom: 28px;
-      font-size: 9pt; color: #475569; line-height: 1.6;
+      background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px;
+      padding: 9px 12px; margin-bottom: 22px;
+      font-size: 8.2pt; color: #475569; line-height: 1.5;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
-    .sign-icon  { font-size: 18pt; flex-shrink: 0; }
-    .sign-grid  { display: flex; gap: 48px; }
-    .sign-block { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .sign-line  { width: 100%; border-bottom: 1.5px solid #64748B; height: 52px; }
-    .sign-label { font-size: 8pt; font-weight: 700; color: #64748B; }
-    .sign-name  { font-size: 8.5pt; color: #1E293B; font-weight: 500; }
+    .sign-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+    .sign-block { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .sign-line  { width: 100%; border-bottom: 1px solid #94A3B8; height: 34px; margin-bottom: 2px; }
+    .sign-label { font-size: 8pt; font-weight: 600; color: #334155; }
+    .sign-name  { font-size: 8pt; color: #64748B; }
 
     /* ─ Footer ─ */
     .footer {
-      margin-top: auto; padding-top: 16px;
+      margin-top: auto; padding-top: 12px;
       display: flex; justify-content: space-between; align-items: center;
       border-top: 1px solid #E2E8F0; font-size: 7.5pt; color: #94A3B8;
     }
-    .footer-brand { font-weight: 700; color: #64748B; }
+    .footer-brand { font-weight: 600; color: #64748B; }
   </style>
 </head>
 <body>
-  <div class="top-stripe"></div>
   <div class="page">
 
     <!-- HEADER -->
@@ -334,83 +369,74 @@ const openPrintWindow = (pedido, tenant = {}) => {
         ${logoHtml}
         <div id="lf" class="logo-fallback">
           <div class="logo-box">3D</div>
-          <div>
-            <div class="company-name">${tenant.name || 'AM3D'}</div>
-            <div class="company-sub">${tenant.custom_header || 'Impressão 3D Profissional'}</div>
-          </div>
         </div>
-        ${tenant.name ? `
-        <div class="company-info-text" translate="no" style="display: flex; flex-direction: column; gap: 2px; font-size: 8pt; color: #475569; line-height: 1.3; text-align: left; margin-left: 10px;">
-          <div class="company-title" style="font-family: 'Outfit', sans-serif; font-size: 14pt; font-weight: 900; color: #1e293b; line-height: 1.1;">${tenant.name}</div>
-          <div class="company-subtitle" style="font-weight: 700; color: #64748b; font-size: 8.5pt;">${tenant.custom_header || 'Impressão 3D'}</div>
-          ${tenant.documento ? `<div style="font-size: 7.5pt; color: #94a3b8;">CNPJ/CPF: ${tenant.documento}</div>` : ''}
-          ${tenant.endereco ? `<div style="font-size: 7.5pt; color: #64748b;">📍 Endereço: <span>${tenant.endereco}</span></div>` : ''}
-          ${tenant.email || tenant.telefone ? `<div style="font-size: 7.5pt; color: #64748b;">${detailsHtml}</div>` : ''}
+        <div class="company-info" translate="no">
+          <div class="company-name">${tenant.name || 'AM3D'}</div>
+          <div class="company-sub">${tenant.custom_header || 'Impressão 3D Profissional'}</div>
+          ${metaParts ? `<div class="company-meta">${metaParts}</div>` : ''}
+          ${tenant.endereco ? `<div class="company-meta">${tenant.endereco}</div>` : ''}
         </div>
-        ` : `
-        <div style="margin-left: 10px;">
-          <div class="company-name">AM3D</div>
-          <div class="company-sub">Impressão 3D Profissional</div>
-        </div>
-        `}
       </div>
       <div class="doc-badge-wrap">
         <div class="doc-badge">${label}</div>
-        <div class="doc-num">${formatId(pedido.id, pedido.tipo)}</div>
-        <div class="doc-date">📅 ${dateStr}</div>
+        <div class="doc-num tabular">${formatId(pedido.id, pedido.tipo)}</div>
+        <div class="doc-date">Emitido em ${dateStr}</div>
       </div>
     </div>
 
-    <div class="divider-accent"></div>
-
     <!-- CLIENTE -->
-    <div class="section-label">Dados do Cliente</div>
-    <div class="client-card">
-      <div class="client-field"><span class="field-label">Nome:</span><span class="field-value">${pedido.cliente.nome || '—'}</span></div>
-      <div class="client-field"><span class="field-label">Telefone:</span><span class="field-value">${pedido.cliente.telefone || '—'}</span></div>
-      <div class="client-field"><span class="field-label">E-mail:</span><span class="field-value">${pedido.cliente.email || '—'}</span></div>
-      <div class="client-field client-full"><span class="field-label">Endereço:</span><span class="field-value">${pedido.cliente.endereco || '—'}</span></div>
+    <div class="section-block">
+      <div class="section-label">Cliente</div>
+      <div class="client-card">
+        <div class="client-field"><span class="field-label">Nome:</span><span class="field-value">${pedido.cliente.nome || '—'}</span></div>
+        <div class="client-field"><span class="field-label">Telefone:</span><span class="field-value">${pedido.cliente.telefone || '—'}</span></div>
+        <div class="client-field"><span class="field-label">E-mail:</span><span class="field-value">${pedido.cliente.email || '—'}</span></div>
+        <div class="client-field client-full"><span class="field-label">Endereço:</span><span class="field-value">${pedido.cliente.endereco || '—'}</span></div>
+      </div>
     </div>
 
     ${pedido.cliente.obs ? `
-    <div class="divider"></div>
-    <div class="section-label">Observações</div>
-    <div class="obs-box">${pedido.cliente.obs}</div>
+    <div class="obs-box">
+      <div class="obs-title">Observações</div>
+      <div>${pedido.cliente.obs}</div>
+    </div>
     ` : ''}
 
-    <div class="divider"></div>
-
     <!-- ITENS -->
-    <div class="section-label">Itens do Pedido</div>
-    <table>
-      <thead>
-        <tr>
-          <th style="width:30px">#</th>
-          <th style="width:60px">ID</th>
-          <th>Descrição</th>
-          <th style="width:90px;text-align:right">Preço Unit.</th>
-          <th style="width:50px;text-align:center">Qtd</th>
-          <th style="width:105px;text-align:right">Subtotal</th>
-        </tr>
-      </thead>
-      <tbody>${itensRows}</tbody>
-    </table>
+    <div class="section-block">
+      <div class="section-label">Itens do Pedido</div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:32px;text-align:center">#</th>
+            <th style="width:62px">Código</th>
+            <th>Descrição</th>
+            <th style="width:88px;text-align:right">Unitário</th>
+            <th style="width:48px;text-align:center">Qtd</th>
+            <th style="width:98px;text-align:right">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>${itensRows}</tbody>
+      </table>
+    </div>
 
     <!-- TOTAL -->
     <div class="totals-wrap">
       <div class="total-box">
         ${temDesconto && percDesconto > 0 ? `
-          <div style="display:flex;justify-content:space-between;gap:20px;font-size:8.5pt;color:#475569;margin-bottom:4px;">
-            <span>Subtotal dos Itens:</span>
-            <strong>R$ ${fmt(subtotal)}</strong>
+          <div class="total-row tabular">
+            <span>Subtotal dos itens</span>
+            <span style="color:#334155;font-weight:500;">R$ ${fmt(subtotal)}</span>
           </div>
-          <div style="display:flex;justify-content:space-between;gap:20px;font-size:8.5pt;color:#DC2626;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(0,0,0,0.1);">
-            <span>Desconto (${percDesconto}%):</span>
-            <strong>- R$ ${fmt(valorDesconto)}</strong>
+          <div class="total-row-discount tabular">
+            <span>Desconto (${percDesconto}%)</span>
+            <span style="font-weight:600;">- R$ ${fmt(valorDesconto)}</span>
           </div>
         ` : ''}
-        <div class="total-label">Total Geral</div>
-        <div class="total-value">R$ ${fmt(total)}</div>
+        <div class="total-final-row">
+          <span class="total-label">Total Geral</span>
+          <span class="total-value tabular">R$ ${fmt(total)}</span>
+        </div>
       </div>
     </div>
 
@@ -418,7 +444,7 @@ const openPrintWindow = (pedido, tenant = {}) => {
 
     <!-- FOOTER -->
     <div class="footer">
-      <span class="footer-brand">${tenant.name || 'AM3D'} — Impressão 3D Profissional</span>
+      <span><span class="footer-brand">${tenant.name || 'AM3D'}</span> · Impressão 3D Profissional</span>
       <span>Gerado em ${new Date().toLocaleString('pt-BR')}</span>
     </div>
   </div>
