@@ -847,7 +847,7 @@ export default function Vendas() {
   const handleOverrideChange = (e) => {
     const { name, value } = e.target;
     let safeVal = value;
-    const textOrComplexFields = ['sku', 'tituloLoja', 'descricaoLoja', 'medidaComCaixa', 'cadastrado', 'destaqueLoja', 'categoriasLoja', 'fotosLoja'];
+    const textOrComplexFields = ['sku', 'tituloLoja', 'descricaoLoja', 'medidaComCaixa', 'cadastrado', 'destaqueLoja', 'categoriasLoja', 'fotosLoja', 'variacoesLoja'];
     if (!textOrComplexFields.includes(name) && typeof value === 'string') safeVal = value.replace(',', '.');
 
     setEditingOverride(prev => {
@@ -941,13 +941,14 @@ export default function Vendas() {
           tituloLoja: prev.customData.tituloLoja || imported.tituloLoja || prev.ftBase.nomePeca,
           descricaoLoja: imported.descricaoLoja || prev.customData.descricaoLoja,
           fotosLoja: imported.fotosLoja?.length ? imported.fotosLoja : prev.customData.fotosLoja,
+          variacoesLoja: imported.variacoesLoja?.length ? imported.variacoesLoja : (prev.customData.variacoesLoja || []),
           medidaComCaixa: imported.medidaComCaixa || prev.customData.medidaComCaixa,
           pesoComCaixa: imported.pesoComCaixa || prev.customData.pesoComCaixa,
           mlItemIdVinculado: imported.mlItemId,
         }
       }));
 
-      alert(`✅ Importado do ML (${imported.mlItemId}): ${imported.fotosLoja?.length || 0} foto(s)${imported.descricaoLoja ? ', descrição' : ''}${imported.medidaComCaixa ? ', medidas' : ''}${imported.pesoComCaixa ? ' e peso' : ''}. Clique em "Salvar Substituição Local" para gravar.`);
+      alert(`✅ Importado do ML (${imported.mlItemId}): ${imported.fotosLoja?.length || 0} foto(s)${imported.variacoesLoja?.length ? `, ${imported.variacoesLoja.length} variação(ões)` : ''}${imported.descricaoLoja ? ', descrição' : ''}${imported.medidaComCaixa ? ', medidas' : ''}${imported.pesoComCaixa ? ' e peso' : ''}. Clique em "Salvar Substituição Local" para gravar.`);
     } catch (err) {
       alert('Erro ao importar do Mercado Livre: ' + err.message);
     } finally {
@@ -1020,6 +1021,9 @@ export default function Vendas() {
             tituloLoja: overwriteExisting ? (imported.tituloLoja || cur.tituloLoja || ft?.nomePeca || '') : (cur.tituloLoja || imported.tituloLoja || ft?.nomePeca || ''),
             descricaoLoja: overwriteExisting ? (imported.descricaoLoja || cur.descricaoLoja || '') : (cur.descricaoLoja || imported.descricaoLoja || ''),
             fotosLoja: overwriteExisting ? (imported.fotosLoja?.length ? imported.fotosLoja : (cur.fotosLoja || [])) : (cur.fotosLoja?.length ? cur.fotosLoja : imported.fotosLoja),
+            variacoesLoja: overwriteExisting
+              ? (imported.variacoesLoja?.length ? imported.variacoesLoja : (cur.variacoesLoja || []))
+              : (cur.variacoesLoja?.length ? cur.variacoesLoja : (imported.variacoesLoja || [])),
             medidaComCaixa: overwriteExisting ? (imported.medidaComCaixa || cur.medidaComCaixa || ft?.medidaComCaixa || '') : (cur.medidaComCaixa || ft?.medidaComCaixa || imported.medidaComCaixa || ''),
             pesoComCaixa: overwriteExisting ? (imported.pesoComCaixa || cur.pesoComCaixa || ft?.pesoComCaixa || '') : (cur.pesoComCaixa || ft?.pesoComCaixa || imported.pesoComCaixa || ''),
             mlItemIdVinculado: imported.mlItemId,
@@ -1098,7 +1102,7 @@ export default function Vendas() {
       'sku', 'custoEmbalagem', 'custoExtra', 'custoEnvio', 'custoEnvioPerc',
       'taxaFixaVenda', 'impostosNF', 'taxaMLPerc', 'precoVendaManual',
       'precoAnuncio', 'precoRankeamento',
-      'tituloLoja', 'descricaoLoja', 'categoriasLoja', 'fotosLoja', 'destaqueLoja',
+      'tituloLoja', 'descricaoLoja', 'categoriasLoja', 'fotosLoja', 'variacoesLoja', 'destaqueLoja',
       'medidaComCaixa', 'pesoComCaixa', 'mlItemIdVinculado'
     ];
     const finalOps = {};
@@ -1579,6 +1583,11 @@ export default function Vendas() {
                                   ⚠️ Sem foto
                                 </span>
                               ) : null}
+                              {Array.isArray(channelFt.variacoesLoja) && channelFt.variacoesLoja.length > 0 && (
+                                <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(37, 99, 235, 0.12)', color: '#2563EB', fontWeight: 700 }} title="Variações configuradas na loja">
+                                  🎨 {channelFt.variacoesLoja.filter(v => v.ativo !== false).length} var.
+                                </span>
+                              )}
                               {(channelFt.categoriasLoja || []).map(catId => {
                                 const cat = lojaCategorias.find(c => c.id === catId);
                                 if (!cat) return null;

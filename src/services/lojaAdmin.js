@@ -237,16 +237,73 @@ export async function importMlDataForFt({ mlItemId, ftId, empresaId, copyPhotosT
     // Alguns anúncios antigos não possuem descrição
   }
 
-  const rawPics = Array.isArray(itemData?.pictures) ? itemData.pictures.slice(0, 8) : [];
+  const allPics = Array.isArray(itemData?.pictures) ? itemData.pictures : [];
+  const rawPics = allPics.slice(0, 8);
   const picUrls = rawPics.map((p) => p.secure_url || p.url).filter(Boolean);
 
   let fotosLoja = picUrls.map((u) => u.replace(/^http:\/\//i, 'https://'));
+  const picIdToFinalUrl = new Map();
   if (copyPhotosToStorage && empresaId && picUrls.length > 0) {
     const uploaded = await Promise.all(
       picUrls.map((u, idx) => mirrorExternalImageToStorage(u, empresaId, ftId, idx))
     );
+    rawPics.forEach((p, idx) => {
+      if (p?.id && uploaded[idx]) picIdToFinalUrl.set(p.id, uploaded[idx]);
+    });
     fotosLoja = uploaded.filter(Boolean);
+  } else {
+    rawPics.forEach((p, idx) => {
+      if (p?.id && fotosLoja[idx]) picIdToFinalUrl.set(p.id, fotosLoja[idx]);
+    });
   }
+
+  // Extrai variações do anúncio do Mercado Livre (com foto, nome e SKU)
+  const rawVars = Array.isArray(itemData?.variations) ? itemData.variations : [];
+  const variacoesLoja = await Promise.all(
+    rawVars.map(async (v, vIdx) => {
+      const combos = Array.isArray(v?.attribute_combinations) ? v.attribute_combinations : [];
+      const nome =
+        combos
+          .map((c) => c?.value_name || c?.name)
+          .filter(Boolean)
+          .join(' / ') || `Variação ${vIdx + 1}`;
+
+      const sellerSkuAttr = Array.isArray(v?.attributes)
+        ? v.attributes.find((a) => a?.id === 'SELLER_SKU')
+        : null;
+      const sku = String(v?.seller_custom_field || sellerSkuAttr?.value_name || '').trim();
+
+      let foto = '';
+      const firstPicId = Array.isArray(v?.picture_ids) ? v.picture_ids[0] : null;
+      if (firstPicId) {
+        if (picIdToFinalUrl.has(firstPicId)) {
+          foto = picIdToFinalUrl.get(firstPicId);
+        } else {
+          const matchedPic = allPics.find((p) => p?.id === firstPicId);
+          const rawUrl = (matchedPic?.secure_url || matchedPic?.url || '').replace(/^http:\/\//i, 'https://');
+          if (rawUrl) {
+            if (copyPhotosToStorage && empresaId) {
+              foto = (await mirrorExternalImageToStorage(rawUrl, empresaId, ftId, `var_${v.id || vIdx}`)) || rawUrl;
+            } else {
+              foto = rawUrl;
+            }
+            picIdToFinalUrl.set(firstPicId, foto);
+          }
+        }
+      }
+
+      return {
+        id: String(v?.id || `mlvar_${vIdx}_${Date.now()}`),
+        mlVariationId: v?.id ? String(v.id) : '',
+        nome,
+        sku,
+        foto,
+        estoque: Number(v?.available_quantity ?? 0),
+        ativo: true,
+        variacaoEstoqueId: '',
+      };
+    })
+  );
 
   const { medidaComCaixa, pesoComCaixa } = parseMlDimensionsAndWeight(itemData);
 
@@ -255,6 +312,7 @@ export async function importMlDataForFt({ mlItemId, ftId, empresaId, copyPhotosT
     tituloLoja: itemData?.title || '',
     descricaoLoja: descriptionText.trim(),
     fotosLoja,
+    variacoesLoja,
     medidaComCaixa,
     pesoComCaixa,
   };

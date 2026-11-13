@@ -408,6 +408,258 @@ export default function SiteLojaOverrideSection({
           </div>
         )}
       </div>
+
+      {/* Variações do Produto na Loja */}
+      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+        {(() => {
+          const variacoes = Array.isArray(customData.variacoesLoja) ? customData.variacoesLoja : [];
+          const ftVars = Array.isArray(ftBase?.variacoesEstoque) ? ftBase.variacoesEstoque : [];
+          const updateVariacoes = (next) => onChange({ target: { name: 'variacoesLoja', value: next } });
+
+          const handlePullFromFt = () => {
+            if (ftVars.length === 0) return;
+            const existingByFtId = new Map(
+              variacoes.filter((v) => v.variacaoEstoqueId).map((v) => [v.variacaoEstoqueId, v])
+            );
+            const existingByName = new Map(
+              variacoes.map((v) => [String(v.nome || '').trim().toLowerCase(), v])
+            );
+
+            const merged = [...variacoes];
+            ftVars.forEach((fv, idx) => {
+              const ftVarId = String(fv.id || `ftvar_${idx}`);
+              const ftName = String(fv.nome || `Variação ${idx + 1}`).trim();
+              const ftStock = Number(fv.estoqueCasa || 0) + Number(fv.estoqueGalpao || 0);
+              const match =
+                existingByFtId.get(ftVarId) || existingByName.get(ftName.toLowerCase());
+
+              if (match) {
+                const mIdx = merged.indexOf(match);
+                if (mIdx >= 0) {
+                  merged[mIdx] = {
+                    ...match,
+                    variacaoEstoqueId: ftVarId,
+                    sku: match.sku || fv.sku || '',
+                    estoque: ftStock,
+                  };
+                }
+              } else {
+                merged.push({
+                  id: `var_${ftVarId}_${Date.now()}_${idx}`,
+                  nome: ftName,
+                  sku: fv.sku || '',
+                  foto: fotos[0] || '',
+                  estoque: ftStock,
+                  ativo: true,
+                  variacaoEstoqueId: ftVarId,
+                });
+              }
+            });
+            updateVariacoes(merged);
+          };
+
+          const handleAddVar = () => {
+            updateVariacoes([
+              ...variacoes,
+              {
+                id: `var_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                nome: '',
+                sku: '',
+                foto: fotos[0] || '',
+                estoque: 0,
+                ativo: true,
+                variacaoEstoqueId: '',
+              },
+            ]);
+          };
+
+          const handlePatchVar = (idx, patch) => {
+            const next = variacoes.map((v, i) => (i === idx ? { ...v, ...patch } : v));
+            updateVariacoes(next);
+          };
+
+          const handleRemoveVar = (idx) => {
+            updateVariacoes(variacoes.filter((_, i) => i !== idx));
+          };
+
+          return (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  🎨 Variações do Produto na Loja ({variacoes.length})
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  {ftVars.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handlePullFromFt}
+                      style={{
+                        padding: '4px 9px',
+                        borderRadius: '7px',
+                        border: '1px solid rgba(37,99,235,0.35)',
+                        background: 'rgba(37,99,235,0.08)',
+                        color: '#2563EB',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                      title="Sincronizar variações cadastradas no estoque da Ficha Técnica"
+                    >
+                      📦 Puxar do Estoque da FT ({ftVars.length})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleAddVar}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '7px',
+                      border: '1px solid rgba(124,58,237,0.35)',
+                      background: 'rgba(124,58,237,0.1)',
+                      color: '#7C3AED',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    + Nova Variação
+                  </button>
+                </div>
+              </div>
+
+              {variacoes.length === 0 ? (
+                <div style={{ padding: '10px', borderRadius: '7px', border: '1px dashed var(--border-color)', textAlign: 'center', fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                  Nenhuma variação configurada. Se este produto tem cores, tamanhos ou modelos diferentes, importe do ML ou adicione acima.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {variacoes.map((v, idx) => {
+                    const photoOptions = Array.from(
+                      new Set([v.foto, ...fotos].filter(Boolean))
+                    );
+                    return (
+                      <div
+                        key={v.id || idx}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '48px 1fr auto',
+                          gap: '10px',
+                          alignItems: 'center',
+                          padding: '8px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border-color)',
+                          background: v.ativo === false ? 'rgba(148,163,184,0.08)' : 'var(--bg-primary)',
+                          opacity: v.ativo === false ? 0.65 : 1,
+                        }}
+                      >
+                        {/* Miniatura */}
+                        <div style={{ width: '48px', height: '48px', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {v.foto ? (
+                            <img src={v.foto} alt={v.nome || 'Var'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Sem foto</span>
+                          )}
+                        </div>
+
+                        {/* Campos */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '6px', alignItems: 'center' }}>
+                          <input
+                            type="text"
+                            placeholder="Nome (ex: Azul / 10cm)"
+                            value={v.nome || ''}
+                            onChange={(e) => handlePatchVar(idx, { nome: e.target.value })}
+                            style={{ padding: '0.38rem 0.55rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem' }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="SKU (opcional)"
+                            value={v.sku || ''}
+                            onChange={(e) => handlePatchVar(idx, { sku: e.target.value })}
+                            style={{ padding: '0.38rem 0.55rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem' }}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Est.:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={v.estoque ?? 0}
+                              onChange={(e) => handlePatchVar(idx, { estoque: Math.max(0, Number(e.target.value) || 0) })}
+                              style={{ width: '68px', padding: '0.38rem 0.45rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem' }}
+                            />
+                          </div>
+                          {photoOptions.length > 0 && (
+                            <select
+                              value={v.foto || ''}
+                              onChange={(e) => handlePatchVar(idx, { foto: e.target.value })}
+                              style={{ padding: '0.38rem 0.45rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.75rem' }}
+                              title="Foto desta variação"
+                            >
+                              <option value="">Sem foto específica</option>
+                              {photoOptions.map((u, pIdx) => (
+                                <option key={u} value={u}>
+                                  {u === v.foto && !fotos.includes(u) ? 'Foto importada ML' : `Foto ${fotos.indexOf(u) + 1 || pIdx + 1}`}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          {ftVars.length > 0 && (
+                            <select
+                              value={v.variacaoEstoqueId || ''}
+                              onChange={(e) => {
+                                const selectedId = e.target.value;
+                                const found = ftVars.find((fv, fIdx) => String(fv.id || `ftvar_${fIdx}`) === selectedId);
+                                handlePatchVar(idx, {
+                                  variacaoEstoqueId: selectedId,
+                                  ...(found
+                                    ? { estoque: Number(found.estoqueCasa || 0) + Number(found.estoqueGalpao || 0) }
+                                    : {}),
+                                });
+                              }}
+                              style={{ padding: '0.38rem 0.45rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.75rem' }}
+                              title="Vincular ao estoque da variação na FT"
+                            >
+                              <option value="">Sem vínculo FT</option>
+                              {ftVars.map((fv, fIdx) => {
+                                const fId = String(fv.id || `ftvar_${fIdx}`);
+                                const fStock = Number(fv.estoqueCasa || 0) + Number(fv.estoqueGalpao || 0);
+                                return (
+                                  <option key={fId} value={fId}>
+                                    FT: {fv.nome} ({fStock} un)
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          )}
+                        </div>
+
+                        {/* Ações */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.74rem', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                            <input
+                              type="checkbox"
+                              checked={v.ativo !== false}
+                              onChange={(e) => handlePatchVar(idx, { ativo: e.target.checked })}
+                            />
+                            Ativa
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveVar(idx)}
+                            style={{ background: 'rgba(220,38,38,0.12)', color: '#DC2626', border: 'none', borderRadius: '6px', padding: '4px 8px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                            title="Remover variação"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          );
+        })()}
+      </div>
     </div>
   );
 }
