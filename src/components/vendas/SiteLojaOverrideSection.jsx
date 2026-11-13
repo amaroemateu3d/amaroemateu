@@ -269,35 +269,58 @@ export default function SiteLojaOverrideSection({
           <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
             Fotos do Produto ({fotos.length}/8) — a 1ª foto é a capa
           </label>
-          <label
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '4px 10px',
-              borderRadius: '7px',
-              background: 'var(--accent-primary)',
-              color: '#fff',
-              fontSize: '0.76rem',
-              fontWeight: 700,
-              cursor: uploadingFotos ? 'wait' : 'pointer',
-              opacity: uploadingFotos ? 0.65 : 1,
-            }}
-          >
-            <ImagePlus size={13} />
-            {uploadingFotos ? 'Enviando...' : '+ Adicionar Fotos'}
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              disabled={uploadingFotos}
-              onChange={(e) => {
-                if (e.target.files?.length) onUploadFotos(Array.from(e.target.files));
-                e.target.value = '';
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {fotos.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange({ target: { name: 'fotosLoja', value: [] } });
+                }}
+                style={{
+                  padding: '4px 9px',
+                  borderRadius: '7px',
+                  border: '1px solid rgba(220,38,38,0.35)',
+                  background: 'rgba(220,38,38,0.08)',
+                  color: '#DC2626',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+                title="Remover todas as fotos deste item no Site Próprio"
+              >
+                🗑️ Limpar Fotos
+              </button>
+            )}
+            <label
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 10px',
+                borderRadius: '7px',
+                background: 'var(--accent-primary)',
+                color: '#fff',
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                cursor: uploadingFotos ? 'wait' : 'pointer',
+                opacity: uploadingFotos ? 0.65 : 1,
               }}
-              style={{ display: 'none' }}
-            />
-          </label>
+            >
+              <ImagePlus size={13} />
+              {uploadingFotos ? 'Enviando...' : '+ Adicionar Fotos'}
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={uploadingFotos}
+                onChange={(e) => {
+                  if (e.target.files?.length) onUploadFotos(Array.from(e.target.files));
+                  e.target.value = '';
+                }}
+                style={{ display: 'none' }}
+              />
+            </label>
+          </div>
         </div>
 
         {fotos.length === 0 ? (

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getResultados, parseNumber, getCustoUnitario, getUnitProductionTime, formatTime } from '../utils/financeCalculators';
 import { Settings, Save, X, Printer, CheckCircle2, RefreshCw, Loader, ShoppingBag, Link2 } from 'lucide-react';
-import { fetchMlPaidOrdersForMonth, parseFtTargetKey, fetchStoredMlListings } from '../services/mercadolivre';
+import { fetchMlPaidOrdersForMonth, parseFtTargetKey, fetchStoredMlListings, syncListingsFromML } from '../services/mercadolivre';
 import { fetchShopeePaidOrdersForMonth } from '../services/shopee';
 import {
   fetchLojaCategorias,
@@ -16,6 +16,7 @@ import {
 import MlFtMappingModal from '../components/vendas/MlFtMappingModal';
 import SiteCategoriasModal from '../components/vendas/SiteCategoriasModal';
 import SiteLojaOverrideSection from '../components/vendas/SiteLojaOverrideSection';
+import SiteMlBatchImportModal from '../components/vendas/SiteMlBatchImportModal';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import './Vendas.css';
@@ -157,6 +158,8 @@ export default function Vendas() {
   const [uploadingSiteFotos, setUploadingSiteFotos] = useState(false);
   const [importingSiteMl, setImportingSiteMl] = useState(false);
   const [batchSiteImportStatus, setBatchSiteImportStatus] = useState(null);
+  const [showSiteMlBatchModal, setShowSiteMlBatchModal] = useState(false);
+  const [syncingMlList, setSyncingMlList] = useState(false);
 
   const loadLojaCategorias = async () => {
     try {
@@ -952,70 +955,97 @@ export default function Vendas() {
     }
   };
 
-  const handleBatchImportSiteFromMl = async () => {
+  const handleSyncMlListForSite = async () => {
     const empresaId = profile?.empresa_id;
     if (!empresaId) return alert('Empresa não identificada.');
-    if (!mlListings.length) return alert('Nenhum anúncio do Mercado Livre sincronizado ainda. Sincronize primeiro em Estoque → Anúncios Mercado Livre.');
-
-    const siteOverrides = overrides.site || {};
-    const candidates = savedFts.filter(ft => {
-      const linked = findMlListingsForFt(mlListings, ft.indiceFt);
-      const cur = siteOverrides[ft.indiceFt] || {};
-      return linked.length > 0 && !(cur.fotosLoja?.length > 0 && cur.descricaoLoja);
-    });
-
-    if (candidates.length === 0) {
-      return alert('Todos os produtos vinculados ao Mercado Livre já possuem fotos e descrição na aba Site Próprio!');
+    setSyncingMlList(true);
+    try {
+      const fresh = await syncListingsFromML(empresaId);
+      setMlListings(fresh || []);
+    } catch (err) {
+      alert('Erro ao atualizar anúncios do Mercado Livre: ' + err.message);
+    } finally {
+      setSyncingMlList(false);
     }
+  };
 
-    if (!window.confirm(`Foram encontrados ${candidates.length} produto(s) vinculados ao Mercado Livre sem fotos/descrição completas no Site Próprio.\n\nDeseja importar fotos, descrições, medidas e pesos automaticamente agora?`)) {
-      return;
-    }
+  const handleRunSiteMlBatchImport = async ({ selectedItems, overwriteExisting, allAssignments }) => {
+    const empresaId = profile?.empresa_id;
+    if (!empresaId) return alert('Empresa não identificada.');
 
-    setBatchSiteImportStatus({ total: candidates.length, done: 0, errors: 0 });
+    setBatchSiteImportStatus({ total: selectedItems.length, done: 0, errors: 0 });
     let done = 0;
     let errors = 0;
-    const nextSiteOverrides = { ...siteOverrides };
+    const nextSiteOverrides = { ...(overrides.site || {}) };
 
-    for (const ft of candidates) {
-      try {
-        const linked = findMlListingsForFt(mlListings, ft.indiceFt);
-        const imported = await importMlDataForFt({
-          mlItemId: linked[0].ml_item_id,
-          ftId: ft.indiceFt,
-          empresaId,
-          copyPhotosToStorage: true,
-        });
+    try {
+      // 1. Persiste os vínculos escolhidos em marketplace_listings para não perder nunca mais
+      const updatedMlList = mlListings.map((l) => {
+        if (Object.prototype.hasOwnProperty.call(allAssignments, l.ml_item_id)) {
+          const newFt = allAssignments[l.ml_item_id] || null;
+          if (newFt !== l.ft_id) {
+            return { ...l, ft_id: newFt };
+          }
+        }
+        return l;
+      });
 
-        const cur = nextSiteOverrides[ft.indiceFt] || {};
-        const mergedSettings = {
-          ...cur,
-          tituloLoja: cur.tituloLoja || imported.tituloLoja || ft.nomePeca,
-          descricaoLoja: cur.descricaoLoja || imported.descricaoLoja,
-          fotosLoja: cur.fotosLoja?.length ? cur.fotosLoja : imported.fotosLoja,
-          medidaComCaixa: cur.medidaComCaixa || ft.medidaComCaixa || imported.medidaComCaixa,
-          pesoComCaixa: cur.pesoComCaixa || ft.pesoComCaixa || imported.pesoComCaixa,
-          mlItemIdVinculado: imported.mlItemId,
-        };
-
-        await supaWrite('ecommerce_overrides', 'POST', {
-          channel_id: 'site',
-          ft_id: ft.indiceFt,
-          settings: mergedSettings,
-        }, {}, 'channel_id,ft_id');
-
-        nextSiteOverrides[ft.indiceFt] = mergedSettings;
-      } catch (err) {
-        console.warn(`[Batch ML Import Site] Falha na FT ${ft.indiceFt}:`, err);
-        errors++;
+      for (const l of mlListings) {
+        if (Object.prototype.hasOwnProperty.call(allAssignments, l.ml_item_id)) {
+          const newFt = allAssignments[l.ml_item_id] || null;
+          if (newFt !== (l.ft_id || null)) {
+            await supabase
+              .from('marketplace_listings')
+              .update({ ft_id: newFt })
+              .eq('ml_item_id', l.ml_item_id);
+          }
+        }
       }
-      done++;
-      setBatchSiteImportStatus({ total: candidates.length, done, errors });
-    }
+      setMlListings(updatedMlList);
 
-    setOverrides(prev => ({ ...prev, site: nextSiteOverrides }));
-    setBatchSiteImportStatus(null);
-    alert(`✅ Importação concluída no Site Próprio! Processados: ${done} | Erros: ${errors}`);
+      // 2. Importa fotos, descrições, medidas e pesos para cada item marcado
+      for (const item of selectedItems) {
+        try {
+          const ft = savedFts.find((f) => f.indiceFt === item.ftId);
+          const imported = await importMlDataForFt({
+            mlItemId: item.mlItemId,
+            ftId: item.ftId,
+            empresaId,
+            copyPhotosToStorage: true,
+          });
+
+          const cur = nextSiteOverrides[item.ftId] || {};
+          const mergedSettings = {
+            ...cur,
+            tituloLoja: overwriteExisting ? (imported.tituloLoja || cur.tituloLoja || ft?.nomePeca || '') : (cur.tituloLoja || imported.tituloLoja || ft?.nomePeca || ''),
+            descricaoLoja: overwriteExisting ? (imported.descricaoLoja || cur.descricaoLoja || '') : (cur.descricaoLoja || imported.descricaoLoja || ''),
+            fotosLoja: overwriteExisting ? (imported.fotosLoja?.length ? imported.fotosLoja : (cur.fotosLoja || [])) : (cur.fotosLoja?.length ? cur.fotosLoja : imported.fotosLoja),
+            medidaComCaixa: overwriteExisting ? (imported.medidaComCaixa || cur.medidaComCaixa || ft?.medidaComCaixa || '') : (cur.medidaComCaixa || ft?.medidaComCaixa || imported.medidaComCaixa || ''),
+            pesoComCaixa: overwriteExisting ? (imported.pesoComCaixa || cur.pesoComCaixa || ft?.pesoComCaixa || '') : (cur.pesoComCaixa || ft?.pesoComCaixa || imported.pesoComCaixa || ''),
+            mlItemIdVinculado: imported.mlItemId,
+          };
+
+          await supaWrite('ecommerce_overrides', 'POST', {
+            channel_id: 'site',
+            ft_id: item.ftId,
+            settings: mergedSettings,
+          }, {}, 'channel_id,ft_id');
+
+          nextSiteOverrides[item.ftId] = mergedSettings;
+        } catch (err) {
+          console.warn(`[Batch ML Import Site] Falha em ${item.mlItemId} -> ${item.ftId}:`, err);
+          errors++;
+        }
+        done++;
+        setBatchSiteImportStatus({ total: selectedItems.length, done, errors });
+      }
+
+      setOverrides((prev) => ({ ...prev, site: nextSiteOverrides }));
+      setShowSiteMlBatchModal(false);
+      alert(`✅ Vínculos salvos e importação concluída! Importados: ${done - errors} | Erros: ${errors}`);
+    } finally {
+      setBatchSiteImportStatus(null);
+    }
   };
 
   const handleAddCategoria = async (e) => {
@@ -1351,8 +1381,7 @@ export default function Vendas() {
                      </button>
                      <button
                        type="button"
-                       onClick={handleBatchImportSiteFromMl}
-                       disabled={Boolean(batchSiteImportStatus)}
+                       onClick={() => setShowSiteMlBatchModal(true)}
                        style={{
                          background: 'rgba(251, 191, 36, 0.1)',
                          color: '#D97706',
@@ -1361,14 +1390,12 @@ export default function Vendas() {
                          padding: '0.48rem 0.9rem',
                          fontWeight: 700,
                          fontSize: '0.82rem',
-                         cursor: batchSiteImportStatus ? 'wait' : 'pointer',
+                         cursor: 'pointer',
                          whiteSpace: 'nowrap'
                        }}
-                       title="Puxar fotos, descrições, medidas e pesos do Mercado Livre para os produtos vinculados"
+                       title="Abrir lista de anúncios do Mercado Livre para vincular às FTs e importar fotos/descrições"
                      >
-                       {batchSiteImportStatus
-                         ? `⏳ Importando ML (${batchSiteImportStatus.done}/${batchSiteImportStatus.total})...`
-                         : '⬇️ Importar Dados ML (Lote)'}
+                       🛍️ Vincular &amp; Importar do ML
                      </button>
                    </>
                  )}
@@ -2183,6 +2210,18 @@ export default function Vendas() {
         onSeedCategorias={handleSeedCategorias}
         onToggleAtivo={handleToggleCatAtivo}
         onDeleteCategoria={handleDeleteCategoria}
+      />
+
+      <SiteMlBatchImportModal
+        isOpen={showSiteMlBatchModal}
+        onClose={() => setShowSiteMlBatchModal(false)}
+        mlListings={mlListings}
+        savedFts={savedFts}
+        siteOverrides={overrides.site || {}}
+        onSyncMlList={handleSyncMlListForSite}
+        syncingMlList={syncingMlList}
+        onRunBatchImport={handleRunSiteMlBatchImport}
+        batchStatus={batchSiteImportStatus}
       />
     </div>
   );
