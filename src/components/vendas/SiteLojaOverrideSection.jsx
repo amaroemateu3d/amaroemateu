@@ -16,6 +16,8 @@ export default function SiteLojaOverrideSection({
   allMlListings = [],
   onImportFromMl,
   importingMl = false,
+  onPullVariationPhotosFromMl,
+  onUploadVariationPhoto,
 }) {
   const [selectedMlId, setSelectedMlId] = useState('');
   const fotos = Array.isArray(customData.fotosLoja) ? customData.fotosLoja : [];
@@ -489,6 +491,27 @@ export default function SiteLojaOverrideSection({
                   🎨 Variações do Produto na Loja ({variacoes.length})
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  {variacoes.length > 0 && mlLinkedListings.length > 0 && onPullVariationPhotosFromMl && (
+                    <button
+                      type="button"
+                      disabled={importingMl}
+                      onClick={onPullVariationPhotosFromMl}
+                      style={{
+                        padding: '4px 9px',
+                        borderRadius: '7px',
+                        border: '1px solid rgba(5,150,105,0.35)',
+                        background: 'rgba(5,150,105,0.1)',
+                        color: '#059669',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: importingMl ? 'wait' : 'pointer',
+                        opacity: importingMl ? 0.65 : 1,
+                      }}
+                      title="Cruza o nome de cada variação com os anúncios vinculados do Mercado Livre e baixa a foto específica de cada cor/modelo"
+                    >
+                      {importingMl ? 'Buscando...' : '🖼️ Puxar Fotos do ML'}
+                    </button>
+                  )}
                   {ftVars.length > 0 && (
                     <button
                       type="button"
@@ -552,14 +575,43 @@ export default function SiteLojaOverrideSection({
                           opacity: v.ativo === false ? 0.65 : 1,
                         }}
                       >
-                        {/* Miniatura */}
-                        <div style={{ width: '48px', height: '48px', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {/* Miniatura + Upload direto */}
+                        <label
+                          title="Clique para enviar uma foto específica para esta variação"
+                          style={{
+                            position: 'relative',
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '6px',
+                            overflow: 'hidden',
+                            border: '1px solid var(--border-color)',
+                            background: 'var(--bg-secondary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: uploadingFotos ? 'wait' : 'pointer',
+                          }}
+                        >
                           {v.foto ? (
                             <img src={v.foto} alt={v.nome || 'Var'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : (
-                            <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Sem foto</span>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', textAlign: 'center', lineHeight: 1.1 }}>+ Foto</span>
                           )}
-                        </div>
+                          <span style={{ position: 'absolute', bottom: '1px', right: '1px', background: 'rgba(15,23,42,0.75)', color: '#fff', borderRadius: '3px', padding: '0 3px', fontSize: '0.58rem' }}>
+                            📷
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            disabled={uploadingFotos}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file && onUploadVariationPhoto) onUploadVariationPhoto(file, idx);
+                              e.target.value = '';
+                            }}
+                            style={{ display: 'none' }}
+                          />
+                        </label>
 
                         {/* Campos */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '6px', alignItems: 'center' }}>

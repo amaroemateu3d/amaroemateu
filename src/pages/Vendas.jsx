@@ -12,6 +12,7 @@ import {
   uploadLojaPhotoFile,
   findMlListingsForFt,
   importMlDataForFt,
+  fetchVariationPhotosFromMl,
 } from '../services/lojaAdmin';
 import MlFtMappingModal from '../components/vendas/MlFtMappingModal';
 import SiteCategoriasModal from '../components/vendas/SiteCategoriasModal';
@@ -953,6 +954,66 @@ export default function Vendas() {
       alert('Erro ao importar do Mercado Livre: ' + err.message);
     } finally {
       setImportingSiteMl(false);
+    }
+  };
+
+  const handlePullVariationPhotosFromMl = async () => {
+    if (!editingOverride) return;
+    const empresaId = profile?.empresa_id;
+    if (!empresaId) return alert('Empresa não identificada.');
+    const variacoes = editingOverride.customData?.variacoesLoja || [];
+    if (variacoes.length === 0) return alert('Adicione ou puxe as variações primeiro.');
+    const linked = findMlListingsForFt(mlListings, editingOverride.ftBase?.indiceFt);
+    if (linked.length === 0) return alert('Nenhum anúncio do Mercado Livre está vinculado a esta FT.');
+
+    setImportingSiteMl(true);
+    try {
+      const { updated, matchedCount } = await fetchVariationPhotosFromMl({
+        ftId: editingOverride.ftBase.indiceFt,
+        empresaId,
+        variacoes,
+        mlLinkedListings: linked,
+      });
+      setEditingOverride(prev => ({
+        ...prev,
+        customData: {
+          ...prev.customData,
+          variacoesLoja: updated,
+        }
+      }));
+      if (matchedCount > 0) {
+        alert(`✅ ${matchedCount} de ${variacoes.length} variação(ões) receberam foto do Mercado Livre! Clique em "Salvar Substituição Local" para gravar.`);
+      } else {
+        alert('Nenhuma variação foi encontrada nos títulos/atributos dos anúncios vinculados. Você pode subir uma foto manualmente em cada variação.');
+      }
+    } catch (err) {
+      alert('Erro ao buscar fotos das variações no ML: ' + err.message);
+    } finally {
+      setImportingSiteMl(false);
+    }
+  };
+
+  const handleUploadVariationPhoto = async (file, varIdx) => {
+    if (!editingOverride || !file) return;
+    const empresaId = profile?.empresa_id;
+    if (!empresaId) return alert('Empresa não identificada.');
+    setUploadingSiteFotos(true);
+    try {
+      const url = await uploadLojaPhotoFile(file, empresaId, editingOverride.ftBase.indiceFt);
+      setEditingOverride(prev => {
+        const list = Array.isArray(prev.customData?.variacoesLoja) ? [...prev.customData.variacoesLoja] : [];
+        if (list[varIdx]) {
+          list[varIdx] = { ...list[varIdx], foto: url };
+        }
+        return {
+          ...prev,
+          customData: { ...prev.customData, variacoesLoja: list }
+        };
+      });
+    } catch (err) {
+      alert('Erro ao enviar foto da variação: ' + err.message);
+    } finally {
+      setUploadingSiteFotos(false);
     }
   };
 
@@ -1911,6 +1972,8 @@ export default function Vendas() {
                             allMlListings={mlListings}
                             onImportFromMl={handleImportSiteFromMl}
                             importingMl={importingSiteMl}
+                            onPullVariationPhotosFromMl={handlePullVariationPhotosFromMl}
+                            onUploadVariationPhoto={handleUploadVariationPhoto}
                           />
                         )}
 

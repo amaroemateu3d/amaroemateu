@@ -318,6 +318,116 @@ export async function importMlDataForFt({ mlItemId, ftId, empresaId, copyPhotosT
   };
 }
 
+/**
+ * Busca fotos de alta resolução no Mercado Livre para cada variação cadastrada,
+ * cruzando pelo nome da variação com os anúncios vinculados (ou variações internas do ML),
+ * e espelha cada foto para o bucket 'produtos' no Supabase Storage.
+ */
+export async function fetchVariationPhotosFromMl({ ftId, empresaId, variacoes = [], mlLinkedListings = [] }) {
+  if (!Array.isArray(variacoes) || variacoes.length === 0) return { updated: [], matchedCount: 0 };
+  if (!Array.isArray(mlLinkedListings) || mlLinkedListings.length === 0) return { updated: variacoes, matchedCount: 0 };
+
+  const normalize = (s) =>
+    String(s || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
+  const headers = await getMlAuthHeaders(empresaId);
+  const itemCache = new Map();
+
+  const getItemDetails = async (mlItemId) => {
+    if (itemCache.has(mlItemId)) return itemCache.get(mlItemId);
+    try {
+      const data = await mlProxyFetch(`/items/${encodeURIComponent(mlItemId)}?include_attributes=all`, { headers });
+      itemCache.set(mlItemId, data);
+      return data;
+    } catch {
+      itemCache.set(mlItemId, null);
+      return null;
+    }
+  };
+
+  let matchedCount = 0;
+  const updated = await Promise.all(
+    variacoes.map(async (v, idx) => {
+      const normName = normalize(v.nome);
+      const tokens = normName.split(/[\s/|,-]+/).filter((t) => t.length >= 2);
+      const varEstId = String(v.variacaoEstoqueId || '').trim();
+
+      let rawPhotoUrl = '';
+
+      // 1. Tenta casar pelo vínculo explícito __var__<variacaoEstoqueId>
+      if (varEstId) {
+        const byVarLink = mlLinkedListings.find((l) => String(l.ft_id || '').endsWith(`__var__${varEstId}`));
+        if (byVarLink) {
+          const itemData = await getItemDetails(byVarLink.ml_item_id);
+          rawPhotoUrl =
+            itemData?.pictures?.[0]?.secure_url ||
+            itemData?.pictures?.[0]?.url ||
+            (byVarLink.thumbnail_url || '').replace(/-I\.(jpg|jpeg|webp)$/i, '-O.$1');
+        }
+      }
+
+      // 2. Tenta casar dentro de variations[] de um anúncio ML único
+      if (!rawPhotoUrl && normName) {
+        for (const l of mlLinkedListings) {
+          const lVars = Array.isArray(l.variations) ? l.variations : [];
+          const foundVar = lVars.find((lv) => {
+            const attrVals = Array.isArray(lv.attributes)
+              ? lv.attributes.map((a) => normalize(a.value_name || a.name)).join(' ')
+              : '';
+            return attrVals && (attrVals.includes(normName) || (tokens.length > 0 && tokens.every((t) => attrVals.includes(t))));
+          });
+          if (foundVar) {
+            const itemData = await getItemDetails(l.ml_item_id);
+            const mlVar = Array.isArray(itemData?.variations)
+              ? itemData.variations.find((mv) => String(mv.id) === String(foundVar.id))
+              : null;
+            const picId = mlVar?.picture_ids?.[0];
+            const picObj = picId && Array.isArray(itemData?.pictures)
+              ? itemData.pictures.find((p) => p.id === picId)
+              : null;
+            rawPhotoUrl =
+              picObj?.secure_url ||
+              picObj?.url ||
+              (foundVar.thumbnail_url || '').replace(/-I\.(jpg|jpeg|webp)$/i, '-O.$1');
+            break;
+          }
+        }
+      }
+
+      // 3. Tenta casar pelo título de anúncios ML separados por cor/modelo
+      if (!rawPhotoUrl && tokens.length > 0) {
+        const matchedListing = mlLinkedListings.find((l) => {
+          const normTitle = normalize(l.title);
+          return normTitle.includes(normName) || tokens.every((t) => new RegExp(`(^|[^a-z0-9])${t}([^a-z0-9]|$)`, 'i').test(normTitle));
+        });
+        if (matchedListing) {
+          const itemData = await getItemDetails(matchedListing.ml_item_id);
+          rawPhotoUrl =
+            itemData?.pictures?.[0]?.secure_url ||
+            itemData?.pictures?.[0]?.url ||
+            (matchedListing.thumbnail_url || '').replace(/-I\.(jpg|jpeg|webp)$/i, '-O.$1');
+        }
+      }
+
+      if (!rawPhotoUrl) return v;
+
+      matchedCount++;
+      const cleanUrl = rawPhotoUrl.replace(/^http:\/\//i, 'https://');
+      const mirrored = empresaId
+        ? (await mirrorExternalImageToStorage(cleanUrl, empresaId, ftId, `var_${idx}_${Date.now()}`)) || cleanUrl
+        : cleanUrl;
+
+      return { ...v, foto: mirrored };
+    })
+  );
+
+  return { updated, matchedCount };
+}
+
 // ============================================================================
 // SINCRONIZAÇÃO COM ABA SITE PRÓPRIO (ecommerce_overrides channel_id = 'site')
 // ============================================================================
