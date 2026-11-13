@@ -334,7 +334,11 @@ export async function fetchVariationPhotosFromMl({ ftId, empresaId, variacoes = 
       .toLowerCase()
       .trim();
 
-  const headers = await getMlAuthHeaders(empresaId);
+  const token = await getValidMlToken(empresaId);
+  if (!token?.access_token) {
+    throw new Error('Mercado Livre não está conectado. Conecte na aba Estoque → Anúncios Mercado Livre.');
+  }
+  const headers = { Authorization: `Bearer ${token.access_token}` };
   const itemCache = new Map();
 
   const getItemDetails = async (mlItemId) => {
