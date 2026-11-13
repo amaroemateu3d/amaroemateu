@@ -37,29 +37,56 @@ export default function SiteLojaOverrideSection({
           <span>Anúncio no Site Próprio (aem3d.com.br)</span>
         </h4>
 
-        <label
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '7px',
-            padding: '5px 11px',
-            borderRadius: '8px',
-            border: customData.cadastrado ? '1.5px solid #10B981' : '1px solid var(--border-color)',
-            background: customData.cadastrado ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-secondary)',
-            cursor: 'pointer',
-            fontWeight: 700,
-            fontSize: '0.82rem',
-            color: customData.cadastrado ? '#059669' : 'var(--text-primary)',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={Boolean(customData.cadastrado)}
-            onChange={(e) => onChange({ target: { name: 'cadastrado', value: e.target.checked } })}
-            style={{ width: '15px', height: '15px', accentColor: '#10B981', cursor: 'pointer' }}
-          />
-          <span>Anunciar no Site (No Ar)</span>
-        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <label
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '5px 11px',
+              borderRadius: '8px',
+              border: customData.destaqueLoja ? '1.5px solid #F59E0B' : '1px solid var(--border-color)',
+              background: customData.destaqueLoja ? 'rgba(245, 158, 11, 0.12)' : 'var(--bg-secondary)',
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              color: customData.destaqueLoja ? '#D97706' : 'var(--text-primary)',
+            }}
+            title="Exibir este produto no carrossel de destaques da página inicial"
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(customData.destaqueLoja)}
+              onChange={(e) => onChange({ target: { name: 'destaqueLoja', value: e.target.checked } })}
+              style={{ width: '15px', height: '15px', accentColor: '#F59E0B', cursor: 'pointer' }}
+            />
+            <span>⭐ Destaque no Carrossel</span>
+          </label>
+
+          <label
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '5px 11px',
+              borderRadius: '8px',
+              border: customData.cadastrado ? '1.5px solid #10B981' : '1px solid var(--border-color)',
+              background: customData.cadastrado ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-secondary)',
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              color: customData.cadastrado ? '#059669' : 'var(--text-primary)',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(customData.cadastrado)}
+              onChange={(e) => onChange({ target: { name: 'cadastrado', value: e.target.checked } })}
+              style={{ width: '15px', height: '15px', accentColor: '#10B981', cursor: 'pointer' }}
+            />
+            <span>Anunciar no Site (No Ar)</span>
+          </label>
+        </div>
       </div>
 
       {/* Importar do Mercado Livre */}

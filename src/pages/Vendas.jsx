@@ -847,7 +847,7 @@ export default function Vendas() {
   const handleOverrideChange = (e) => {
     const { name, value } = e.target;
     let safeVal = value;
-    const textOrComplexFields = ['sku', 'tituloLoja', 'descricaoLoja', 'medidaComCaixa', 'cadastrado', 'categoriasLoja', 'fotosLoja'];
+    const textOrComplexFields = ['sku', 'tituloLoja', 'descricaoLoja', 'medidaComCaixa', 'cadastrado', 'destaqueLoja', 'categoriasLoja', 'fotosLoja'];
     if (!textOrComplexFields.includes(name) && typeof value === 'string') safeVal = value.replace(',', '.');
 
     setEditingOverride(prev => {
@@ -1098,7 +1098,7 @@ export default function Vendas() {
       'sku', 'custoEmbalagem', 'custoExtra', 'custoEnvio', 'custoEnvioPerc',
       'taxaFixaVenda', 'impostosNF', 'taxaMLPerc', 'precoVendaManual',
       'precoAnuncio', 'precoRankeamento',
-      'tituloLoja', 'descricaoLoja', 'categoriasLoja', 'fotosLoja',
+      'tituloLoja', 'descricaoLoja', 'categoriasLoja', 'fotosLoja', 'destaqueLoja',
       'medidaComCaixa', 'pesoComCaixa', 'mlItemIdVinculado'
     ];
     const finalOps = {};
@@ -1565,6 +1565,11 @@ export default function Vendas() {
                           )}
                           {activeChannel === 'site' && (
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
+                              {channelFt.destaqueLoja && (
+                                <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.16)', color: '#D97706', fontWeight: 700 }} title="Destaque no Carrossel">
+                                  ⭐ Carrossel
+                                </span>
+                              )}
                               {channelFt.fotosLoja?.length > 0 ? (
                                 <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: '#059669', fontWeight: 700 }}>
                                   📷 {channelFt.fotosLoja.length}
