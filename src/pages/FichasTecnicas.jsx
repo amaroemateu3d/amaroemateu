@@ -6,6 +6,18 @@ import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { Loader } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
+import { fetchStoredMlListings } from '../services/mercadolivre';
+import {
+  fetchLojaCategorias,
+  createLojaCategoria,
+  seedDefaultLojaCategorias,
+  toggleLojaCategoriaAtivo,
+  deleteLojaCategoria,
+  uploadLojaPhotoFile,
+  findMlListingsForFt,
+  importMlDataForFt,
+  syncFtAnunciarSiteOverride,
+} from '../services/lojaAdmin';
 import './FichasTecnicas.css';
 
 const INITIAL_STATE = {
@@ -28,6 +40,14 @@ const INITIAL_STATE = {
   pesoSemCaixa: '',
   medidaComCaixa: '',
   pesoComCaixa: '',
+
+  // Loja Própria / Site
+  anunciarSite: false,
+  tituloLoja: '',
+  descricaoLoja: '',
+  categoriasLoja: [],
+  fotosLoja: [],
+  mlItemIdVinculado: '',
 };
 
 const getNextFtId = (listaAtual) => {
@@ -67,10 +87,30 @@ export default function FichasTecnicas() {
   const [selectInsumoIndex, setSelectInsumoIndex] = useState(null);
   const [newInsumo, setNewInsumo] = useState({ nome: '', valor: '' });
 
+  // Estados da Loja Própria (Categorias, Fotos, Importação ML)
+  const [categorias, setCategorias] = useState([]);
+  const [showCategoriasManager, setShowCategoriasManager] = useState(false);
+  const [newCategoriaName, setNewCategoriaName] = useState('');
+  const [mlListings, setMlListings] = useState([]);
+  const [uploadingFotos, setUploadingFotos] = useState(false);
+  const [importingMl, setImportingMl] = useState(false);
+  const [batchImportStatus, setBatchImportStatus] = useState(null);
+
+  const loadCategorias = async () => {
+    try {
+      const list = await fetchLojaCategorias();
+      setCategorias(list);
+    } catch (e) {
+      console.error('Erro ao buscar categorias da loja:', e);
+    }
+  };
+
   useEffect(() => {
     fetchFichas();
     fetchInsumos();
     fetchFilamentos();
+    loadCategorias();
+    fetchStoredMlListings(profile?.empresa_id).then(setMlListings).catch(() => {});
 
     const channelFts = supabase
       .channel('realtime-fichas')
@@ -368,11 +408,208 @@ export default function FichasTecnicas() {
       return;
     }
 
-    if (typeof value === 'string' && name !== 'nomePeca' && name !== 'sku') {
+    const textFields = ['nomePeca', 'sku', 'tituloLoja', 'descricaoLoja', 'extraNome1', 'extraNome2', 'extraNome3', 'medidaSemCaixa', 'medidaComCaixa'];
+    if (typeof value === 'string' && !textFields.includes(name)) {
       value = value.replace(',', '.');
     }
 
     setInputs(prev => ({ ...prev, [name]: value }));
+  };
+
+  // --- Handlers da Loja Própria & Importação ML ---
+  const handleToggleCategoria = (catId) => {
+    setInputs(prev => {
+      const atual = Array.isArray(prev.categoriasLoja) ? prev.categoriasLoja : [];
+      const existe = atual.includes(catId);
+      return {
+        ...prev,
+        categoriasLoja: existe ? atual.filter(id => id !== catId) : [...atual, catId]
+      };
+    });
+  };
+
+  const handleUploadFotos = async (files) => {
+    if (!files?.length) return;
+    const empresaId = profile?.empresa_id;
+    if (!empresaId) return alert('Empresa não identificada.');
+    const currentFotos = Array.isArray(inputs.fotosLoja) ? inputs.fotosLoja : [];
+    const remaining = Math.max(0, 8 - currentFotos.length);
+    if (remaining === 0) return alert('Limite máximo de 8 fotos por produto.');
+
+    setUploadingFotos(true);
+    try {
+      const toUpload = files.slice(0, remaining);
+      const uploadedUrls = [];
+      for (const file of toUpload) {
+        const url = await uploadLojaPhotoFile(file, empresaId, inputs.indiceFt);
+        uploadedUrls.push(url);
+      }
+      setInputs(prev => ({
+        ...prev,
+        fotosLoja: [...(Array.isArray(prev.fotosLoja) ? prev.fotosLoja : []), ...uploadedUrls]
+      }));
+    } catch (e) {
+      alert('Erro ao enviar foto(s): ' + e.message);
+    } finally {
+      setUploadingFotos(false);
+    }
+  };
+
+  const handleRemoveFoto = (idx) => {
+    setInputs(prev => ({
+      ...prev,
+      fotosLoja: (prev.fotosLoja || []).filter((_, i) => i !== idx)
+    }));
+  };
+
+  const handleMoveFoto = (idx, dir) => {
+    setInputs(prev => {
+      const arr = [...(prev.fotosLoja || [])];
+      const target = idx + dir;
+      if (target < 0 || target >= arr.length) return prev;
+      [arr[idx], arr[target]] = [arr[target], arr[idx]];
+      return { ...prev, fotosLoja: arr };
+    });
+  };
+
+  const handleImportFromMl = async (mlItemId) => {
+    if (!mlItemId) return;
+    setImportingMl(true);
+    try {
+      const imported = await importMlDataForFt({
+        mlItemId,
+        ftId: inputs.indiceFt,
+        empresaId: profile?.empresa_id,
+        copyPhotosToStorage: true,
+      });
+
+      setInputs(prev => ({
+        ...prev,
+        tituloLoja: prev.tituloLoja || imported.tituloLoja || prev.nomePeca,
+        descricaoLoja: imported.descricaoLoja || prev.descricaoLoja,
+        fotosLoja: imported.fotosLoja?.length ? imported.fotosLoja : prev.fotosLoja,
+        medidaComCaixa: imported.medidaComCaixa || prev.medidaComCaixa,
+        pesoComCaixa: imported.pesoComCaixa || prev.pesoComCaixa,
+        mlItemIdVinculado: imported.mlItemId,
+      }));
+
+      alert(`✅ Importado do ML (${imported.mlItemId}): ${imported.fotosLoja?.length || 0} foto(s)${imported.descricaoLoja ? ', descrição' : ''}${imported.medidaComCaixa ? ', medidas' : ''}${imported.pesoComCaixa ? ' e peso' : ''}. Clique em "Salvar Ficha Técnica" para gravar.`);
+    } catch (e) {
+      alert('Erro ao importar do Mercado Livre: ' + e.message);
+    } finally {
+      setImportingMl(false);
+    }
+  };
+
+  const handleBatchImportFromMl = async () => {
+    const empresaId = profile?.empresa_id;
+    if (!empresaId) return alert('Empresa não identificada.');
+    if (!mlListings.length) return alert('Nenhum anúncio do Mercado Livre sincronizado ainda. Sincronize primeiro em Estoque → Anúncios Mercado Livre.');
+
+    const candidates = savedFts.filter(ft => {
+      const linked = findMlListingsForFt(mlListings, ft.indiceFt);
+      return linked.length > 0 && !(ft.fotosLoja?.length > 0 && ft.descricaoLoja);
+    });
+
+    if (candidates.length === 0) {
+      return alert('Todas as FTs vinculadas ao Mercado Livre já possuem fotos e descrição cadastradas!');
+    }
+
+    if (!window.confirm(`Foram encontradas ${candidates.length} FT(s) vinculadas ao Mercado Livre sem fotos/descrição completas.\n\nDeseja importar fotos, descrições, medidas e pesos automaticamente para todas elas agora?`)) {
+      return;
+    }
+
+    setBatchImportStatus({ total: candidates.length, done: 0, errors: 0 });
+    let done = 0;
+    let errors = 0;
+    const updatedList = [...savedFts];
+
+    for (const ft of candidates) {
+      try {
+        const linked = findMlListingsForFt(mlListings, ft.indiceFt);
+        const imported = await importMlDataForFt({
+          mlItemId: linked[0].ml_item_id,
+          ftId: ft.indiceFt,
+          empresaId,
+          copyPhotosToStorage: true,
+        });
+
+        const merged = {
+          ...ft,
+          tituloLoja: ft.tituloLoja || imported.tituloLoja || ft.nomePeca,
+          descricaoLoja: ft.descricaoLoja || imported.descricaoLoja,
+          fotosLoja: ft.fotosLoja?.length ? ft.fotosLoja : imported.fotosLoja,
+          medidaComCaixa: ft.medidaComCaixa || imported.medidaComCaixa,
+          pesoComCaixa: ft.pesoComCaixa || imported.pesoComCaixa,
+          mlItemIdVinculado: imported.mlItemId,
+        };
+
+        const { error } = await supabase
+          .from('fichas_tecnicas')
+          .upsert(
+            { id: merged.indiceFt, name: merged.nomePeca, cost: merged._custoFinal, data: merged, empresa_id: empresaId },
+            { onConflict: 'id,empresa_id' }
+          );
+
+        if (error) throw error;
+
+        const idx = updatedList.findIndex(x => x.indiceFt === ft.indiceFt);
+        if (idx >= 0) updatedList[idx] = merged;
+      } catch (err) {
+        console.warn(`[Batch ML Import] Falha na FT ${ft.indiceFt}:`, err);
+        errors++;
+      }
+      done++;
+      setBatchImportStatus({ total: candidates.length, done, errors });
+    }
+
+    setSavedFts(updatedList);
+    setBatchImportStatus(null);
+    alert(`✅ Importação em lote concluída! Processadas: ${done} | Erros: ${errors}`);
+  };
+
+  const handleAddCategoria = async (e) => {
+    e.preventDefault();
+    if (!newCategoriaName.trim()) return;
+    try {
+      await createLojaCategoria({
+        empresaId: profile?.empresa_id,
+        nome: newCategoriaName,
+        ordem: categorias.length + 1,
+      });
+      setNewCategoriaName('');
+      await loadCategorias();
+    } catch (err) {
+      alert('Erro ao criar categoria: ' + err.message);
+    }
+  };
+
+  const handleSeedCategorias = async () => {
+    try {
+      await seedDefaultLojaCategorias(profile?.empresa_id);
+      await loadCategorias();
+    } catch (err) {
+      alert('Erro ao criar categorias iniciais: ' + err.message);
+    }
+  };
+
+  const handleToggleCatAtivo = async (cat) => {
+    try {
+      await toggleLojaCategoriaAtivo(cat.id, !cat.ativo);
+      await loadCategorias();
+    } catch (err) {
+      alert('Erro ao atualizar categoria: ' + err.message);
+    }
+  };
+
+  const handleDeleteCategoria = async (id) => {
+    if (!window.confirm('Excluir esta categoria da loja?')) return;
+    try {
+      await deleteLojaCategoria(id);
+      await loadCategorias();
+    } catch (err) {
+      alert('Erro ao excluir categoria: ' + err.message);
+    }
   };
 
   const resultados = getResultados(inputs);
@@ -483,6 +720,9 @@ export default function FichasTecnicas() {
             );
         }
 
+        // Sincroniza o checkbox "Anunciar no Site Próprio" com a aba Site Próprio em Vendas
+        await syncFtAnunciarSiteOverride(ftData.indiceFt, Boolean(ftData.anunciarSite));
+
         // PESSIMISTIC UPDATE: Atualiza a UI só após o BD confirmar
         setSavedFts(novaLista);
         setTimeout(() => {
@@ -499,6 +739,12 @@ export default function FichasTecnicas() {
             extraNome3: '', extraValor3: '',
             medidaSemCaixa: '', pesoSemCaixa: '',
             medidaComCaixa: '', pesoComCaixa: '',
+            anunciarSite: false,
+            tituloLoja: '',
+            descricaoLoja: '',
+            categoriasLoja: [],
+            fotosLoja: [],
+            mlItemIdVinculado: '',
             isKit: false,
             components: []
           }));
@@ -543,6 +789,12 @@ export default function FichasTecnicas() {
       extraNome3: '', extraValor3: '',
       medidaSemCaixa: '', pesoSemCaixa: '',
       medidaComCaixa: '', pesoComCaixa: '',
+      anunciarSite: false,
+      tituloLoja: '',
+      descricaoLoja: '',
+      categoriasLoja: [],
+      fotosLoja: [],
+      mlItemIdVinculado: '',
       isKit: false,
       components: []
     }));
@@ -675,7 +927,25 @@ export default function FichasTecnicas() {
           <h1 className="page-title">Mestre de Fichas Técnicas (Produção Física)</h1>
           <p className="page-description">Gerencie as propriedades físicas das peças. Precificação e vendas são definidas no painel Multi-Canal.</p>
         </div>
-        <div className="header-actions" style={{ display: 'flex', gap: '10px' }}>
+        <div className="header-actions" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            className="btn-secondary"
+            onClick={() => setShowCategoriasManager(true)}
+            style={{ border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+          >
+            🏷️ Categorias da Loja ({categorias.length})
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={handleBatchImportFromMl}
+            disabled={Boolean(batchImportStatus)}
+            style={{ border: '1px solid rgba(245, 158, 11, 0.5)', color: '#D97706', background: 'rgba(251, 191, 36, 0.08)' }}
+            title="Puxar fotos, descrições, medidas e pesos do Mercado Livre para todas as FTs vinculadas"
+          >
+            {batchImportStatus
+              ? `⏳ Importando ML (${batchImportStatus.done}/${batchImportStatus.total})...`
+              : '⬇️ Importar Dados ML (Lote)'}
+          </button>
           {activeTab === 'single' && (
             <>
               <button className="btn-secondary" onClick={handleClearForm} style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>Limpar Formulário</button>
@@ -712,8 +982,19 @@ export default function FichasTecnicas() {
               savedFts={savedFts}
               onManageInsumos={() => setShowInsumosManager(true)}
               onSelectInsumoClick={(index) => setSelectInsumoIndex(index)}
-                filamentos={filamentos}
-                onManageFilamentos={() => setShowFilamentosManager(true)}
+              filamentos={filamentos}
+              onManageFilamentos={() => setShowFilamentosManager(true)}
+              categorias={categorias}
+              onManageCategorias={() => setShowCategoriasManager(true)}
+              onToggleCategoria={handleToggleCategoria}
+              onUploadFotos={handleUploadFotos}
+              onRemoveFoto={handleRemoveFoto}
+              onMoveFoto={handleMoveFoto}
+              uploadingFotos={uploadingFotos}
+              mlLinkedListings={findMlListingsForFt(mlListings, inputs.indiceFt)}
+              allMlListings={mlListings}
+              onImportFromMl={handleImportFromMl}
+              importingMl={importingMl}
             />
           </div>
           <div className="fichas-right">
@@ -871,7 +1152,21 @@ export default function FichasTecnicas() {
                         <span style={{ color: 'var(--text-secondary)', opacity: 0.45, fontSize: '0.8rem' }}>—</span>
                       )}
                     </td>
-                    <td style={{fontWeight: '600'}}>{ft.nomePeca}</td>
+                    <td style={{fontWeight: '600'}}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span>{ft.nomePeca}</span>
+                        {ft.anunciarSite && (
+                          <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 7px', borderRadius: '999px', background: 'rgba(16, 185, 129, 0.14)', color: '#059669' }}>
+                            🌐 No Site
+                          </span>
+                        )}
+                        {ft.fotosLoja?.length > 0 && (
+                          <span style={{ fontSize: '0.7rem', fontWeight: 600, padding: '2px 6px', borderRadius: '6px', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                            📷 {ft.fotosLoja.length}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td>R$ {ft._custoFinal?.toFixed(2)}</td>
                     <td style={{textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '10px'}}>
                       <button onClick={() => handleEdit(ft)} style={{color: 'var(--accent-primary)', fontWeight: 'bold'}} className="btn-icon">✏️ Editar</button>
@@ -1072,6 +1367,90 @@ export default function FichasTecnicas() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL GERENCIAR CATEGORIAS DA LOJA */}
+      {showCategoriasManager && (
+        <div className="modal-fullscreen" style={{ backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div className="card" style={{ width: '560px', maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: '1.5rem', background: 'var(--bg-surface)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0 }}>🏷️ Categorias da Loja (aem3d.com.br)</h3>
+              <button className="btn-icon" onClick={() => setShowCategoriasManager(false)} style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>✕</button>
+            </div>
+
+            <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', marginTop: 0, marginBottom: '1rem' }}>
+              Crie as categorias que aparecerão no menu do site. Você pode marcar <strong>várias categorias</strong> em uma mesma FT (ex: um chaveiro articulado em <em>Chaveiros</em> e <em>Articulados</em>).
+            </p>
+
+            <form onSubmit={handleAddCategoria} style={{ display: 'flex', gap: '10px', marginBottom: '1rem', alignItems: 'center' }}>
+              <input
+                type="text"
+                className="input-field"
+                value={newCategoriaName}
+                onChange={(e) => setNewCategoriaName(e.target.value)}
+                placeholder="Ex: Chaveiros, Religiosos, Natal, Articulados..."
+                style={{ flex: 1, margin: 0 }}
+                required
+              />
+              <button type="submit" className="btn-primary" style={{ padding: '0.7rem 1.1rem', whiteSpace: 'nowrap' }}>
+                + Adicionar
+              </button>
+            </form>
+
+            {categorias.length === 0 && (
+              <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
+                <button
+                  type="button"
+                  onClick={handleSeedCategorias}
+                  className="btn-secondary"
+                  style={{ border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', fontWeight: 700 }}
+                >
+                  ✨ Criar Categorias Iniciais (Chaveiros, Religiosos, Natal, Articulados, Sensoriais, Decoração, Kits)
+                </button>
+              </div>
+            )}
+
+            <div style={{ overflowY: 'auto', flex: 1, border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+                <thead style={{ background: 'var(--bg-secondary)', position: 'sticky', top: 0 }}>
+                  <tr>
+                    <th style={{ padding: '0.7rem 1rem', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>Categoria</th>
+                    <th style={{ padding: '0.7rem 1rem', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', width: '110px', textAlign: 'center' }}>Visível no Site</th>
+                    <th style={{ padding: '0.7rem 1rem', borderBottom: '1px solid var(--border-color)', width: '60px', textAlign: 'right' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categorias.map((cat) => (
+                    <tr key={cat.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>
+                        {cat.nome}
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>/{cat.slug}</div>
+                      </td>
+                      <td style={{ padding: '0.65rem 1rem', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={cat.ativo !== false}
+                          onChange={() => handleToggleCatAtivo(cat)}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#10B981' }}
+                        />
+                      </td>
+                      <td style={{ padding: '0.65rem 1rem', textAlign: 'right' }}>
+                        <button type="button" className="btn-icon" style={{ color: 'var(--danger)', padding: '4px' }} onClick={() => handleDeleteCategoria(cat.id)}>🗑️</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {categorias.length === 0 && (
+                    <tr>
+                      <td colSpan="3" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                        Nenhuma categoria cadastrada.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

@@ -1,4 +1,5 @@
-import { Settings2, Zap, PackagePlus } from 'lucide-react';
+import { useState } from 'react';
+import { Settings2, Zap, PackagePlus, Globe, Download, ImagePlus, Tag } from 'lucide-react';
 
 const InputRow = ({ label, name, type = "number", suffix = "", prefix = "", step = "any", placeholder = "", value, inputs, onChange, onChangeOverride }) => {
   const val = value !== undefined ? value : inputs[name];
@@ -84,8 +85,28 @@ const ExtraRow = ({ index, inputs, onChange, showLabels, onSelectInsumoClick }) 
   );
 };
 
-export default function FtInputs({ inputs, onChange, savedFts = [], onManageInsumos, onSelectInsumoClick, isCustomProduct = false, filamentos = [], onManageFilamentos }) {
-  
+export default function FtInputs({
+  inputs,
+  onChange,
+  savedFts = [],
+  onManageInsumos,
+  onSelectInsumoClick,
+  isCustomProduct = false,
+  filamentos = [],
+  onManageFilamentos,
+  categorias = [],
+  onManageCategorias,
+  onToggleCategoria,
+  onUploadFotos,
+  onRemoveFoto,
+  onMoveFoto,
+  uploadingFotos = false,
+  mlLinkedListings = [],
+  allMlListings = [],
+  onImportFromMl,
+  importingMl = false,
+}) {
+  const [selectedMlId, setSelectedMlId] = useState('');
   const commonProps = { inputs, onChange };
 
   return (
@@ -276,6 +297,304 @@ export default function FtInputs({ inputs, onChange, savedFts = [], onManageInsu
         </div>
         <p className="extras-hint">Cada valor é somado ao custo unitário da peça (não dividido pelo lote).</p>
       </section>
+
+      {/* SEÇÃO 4: Loja Própria / Site */}
+      {!isCustomProduct && (
+        <section className="input-section card card-full">
+          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="icon-box" style={{ background: '#EDE9FE', color: '#7C3AED' }}><Globe size={18} /></div>
+              <div>
+                <h3 style={{ margin: 0 }}>Loja Própria (aem3d.com.br)</h3>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                  Fotos, categorias e descrição exibidas no site (o preço vem da aba Vendas → Site Próprio)
+                </span>
+              </div>
+            </div>
+
+            <label
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: inputs.anunciarSite ? '1.5px solid #10B981' : '1px solid var(--border-color)',
+                background: inputs.anunciarSite ? 'rgba(16, 185, 129, 0.1)' : 'var(--bg-secondary)',
+                cursor: 'pointer',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                color: inputs.anunciarSite ? '#059669' : 'var(--text-primary)',
+              }}
+            >
+              <input
+                type="checkbox"
+                name="anunciarSite"
+                checked={Boolean(inputs.anunciarSite)}
+                onChange={(e) => onChange({ target: { name: 'anunciarSite', value: e.target.checked } })}
+                style={{ width: '16px', height: '16px', accentColor: '#10B981', cursor: 'pointer' }}
+              />
+              <span>Anunciar no Site Próprio</span>
+            </label>
+          </div>
+
+          {/* Barra de Importação do Mercado Livre */}
+          {onImportFromMl && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '10px',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                background: 'rgba(251, 191, 36, 0.08)',
+                border: '1px solid rgba(251, 191, 36, 0.35)',
+                marginBottom: '1rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '220px' }}>
+                <Download size={16} color="#D97706" />
+                {mlLinkedListings.length > 0 ? (
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+                    Vinculado ao ML: <strong>{mlLinkedListings[0].ml_item_id}</strong> — {mlLinkedListings[0].title}
+                  </span>
+                ) : (
+                  <select
+                    value={selectedMlId}
+                    onChange={(e) => setSelectedMlId(e.target.value)}
+                    style={{
+                      flex: 1,
+                      maxWidth: '380px',
+                      padding: '6px 10px',
+                      borderRadius: '7px',
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.82rem',
+                    }}
+                  >
+                    <option value="">-- Escolha um anúncio do Mercado Livre para importar --</option>
+                    {allMlListings.map((l) => (
+                      <option key={l.ml_item_id} value={l.ml_item_id}>
+                        {l.ml_item_id} — {l.title}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <button
+                type="button"
+                disabled={importingMl || (!mlLinkedListings.length && !selectedMlId)}
+                onClick={() => onImportFromMl(mlLinkedListings[0]?.ml_item_id || selectedMlId)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: importingMl ? '#94A3B8' : '#F59E0B',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  cursor: importingMl || (!mlLinkedListings.length && !selectedMlId) ? 'not-allowed' : 'pointer',
+                  opacity: (!mlLinkedListings.length && !selectedMlId) ? 0.55 : 1,
+                }}
+              >
+                {importingMl ? '⏳ Importando do ML...' : '⬇️ Puxar Fotos, Descrição e Medidas do ML'}
+              </button>
+            </div>
+          )}
+
+          {/* Título Comercial */}
+          <div className="input-group" style={{ marginBottom: '1rem' }}>
+            <label>Título Comercial no Site (se vazio, usa o Nome do Projeto/Peça)</label>
+            <div className="input-wrapper">
+              <input
+                type="text"
+                name="tituloLoja"
+                value={inputs.tituloLoja || ''}
+                onChange={onChange}
+                placeholder={inputs.nomePeca || 'Ex: Porta Batom Organizador 3D'}
+              />
+            </div>
+          </div>
+
+          {/* Categorias Múltiplas */}
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Tag size={14} /> Categorias no Site (pode marcar várias)
+              </label>
+              {onManageCategorias && (
+                <button
+                  type="button"
+                  onClick={onManageCategorias}
+                  style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '0.78rem', cursor: 'pointer', fontWeight: 700 }}
+                >
+                  ⚙️ Gerenciar Categorias
+                </button>
+              )}
+            </div>
+
+            {categorias.length === 0 ? (
+              <div style={{ padding: '10px', borderRadius: '8px', border: '1px dashed var(--border-color)', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                Nenhuma categoria criada ainda. Clique em <strong>⚙️ Gerenciar Categorias</strong> para criar (ex: Chaveiros, Religiosos, Natal, Articulados, Sensoriais).
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {categorias.filter((c) => c.ativo !== false).map((cat) => {
+                  const selected = Array.isArray(inputs.categoriasLoja) && inputs.categoriasLoja.includes(cat.id);
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => onToggleCategoria && onToggleCategoria(cat.id)}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '999px',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        border: selected ? '1.5px solid #7C3AED' : '1px solid var(--border-color)',
+                        background: selected ? 'rgba(124, 58, 237, 0.14)' : 'var(--bg-secondary)',
+                        color: selected ? '#7C3AED' : 'var(--text-secondary)',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {selected ? '✓ ' : ''}{cat.nome}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Descrição */}
+          <div className="input-group" style={{ marginBottom: '1rem' }}>
+            <label>Descrição do Produto para a Loja</label>
+            <textarea
+              name="descricaoLoja"
+              rows={4}
+              value={inputs.descricaoLoja || ''}
+              onChange={onChange}
+              placeholder="Descreva material, acabamento, uso, tamanho aproximado..."
+              style={{
+                width: '100%',
+                padding: '0.7rem 0.85rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-primary)',
+                color: 'var(--text-primary)',
+                fontSize: '0.88rem',
+                resize: 'vertical',
+                fontFamily: 'inherit',
+              }}
+            />
+          </div>
+
+          {/* Fotos do Produto (até 8) */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Fotos do Produto ({(inputs.fotosLoja || []).length}/8) — a 1ª foto é a capa na loja
+              </label>
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '5px 12px',
+                  borderRadius: '8px',
+                  background: 'var(--accent-primary)',
+                  color: '#fff',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: uploadingFotos ? 'wait' : 'pointer',
+                  opacity: uploadingFotos ? 0.65 : 1,
+                }}
+              >
+                <ImagePlus size={14} />
+                {uploadingFotos ? 'Enviando...' : '+ Adicionar Fotos'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={uploadingFotos}
+                  onChange={(e) => {
+                    if (e.target.files?.length && onUploadFotos) {
+                      onUploadFotos(Array.from(e.target.files));
+                    }
+                    e.target.value = '';
+                  }}
+                  style={{ display: 'none' }}
+                />
+              </label>
+            </div>
+
+            {(inputs.fotosLoja || []).length === 0 ? (
+              <div style={{ padding: '14px', borderRadius: '8px', border: '1px dashed var(--border-color)', textAlign: 'center', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                Nenhuma foto adicionada ainda. Você pode enviar fotos do computador ou puxar direto do Mercado Livre acima.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: '10px' }}>
+                {(inputs.fotosLoja || []).map((url, idx) => (
+                  <div
+                    key={`${url}_${idx}`}
+                    style={{
+                      position: 'relative',
+                      borderRadius: '8px',
+                      border: idx === 0 ? '2px solid #7C3AED' : '1px solid var(--border-color)',
+                      overflow: 'hidden',
+                      background: 'var(--bg-secondary)',
+                      aspectRatio: '1 / 1',
+                    }}
+                  >
+                    <img src={url} alt={`Foto ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    {idx === 0 && (
+                      <span style={{ position: 'absolute', top: '4px', left: '4px', background: '#7C3AED', color: '#fff', fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px' }}>
+                        CAPA
+                      </span>
+                    )}
+                    <div style={{ position: 'absolute', bottom: '4px', left: '4px', right: '4px', display: 'flex', justifyContent: 'space-between', gap: '3px' }}>
+                      <div style={{ display: 'flex', gap: '3px' }}>
+                        {idx > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => onMoveFoto && onMoveFoto(idx, -1)}
+                            title="Mover para esquerda"
+                            style={{ background: 'rgba(15,23,42,0.75)', color: '#fff', border: 'none', borderRadius: '4px', padding: '1px 5px', fontSize: '0.7rem', cursor: 'pointer' }}
+                          >
+                            ←
+                          </button>
+                        )}
+                        {idx < (inputs.fotosLoja || []).length - 1 && (
+                          <button
+                            type="button"
+                            onClick={() => onMoveFoto && onMoveFoto(idx, 1)}
+                            title="Mover para direita"
+                            style={{ background: 'rgba(15,23,42,0.75)', color: '#fff', border: 'none', borderRadius: '4px', padding: '1px 5px', fontSize: '0.7rem', cursor: 'pointer' }}
+                          >
+                            →
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveFoto && onRemoveFoto(idx)}
+                        title="Remover foto"
+                        style={{ background: 'rgba(220,38,38,0.85)', color: '#fff', border: 'none', borderRadius: '4px', padding: '1px 6px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
     </div>
   );
