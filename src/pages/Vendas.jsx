@@ -1077,14 +1077,46 @@ export default function Vendas() {
           });
 
           const cur = nextSiteOverrides[item.ftId] || {};
+          const ftVars = Array.isArray(ft?.variacoesEstoque) ? ft.variacoesEstoque : [];
+          const buildFromFtVars = () =>
+            ftVars.map((fv, idx) => ({
+              id: `var_${fv.id || idx}_${Date.now()}_${idx}`,
+              nome: String(fv.nome || `Variação ${idx + 1}`).trim(),
+              sku: fv.sku || '',
+              foto: '',
+              estoque: Number(fv.estoqueCasa || 0) + Number(fv.estoqueGalpao || 0),
+              ativo: true,
+              variacaoEstoqueId: String(fv.id || `ftvar_${idx}`),
+            }));
+
+          let nextVariacoes = overwriteExisting
+            ? (imported.variacoesLoja?.length ? imported.variacoesLoja : (cur.variacoesLoja?.length ? cur.variacoesLoja : buildFromFtVars()))
+            : (cur.variacoesLoja?.length ? cur.variacoesLoja : (imported.variacoesLoja?.length ? imported.variacoesLoja : buildFromFtVars()));
+
+          // Se houver variações sem foto específica (ou se estiver sobrescrevendo), busca fotos individuais nos anúncios vinculados do ML
+          if (nextVariacoes.length > 0 && (overwriteExisting || nextVariacoes.some((v) => !v.foto || v.foto === (cur.fotosLoja?.[0] || imported.fotosLoja?.[0])))) {
+            const linkedForFt = findMlListingsForFt(updatedMlList, item.ftId);
+            if (linkedForFt.length > 0) {
+              try {
+                const { updated } = await fetchVariationPhotosFromMl({
+                  ftId: item.ftId,
+                  empresaId,
+                  variacoes: nextVariacoes,
+                  mlLinkedListings: linkedForFt,
+                });
+                nextVariacoes = updated;
+              } catch (varErr) {
+                console.warn(`[Batch ML Import Site] Falha ao buscar fotos das variações para ${item.ftId}:`, varErr);
+              }
+            }
+          }
+
           const mergedSettings = {
             ...cur,
             tituloLoja: overwriteExisting ? (imported.tituloLoja || cur.tituloLoja || ft?.nomePeca || '') : (cur.tituloLoja || imported.tituloLoja || ft?.nomePeca || ''),
             descricaoLoja: overwriteExisting ? (imported.descricaoLoja || cur.descricaoLoja || '') : (cur.descricaoLoja || imported.descricaoLoja || ''),
             fotosLoja: overwriteExisting ? (imported.fotosLoja?.length ? imported.fotosLoja : (cur.fotosLoja || [])) : (cur.fotosLoja?.length ? cur.fotosLoja : imported.fotosLoja),
-            variacoesLoja: overwriteExisting
-              ? (imported.variacoesLoja?.length ? imported.variacoesLoja : (cur.variacoesLoja || []))
-              : (cur.variacoesLoja?.length ? cur.variacoesLoja : (imported.variacoesLoja || [])),
+            variacoesLoja: nextVariacoes,
             medidaComCaixa: overwriteExisting ? (imported.medidaComCaixa || cur.medidaComCaixa || ft?.medidaComCaixa || '') : (cur.medidaComCaixa || ft?.medidaComCaixa || imported.medidaComCaixa || ''),
             pesoComCaixa: overwriteExisting ? (imported.pesoComCaixa || cur.pesoComCaixa || ft?.pesoComCaixa || '') : (cur.pesoComCaixa || ft?.pesoComCaixa || imported.pesoComCaixa || ''),
             mlItemIdVinculado: imported.mlItemId,
