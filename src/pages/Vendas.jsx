@@ -1583,11 +1583,15 @@ export default function Vendas() {
                                   ⚠️ Sem foto
                                 </span>
                               ) : null}
-                              {Array.isArray(channelFt.variacoesLoja) && channelFt.variacoesLoja.length > 0 && (
+                              {Array.isArray(channelFt.variacoesLoja) && channelFt.variacoesLoja.length > 0 ? (
                                 <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(37, 99, 235, 0.12)', color: '#2563EB', fontWeight: 700 }} title="Variações configuradas na loja">
                                   🎨 {channelFt.variacoesLoja.filter(v => v.ativo !== false).length} var.
                                 </span>
-                              )}
+                              ) : Array.isArray(baseFt.variacoesEstoque) && baseFt.variacoesEstoque.length > 0 ? (
+                                <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(37, 99, 235, 0.08)', color: '#3B82F6', fontWeight: 600 }} title="Variações puxadas automaticamente do Estoque da FT">
+                                  🎨 {baseFt.variacoesEstoque.length} var. (Estoque)
+                                </span>
+                              ) : null}
                               {(channelFt.categoriasLoja || []).map(catId => {
                                 const cat = lojaCategorias.find(c => c.id === catId);
                                 if (!cat) return null;
