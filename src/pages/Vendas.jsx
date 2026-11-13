@@ -125,6 +125,64 @@ export default function Vendas() {
   const [apenasComPreco, setApenasComPreco] = useState(false);
   const [filterCadastrados, setFilterCadastrados] = useState(false);
   const [mainSort, setMainSort] = useState({ key: null, dir: 'desc' });
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
+
+  // Visibilidade de colunas persistida no localStorage
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('vendas_visible_columns');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      noAr: true,
+      statusAtivo: true,
+      regras: true,
+      id: true,
+      produto: true,
+      categorias: true,
+      peso: true,
+      prod: true,
+      venda: true,
+      custoFinal: true,
+      preco: true,
+      margem: true,
+      lucro: true,
+      qty: true,
+      acoes: true,
+    };
+  });
+
+  const toggleColumnVisibility = (colKey) => {
+    setVisibleColumns(prev => {
+      const next = { ...prev, [colKey]: !prev[colKey] };
+      try {
+        localStorage.setItem('vendas_visible_columns', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleQuickToggleCategory = async (ftId, catId) => {
+    const nov = { ...overrides };
+    if (!nov.site) nov.site = {};
+    const cur = nov.site[ftId] || {};
+    const curCats = Array.isArray(cur.categoriasLoja) ? cur.categoriasLoja : [];
+    const exists = curCats.includes(catId);
+    const nextCats = exists ? curCats.filter(id => id !== catId) : [...curCats, catId];
+
+    const updatedSettings = {
+      ...cur,
+      categoriasLoja: nextCats,
+    };
+    nov.site[ftId] = updatedSettings;
+    setOverrides(nov);
+
+    await supaWrite('ecommerce_overrides', 'POST', {
+      channel_id: 'site',
+      ft_id: ftId,
+      settings: updatedSettings,
+    }, {}, 'channel_id,ft_id');
+  };
 
   const handleMainSort = (key) => {
     setMainSort(prev => {
@@ -1544,38 +1602,120 @@ export default function Vendas() {
                    💡 Marque a coluna <strong>"No Ar"</strong> para fixar os produtos à venda no topo da lista de <strong>{CHANNELS.find(c => c.id === activeChannel)?.label}</strong>.
                  </span>
                </div>
-               <div className="search-bar" style={{maxWidth: '300px'}}>
-                  <span className="search-icon">🔍</span>
-                  <input type="text" placeholder="Buscar peça ou código..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-               </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowColumnPicker(p => !p)}
+                      style={{
+                        background: showColumnPicker ? 'var(--accent-primary)' : 'var(--bg-surface)',
+                        color: showColumnPicker ? '#fff' : 'var(--text-primary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '8px',
+                        padding: '0.45rem 0.8rem',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        whiteSpace: 'nowrap'
+                      }}
+                      title="Escolher quais colunas exibir na tabela"
+                    >
+                      👁️ Colunas
+                    </button>
+                    {showColumnPicker && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          right: 0,
+                          top: '100%',
+                          marginTop: '6px',
+                          background: 'var(--bg-surface)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '10px',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                          padding: '10px 14px',
+                          zIndex: 50,
+                          minWidth: '220px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px'
+                        }}
+                      >
+                        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '2px' }}>
+                          Exibir Colunas
+                        </div>
+                        {[
+                          { key: 'noAr', label: 'No Ar' },
+                          { key: 'statusAtivo', label: 'Status (✅)' },
+                          { key: 'regras', label: 'Regras (⚙️)' },
+                          { key: 'id', label: 'ID' },
+                          { key: 'produto', label: 'Produto' },
+                          ...(activeChannel === 'site' ? [{ key: 'categorias', label: 'Categorias do Site' }] : []),
+                          { key: 'peso', label: 'Peso' },
+                          { key: 'prod', label: 'Custo Produção' },
+                          { key: 'venda', label: 'Despesas Venda' },
+                          { key: 'custoFinal', label: 'Custo Final' },
+                          { key: 'preco', label: 'Valor de Venda' },
+                          { key: 'margem', label: '% Margem' },
+                          { key: 'lucro', label: 'Lucro' },
+                          { key: 'qty', label: 'Quantidade' },
+                          { key: 'acoes', label: 'Ações' },
+                        ].map(col => (
+                          <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', cursor: 'pointer', userSelect: 'none' }}>
+                            <input
+                              type="checkbox"
+                              checked={visibleColumns[col.key] !== false}
+                              onChange={() => toggleColumnVisibility(col.key)}
+                            />
+                            <span>{col.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="search-bar" style={{maxWidth: '300px', margin: 0}}>
+                     <span className="search-icon">🔍</span>
+                     <input type="text" placeholder="Buscar peça ou código..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                  </div>
+                </div>
             </div>
             <table className="fts-table">
               <thead>
                 <tr>
                   <th style={{textAlign: 'center'}}><input type="checkbox" onChange={toggleSelectAll} checked={selectedFts.length === savedFts.length && savedFts.length > 0} /></th>
-                  <th style={{textAlign: 'center', width: '50px'}} title="Marcar se o produto está cadastrado à venda nesta plataforma">No Ar</th>
-                  <th style={{textAlign: 'center', width: '40px'}} title="Status Ativo na Plataforma">✅</th>
-                  <th style={{textAlign: 'center', width: '40px'}} title="Regras Customizadas no Canal">⚙️</th>
-                  <th className="col-id" onClick={() => handleMainSort('id')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por ID">ID{renderMainSortArrow('id')}</th>
-                  <th className="col-product" onClick={() => handleMainSort('nome')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Produto">Produto{renderMainSortArrow('nome')}</th>
-                  <th className="col-time" onClick={() => handleMainSort('peso')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Peso">Peso{renderMainSortArrow('peso')}</th>
-                  <th className="col-cost" onClick={() => handleMainSort('prod')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Custo de Produção">Prod.{renderMainSortArrow('prod')}</th>
-                  <th className="col-sell" onClick={() => handleMainSort('venda')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Despesas de Venda">Venda{renderMainSortArrow('venda')}</th>
-                  <th className="col-final" onClick={() => handleMainSort('custoFinal')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Custo Final">Custo Final{renderMainSortArrow('custoFinal')}</th>
-                  <th className="col-price" style={{color: 'var(--text-secondary)', textAlign: 'center'}}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', lineHeight: '1.1', color: 'var(--text-secondary)' }}>
-                      <span onClick={() => handleMainSort('precoVenda')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Valor de Venda">VALOR DE:</span>
-                      <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 90px', gap: '8px', fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 700, width: '100%', textAlign: 'center' }}>
-                        <span onClick={() => handleMainSort('precoCadastro')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Cadastro">CADASTRO{renderMainSortArrow('precoCadastro')}</span>
-                        <span onClick={() => handleMainSort('precoVenda')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Valor de Venda">VENDA{renderMainSortArrow('precoVenda')}</span>
-                        <span onClick={() => handleMainSort('precoQueima')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Queima">QUEIMA{renderMainSortArrow('precoQueima')}</span>
+                  {visibleColumns.noAr !== false && <th style={{textAlign: 'center', width: '50px'}} title="Marcar se o produto está cadastrado à venda nesta plataforma">No Ar</th>}
+                  {visibleColumns.statusAtivo !== false && <th style={{textAlign: 'center', width: '40px'}} title="Status Ativo na Plataforma">✅</th>}
+                  {visibleColumns.regras !== false && <th style={{textAlign: 'center', width: '40px'}} title="Regras Customizadas no Canal">⚙️</th>}
+                  {visibleColumns.id !== false && <th className="col-id" onClick={() => handleMainSort('id')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por ID">ID{renderMainSortArrow('id')}</th>}
+                  {visibleColumns.produto !== false && <th className="col-product" onClick={() => handleMainSort('nome')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Produto">Produto{renderMainSortArrow('nome')}</th>}
+                  {activeChannel === 'site' && visibleColumns.categorias !== false && (
+                    <th style={{ minWidth: '170px' }} title="Categorias vinculadas na loja virtual">
+                      Categorias no Site
+                    </th>
+                  )}
+                  {visibleColumns.peso !== false && <th className="col-time" onClick={() => handleMainSort('peso')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Peso">Peso{renderMainSortArrow('peso')}</th>}
+                  {visibleColumns.prod !== false && <th className="col-cost" onClick={() => handleMainSort('prod')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Custo de Produção">Prod.{renderMainSortArrow('prod')}</th>}
+                  {visibleColumns.venda !== false && <th className="col-sell" onClick={() => handleMainSort('venda')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Despesas de Venda">Venda{renderMainSortArrow('venda')}</th>}
+                  {visibleColumns.custoFinal !== false && <th className="col-final" onClick={() => handleMainSort('custoFinal')} style={{cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Custo Final">Custo Final{renderMainSortArrow('custoFinal')}</th>}
+                  {visibleColumns.preco !== false && (
+                    <th className="col-price" style={{color: 'var(--text-secondary)', textAlign: 'center'}}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', lineHeight: '1.1', color: 'var(--text-secondary)' }}>
+                        <span onClick={() => handleMainSort('precoVenda')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Valor de Venda">VALOR DE:</span>
+                        <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 90px', gap: '8px', fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 700, width: '100%', textAlign: 'center' }}>
+                          <span onClick={() => handleMainSort('precoCadastro')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Cadastro">CADASTRO{renderMainSortArrow('precoCadastro')}</span>
+                          <span onClick={() => handleMainSort('precoVenda')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Valor de Venda">VENDA{renderMainSortArrow('precoVenda')}</span>
+                          <span onClick={() => handleMainSort('precoQueima')} style={{cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)'}} title="Clique para ordenar por Queima">QUEIMA{renderMainSortArrow('precoQueima')}</span>
+                        </div>
                       </div>
-                    </div>
-                  </th>
-                  <th className="col-marg" onClick={() => handleMainSort('margem')} style={{color: 'var(--success)', cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por % Margem">% Marg.{renderMainSortArrow('margem')}</th>
-                  <th className="col-profit" onClick={() => handleMainSort('lucro')} style={{color: 'var(--success)', cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Lucro">Lucro{renderMainSortArrow('lucro')}</th>
-                  <th className="col-qty" onClick={() => handleMainSort('qty')} style={{textAlign: 'center', cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Quantidade">Qtd.{renderMainSortArrow('qty')}</th>
-                  <th className="col-actions" style={{textAlign: 'right'}}>Ações</th>
+                    </th>
+                  )}
+                  {visibleColumns.margem !== false && <th className="col-marg" onClick={() => handleMainSort('margem')} style={{color: 'var(--success)', cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por % Margem">% Marg.{renderMainSortArrow('margem')}</th>}
+                  {visibleColumns.lucro !== false && <th className="col-profit" onClick={() => handleMainSort('lucro')} style={{color: 'var(--success)', cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Lucro">Lucro{renderMainSortArrow('lucro')}</th>}
+                  {visibleColumns.qty !== false && <th className="col-qty" onClick={() => handleMainSort('qty')} style={{textAlign: 'center', cursor: 'pointer', userSelect: 'none'}} title="Clique para ordenar por Quantidade">Qtd.{renderMainSortArrow('qty')}</th>}
+                  {visibleColumns.acoes !== false && <th className="col-actions" style={{textAlign: 'right'}}>Ações</th>}
                 </tr>
               </thead>
               <tbody>
@@ -1636,145 +1776,192 @@ export default function Vendas() {
                   return (
                     <tr key={baseFt.indiceFt} className={selectedFts.includes(baseFt.indiceFt) ? 'row-selected' : ''} style={isCadastrado ? {background: 'rgba(16, 185, 129, 0.04)'} : {}}>
                       <td style={{textAlign: 'center'}}><input type="checkbox" checked={selectedFts.includes(baseFt.indiceFt)} onChange={() => toggleSelect(baseFt.indiceFt)} /></td>
-                      <td style={{textAlign: 'center'}}>
-                        <input
-                          type="checkbox"
-                          checked={isCadastrado}
-                          onChange={() => handleToggleCadastrado(baseFt.indiceFt)}
-                          title={isCadastrado ? "Produto cadastrado nesta plataforma (clique para desmarcar)" : "Marcar como cadastrado nesta plataforma"}
-                          style={{width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--success)'}}
-                        />
-                      </td>
-                      <td style={{textAlign: 'center', width: '40px'}}>
-                        {isCadastrado ? <span className="override-badge" style={{marginLeft: 0, background: 'rgba(16, 185, 129, 0.15)', color: '#059669', borderColor: '#059669', padding: '2px 5px'}} title="Produto ativo/cadastrado nesta plataforma">✅</span> : <span style={{color: 'var(--border-color)', fontSize: '0.75rem'}}>—</span>}
-                      </td>
-                      <td style={{textAlign: 'center', width: '40px'}}>
-                        {hasCustom ? <span className="override-badge" style={{marginLeft: 0, padding: '2px 5px'}} title="Possui custos editados isoladamente para este canal.">⚙️</span> : <span style={{color: 'var(--border-color)', fontSize: '0.75rem'}}>—</span>}
-                      </td>
-                      <td><span className="badge">{baseFt.indiceFt}</span></td>
-                      <td style={{fontWeight: '600', whiteSpace: 'nowrap'}}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <span>{baseFt.nomePeca}</span>
-                          {(channelFt.sku || baseFt.sku) && (
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontFamily: 'monospace', fontWeight: 600 }}>
-                              🏷️ SKU: {channelFt.sku || baseFt.sku}
-                            </span>
-                          )}
-                          {activeChannel === 'site' && (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
-                              {channelFt.destaqueLoja && (
-                                <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.16)', color: '#D97706', fontWeight: 700 }} title="Destaque no Carrossel">
-                                  ⭐ Carrossel
-                                </span>
-                              )}
-                              {channelFt.fotosLoja?.length > 0 ? (
-                                <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: '#059669', fontWeight: 700 }}>
-                                  📷 {channelFt.fotosLoja.length}
-                                </span>
-                              ) : isCadastrado ? (
-                                <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.12)', color: '#DC2626', fontWeight: 700 }}>
-                                  ⚠️ Sem foto
-                                </span>
-                              ) : null}
-                              {Array.isArray(channelFt.variacoesLoja) && channelFt.variacoesLoja.length > 0 ? (
-                                <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(37, 99, 235, 0.12)', color: '#2563EB', fontWeight: 700 }} title="Variações configuradas na loja">
-                                  🎨 {channelFt.variacoesLoja.filter(v => v.ativo !== false).length} var.
-                                </span>
-                              ) : Array.isArray(baseFt.variacoesEstoque) && baseFt.variacoesEstoque.length > 0 ? (
-                                <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(37, 99, 235, 0.08)', color: '#3B82F6', fontWeight: 600 }} title="Variações puxadas automaticamente do Estoque da FT">
-                                  🎨 {baseFt.variacoesEstoque.length} var. (Estoque)
-                                </span>
-                              ) : null}
-                              {(channelFt.categoriasLoja || []).map(catId => {
-                                const cat = lojaCategorias.find(c => c.id === catId);
-                                if (!cat) return null;
-                                return (
-                                  <span key={catId} style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: '999px', background: 'rgba(124, 58, 237, 0.12)', color: '#7C3AED', fontWeight: 600 }}>
-                                    {cat.nome}
+                      {visibleColumns.noAr !== false && (
+                        <td style={{textAlign: 'center'}}>
+                          <input
+                            type="checkbox"
+                            checked={isCadastrado}
+                            onChange={() => handleToggleCadastrado(baseFt.indiceFt)}
+                            title={isCadastrado ? "Produto cadastrado nesta plataforma (clique para desmarcar)" : "Marcar como cadastrado nesta plataforma"}
+                            style={{width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--success)'}}
+                          />
+                        </td>
+                      )}
+                      {visibleColumns.statusAtivo !== false && (
+                        <td style={{textAlign: 'center', width: '40px'}}>
+                          {isCadastrado ? <span className="override-badge" style={{marginLeft: 0, background: 'rgba(16, 185, 129, 0.15)', color: '#059669', borderColor: '#059669', padding: '2px 5px'}} title="Produto ativo/cadastrado nesta plataforma">✅</span> : <span style={{color: 'var(--border-color)', fontSize: '0.75rem'}}>—</span>}
+                        </td>
+                      )}
+                      {visibleColumns.regras !== false && (
+                        <td style={{textAlign: 'center', width: '40px'}}>
+                          {hasCustom ? <span className="override-badge" style={{marginLeft: 0, padding: '2px 5px'}} title="Possui custos editados isoladamente para este canal.">⚙️</span> : <span style={{color: 'var(--border-color)', fontSize: '0.75rem'}}>—</span>}
+                        </td>
+                      )}
+                      {visibleColumns.id !== false && <td><span className="badge">{baseFt.indiceFt}</span></td>}
+                      {visibleColumns.produto !== false && (
+                        <td style={{fontWeight: '600', whiteSpace: 'nowrap'}}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span>{baseFt.nomePeca}</span>
+                            {(channelFt.sku || baseFt.sku) && (
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontFamily: 'monospace', fontWeight: 600 }}>
+                                🏷️ SKU: {channelFt.sku || baseFt.sku}
+                              </span>
+                            )}
+                            {activeChannel === 'site' && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
+                                {channelFt.destaqueLoja && (
+                                  <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.16)', color: '#D97706', fontWeight: 700 }} title="Destaque no Carrossel">
+                                    ⭐ Carrossel
                                   </span>
+                                )}
+                                {channelFt.fotosLoja?.length > 0 ? (
+                                  <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: '#059669', fontWeight: 700 }}>
+                                    📷 {channelFt.fotosLoja.length}
+                                  </span>
+                                ) : isCadastrado ? (
+                                  <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.12)', color: '#DC2626', fontWeight: 700 }}>
+                                    ⚠️ Sem foto
+                                  </span>
+                                ) : null}
+                                {Array.isArray(channelFt.variacoesLoja) && channelFt.variacoesLoja.length > 0 ? (
+                                  <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(37, 99, 235, 0.12)', color: '#2563EB', fontWeight: 700 }} title="Variações configuradas na loja">
+                                    🎨 {channelFt.variacoesLoja.filter(v => v.ativo !== false).length} var.
+                                  </span>
+                                ) : Array.isArray(baseFt.variacoesEstoque) && baseFt.variacoesEstoque.length > 0 ? (
+                                  <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(37, 99, 235, 0.08)', color: '#3B82F6', fontWeight: 600 }} title="Variações puxadas automaticamente do Estoque da FT">
+                                    🎨 {baseFt.variacoesEstoque.length} var. (Estoque)
+                                  </span>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                      {activeChannel === 'site' && visibleColumns.categorias !== false && (
+                        <td style={{ minWidth: '170px' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+                            {lojaCategorias.length === 0 ? (
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Sem categorias criadas</span>
+                            ) : (
+                              lojaCategorias.map(cat => {
+                                const isChecked = (channelFt.categoriasLoja || []).includes(cat.id);
+                                return (
+                                  <button
+                                    key={cat.id}
+                                    type="button"
+                                    onClick={() => handleQuickToggleCategory(baseFt.indiceFt, cat.id)}
+                                    style={{
+                                      border: isChecked ? '1px solid #7C3AED' : '1px solid var(--border-color)',
+                                      background: isChecked ? 'rgba(124, 58, 237, 0.14)' : 'var(--bg-secondary)',
+                                      color: isChecked ? '#7C3AED' : 'var(--text-secondary)',
+                                      fontWeight: isChecked ? 700 : 500,
+                                      fontSize: '0.68rem',
+                                      padding: '2px 7px',
+                                      borderRadius: '999px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px'
+                                    }}
+                                    title={isChecked ? `Remover da categoria "${cat.nome}"` : `Adicionar à categoria "${cat.nome}"`}
+                                  >
+                                    <span>{isChecked ? '✓' : '+'}</span>
+                                    <span>{cat.nome}</span>
+                                  </button>
                                 );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td style={{color: 'var(--text-secondary)', whiteSpace: 'nowrap'}}>{pesoUnit}g</td>
-                      <td style={{color: 'var(--text-secondary)', whiteSpace: 'nowrap'}}>R$ {res.despesasProducao.toFixed(2)}</td>
-                      <td style={{color: 'var(--danger)', whiteSpace: 'nowrap'}}>R$ {res.despesasVenda.toFixed(2)}</td>
-                      <td style={{whiteSpace: 'nowrap'}}><strong>R$ {res.custoUnitario.toFixed(2)}</strong></td>
-                      <td>
-                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-                           <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 90px', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', justifyContent: 'center' }}>
-                             {channelFt.precoVendaManual ? (
-                               <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Cadastro / Anúncio (Venda / 0,70)">R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</span>
-                             ) : (
-                               <span className="mini-price-tag" style={{ textAlign: 'center', opacity: 0.45 }}>—</span>
-                             )}
-                             <PriceInput 
-                                initialValue={channelFt.precoVendaManual} 
-                                onSave={(val) => handlePriceChange(baseFt.indiceFt, val)} 
-                             />
-                             {channelFt.precoVendaManual ? (
-                               <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Queima / Rankeamento (Margem 0%)">R$ {(() => {
-                                  const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(channelFt.taxaFixaVenda);
-                                  const aliquotasPerc = (parseNumber(channelFt.impostosNF) + parseNumber(channelFt.taxaMLPerc) + parseNumber(channelFt.custoEnvioPerc)) / 100;
-                                  const rankVal = aliquotasPerc < 1 ? custosFixos / (1 - aliquotasPerc) : 0;
-                                  return String(rankVal.toFixed(2)).replace('.', ',');
-                               })()}</span>
-                             ) : (
-                               <span className="mini-price-tag" style={{ textAlign: 'center', opacity: 0.45 }}>—</span>
+                              })
+                            )}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.peso !== false && <td style={{color: 'var(--text-secondary)', whiteSpace: 'nowrap'}}>{pesoUnit}g</td>}
+                      {visibleColumns.prod !== false && <td style={{color: 'var(--text-secondary)', whiteSpace: 'nowrap'}}>R$ {res.despesasProducao.toFixed(2)}</td>}
+                      {visibleColumns.venda !== false && <td style={{color: 'var(--danger)', whiteSpace: 'nowrap'}}>R$ {res.despesasVenda.toFixed(2)}</td>}
+                      {visibleColumns.custoFinal !== false && <td style={{whiteSpace: 'nowrap'}}><strong>R$ {res.custoUnitario.toFixed(2)}</strong></td>}
+                      {visibleColumns.preco !== false && (
+                        <td>
+                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                             <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 90px', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', justifyContent: 'center' }}>
+                               {channelFt.precoVendaManual ? (
+                                 <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Cadastro / Anúncio (Venda / 0,70)">R$ {String((parseNumber(channelFt.precoVendaManual) / 0.7).toFixed(2)).replace('.', ',')}</span>
+                               ) : (
+                                 <span className="mini-price-tag" style={{ textAlign: 'center', opacity: 0.45 }}>—</span>
+                               )}
+                               <PriceInput 
+                                  initialValue={channelFt.precoVendaManual} 
+                                  onSave={(val) => handlePriceChange(baseFt.indiceFt, val)} 
+                               />
+                               {channelFt.precoVendaManual ? (
+                                 <span className="mini-price-tag" style={{ textAlign: 'center' }} title="Valor de Queima / Rankeamento (Margem 0%)">R$ {(() => {
+                                    const custosFixos = res.custoFisicoUnit + res.custosExtras + parseNumber(channelFt.taxaFixaVenda);
+                                    const aliquotasPerc = (parseNumber(channelFt.impostosNF) + parseNumber(channelFt.taxaMLPerc) + parseNumber(channelFt.custoEnvioPerc)) / 100;
+                                    const rankVal = aliquotasPerc < 1 ? custosFixos / (1 - aliquotasPerc) : 0;
+                                    return String(rankVal.toFixed(2)).replace('.', ',');
+                                 })()}</span>
+                               ) : (
+                                 <span className="mini-price-tag" style={{ textAlign: 'center', opacity: 0.45 }}>—</span>
+                               )}
+                             </div>
+                             {precoRealVenda && (
+                               <div
+                                 style={{
+                                   fontSize: '0.68rem',
+                                   color: '#047857',
+                                   background: 'rgba(16, 185, 129, 0.12)',
+                                   border: '1px solid rgba(16, 185, 129, 0.35)',
+                                   borderRadius: '4px',
+                                   padding: '1px 6px',
+                                   fontWeight: 700,
+                                   cursor: 'help'
+                                 }}
+                                 title={`Vendido no Mercado Livre por R$ ${String(Number(precoRealVenda).toFixed(2)).replace('.', ',')}. Despesas, % Margem e Lucro estão calculados sobre este valor real!`}
+                               >
+                                 📦 ML Real: R$ {String(Number(precoRealVenda).toFixed(2)).replace('.', ',')}
+                               </div>
                              )}
                            </div>
-                           {precoRealVenda && (
-                             <div
-                               style={{
-                                 fontSize: '0.68rem',
-                                 color: '#047857',
-                                 background: 'rgba(16, 185, 129, 0.12)',
-                                 border: '1px solid rgba(16, 185, 129, 0.35)',
-                                 borderRadius: '4px',
-                                 padding: '1px 6px',
-                                 fontWeight: 700,
-                                 cursor: 'help'
-                               }}
-                               title={`Vendido no Mercado Livre por R$ ${String(Number(precoRealVenda).toFixed(2)).replace('.', ',')}. Despesas, % Margem e Lucro estão calculados sobre este valor real!`}
-                             >
-                               📦 ML Real: R$ {String(Number(precoRealVenda).toFixed(2)).replace('.', ',')}
-                             </div>
-                           )}
-                         </div>
-                      </td>
-                      <td style={{whiteSpace: 'nowrap'}}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                          <strong style={{color: res.margemContribuicaoPerc > 0 ? 'var(--success)' : (res.margemContribuicaoPerc === 0 ? 'var(--text-secondary)' : 'var(--danger)')}}>
-                            {res.margemContribuicaoPerc.toFixed(1)}%
-                          </strong>
-                          {precoRealVenda && (
-                            <span style={{ fontSize: '0.62rem', color: '#059669', fontWeight: 600 }} title="Calculado sobre o valor real vendido no Mercado Livre">
-                              (s/ ML real)
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td style={{whiteSpace: 'nowrap'}}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                          <strong style={{color: res.lucroLiquido >= 0 ? 'var(--success)' : 'var(--danger)'}}>
-                            R$ {res.lucroLiquido.toFixed(2)}
-                          </strong>
-                          {precoRealVenda && (
-                            <span style={{ fontSize: '0.62rem', color: '#059669', fontWeight: 600 }} title="Calculado sobre o valor real vendido no Mercado Livre">
-                              (s/ ML real)
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td style={{textAlign: 'center'}}>
-                         <QtyInput 
-                            initialValue={qty === 0 ? '' : qty} 
-                            onSave={(val) => handleQtyChange(baseFt.indiceFt, val)} 
-                         />
-                      </td>
-                      <td style={{textAlign: 'right'}}><div style={{display: 'flex', gap: '8px', justifyContent: 'flex-end'}}><button className="btn-icon sync-btn" title="Sincronizar esta FT" onClick={() => handleSync(baseFt.indiceFt)}><RefreshCw size={14} /></button><button className="btn-icon adjust-btn" onClick={() => handleOpenOverride(baseFt)} title="Config. do Canal"><Settings size={16} /></button></div></td>
+                        </td>
+                      )}
+                      {visibleColumns.margem !== false && (
+                        <td style={{whiteSpace: 'nowrap'}}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <strong style={{color: res.margemContribuicaoPerc > 0 ? 'var(--success)' : (res.margemContribuicaoPerc === 0 ? 'var(--text-secondary)' : 'var(--danger)')}}>
+                              {res.margemContribuicaoPerc.toFixed(1)}%
+                            </strong>
+                            {precoRealVenda && (
+                              <span style={{ fontSize: '0.62rem', color: '#059669', fontWeight: 600 }} title="Calculado sobre o valor real vendido no Mercado Livre">
+                                (s/ ML real)
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.lucro !== false && (
+                        <td style={{whiteSpace: 'nowrap'}}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <strong style={{color: res.lucroLiquido >= 0 ? 'var(--success)' : 'var(--danger)'}}>
+                              R$ {res.lucroLiquido.toFixed(2)}
+                            </strong>
+                            {precoRealVenda && (
+                              <span style={{ fontSize: '0.62rem', color: '#059669', fontWeight: 600 }} title="Calculado sobre o valor real vendido no Mercado Livre">
+                                (s/ ML real)
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.qty !== false && (
+                        <td style={{textAlign: 'center'}}>
+                           <QtyInput 
+                              initialValue={qty === 0 ? '' : qty} 
+                              onSave={(val) => handleQtyChange(baseFt.indiceFt, val)} 
+                           />
+                        </td>
+                      )}
+                      {visibleColumns.acoes !== false && (
+                        <td style={{textAlign: 'right'}}><div style={{display: 'flex', gap: '8px', justifyContent: 'flex-end'}}><button className="btn-icon sync-btn" title="Sincronizar esta FT" onClick={() => handleSync(baseFt.indiceFt)}><RefreshCw size={14} /></button><button className="btn-icon adjust-btn" onClick={() => handleOpenOverride(baseFt)} title="Config. do Canal"><Settings size={16} /></button></div></td>
+                      )}
                     </tr>
                   )
                 })}
