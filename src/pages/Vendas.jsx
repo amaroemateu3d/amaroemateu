@@ -1,9 +1,21 @@
 import { useState, useEffect } from 'react';
 import { getResultados, parseNumber, getCustoUnitario, getUnitProductionTime, formatTime } from '../utils/financeCalculators';
 import { Settings, Save, X, Printer, CheckCircle2, RefreshCw, Loader, ShoppingBag, Link2 } from 'lucide-react';
-import { fetchMlPaidOrdersForMonth, parseFtTargetKey } from '../services/mercadolivre';
+import { fetchMlPaidOrdersForMonth, parseFtTargetKey, fetchStoredMlListings } from '../services/mercadolivre';
 import { fetchShopeePaidOrdersForMonth } from '../services/shopee';
+import {
+  fetchLojaCategorias,
+  createLojaCategoria,
+  seedDefaultLojaCategorias,
+  toggleLojaCategoriaAtivo,
+  deleteLojaCategoria,
+  uploadLojaPhotoFile,
+  findMlListingsForFt,
+  importMlDataForFt,
+} from '../services/lojaAdmin';
 import MlFtMappingModal from '../components/vendas/MlFtMappingModal';
+import SiteCategoriasModal from '../components/vendas/SiteCategoriasModal';
+import SiteLojaOverrideSection from '../components/vendas/SiteLojaOverrideSection';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import './Vendas.css';
@@ -136,6 +148,29 @@ export default function Vendas() {
   const [shopeeSalesModal, setShopeeSalesModal] = useState(null);
   const [shopeeUnmappedModal, setShopeeUnmappedModal] = useState({ open: false, items: [], pendingResult: null });
   const [applyingShopeeSales, setApplyingShopeeSales] = useState(false);
+
+  // Estados da Loja Própria (aba Site Próprio)
+  const [lojaCategorias, setLojaCategorias] = useState([]);
+  const [showCategoriasModal, setShowCategoriasModal] = useState(false);
+  const [newCategoriaName, setNewCategoriaName] = useState('');
+  const [mlListings, setMlListings] = useState([]);
+  const [uploadingSiteFotos, setUploadingSiteFotos] = useState(false);
+  const [importingSiteMl, setImportingSiteMl] = useState(false);
+  const [batchSiteImportStatus, setBatchSiteImportStatus] = useState(null);
+
+  const loadLojaCategorias = async () => {
+    try {
+      const list = await fetchLojaCategorias();
+      setLojaCategorias(list);
+    } catch (err) {
+      console.error('Erro ao buscar categorias da loja:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadLojaCategorias();
+    fetchStoredMlListings(profile?.empresa_id).then(setMlListings).catch(() => {});
+  }, [profile?.empresa_id]);
 
   const buildMlSalesPreview = (result) => {
     const byFt = {};
@@ -809,7 +844,8 @@ export default function Vendas() {
   const handleOverrideChange = (e) => {
     const { name, value } = e.target;
     let safeVal = value;
-    if (name !== 'sku' && typeof value === 'string') safeVal = value.replace(',', '.');
+    const textOrComplexFields = ['sku', 'tituloLoja', 'descricaoLoja', 'medidaComCaixa', 'cadastrado', 'categoriasLoja', 'fotosLoja'];
+    if (!textOrComplexFields.includes(name) && typeof value === 'string') safeVal = value.replace(',', '.');
 
     setEditingOverride(prev => {
       const updatedData = { ...prev.customData, [name]: safeVal };
@@ -817,9 +853,224 @@ export default function Vendas() {
     });
   };
 
+  const handleToggleSiteCategoria = (catId) => {
+    setEditingOverride(prev => {
+      const atual = Array.isArray(prev.customData.categoriasLoja) ? prev.customData.categoriasLoja : [];
+      const existe = atual.includes(catId);
+      return {
+        ...prev,
+        customData: {
+          ...prev.customData,
+          categoriasLoja: existe ? atual.filter(id => id !== catId) : [...atual, catId]
+        }
+      };
+    });
+  };
+
+  const handleUploadSiteFotos = async (files) => {
+    if (!files?.length || !editingOverride) return;
+    const empresaId = profile?.empresa_id;
+    if (!empresaId) return alert('Empresa não identificada.');
+    const currentFotos = Array.isArray(editingOverride.customData.fotosLoja) ? editingOverride.customData.fotosLoja : [];
+    const remaining = Math.max(0, 8 - currentFotos.length);
+    if (remaining === 0) return alert('Limite máximo de 8 fotos por produto.');
+
+    setUploadingSiteFotos(true);
+    try {
+      const toUpload = files.slice(0, remaining);
+      const uploadedUrls = [];
+      for (const file of toUpload) {
+        const url = await uploadLojaPhotoFile(file, empresaId, editingOverride.ftBase.indiceFt);
+        uploadedUrls.push(url);
+      }
+      setEditingOverride(prev => ({
+        ...prev,
+        customData: {
+          ...prev.customData,
+          fotosLoja: [...(Array.isArray(prev.customData.fotosLoja) ? prev.customData.fotosLoja : []), ...uploadedUrls]
+        }
+      }));
+    } catch (err) {
+      alert('Erro ao enviar foto(s): ' + err.message);
+    } finally {
+      setUploadingSiteFotos(false);
+    }
+  };
+
+  const handleRemoveSiteFoto = (idx) => {
+    setEditingOverride(prev => ({
+      ...prev,
+      customData: {
+        ...prev.customData,
+        fotosLoja: (prev.customData.fotosLoja || []).filter((_, i) => i !== idx)
+      }
+    }));
+  };
+
+  const handleMoveSiteFoto = (idx, dir) => {
+    setEditingOverride(prev => {
+      const arr = [...(prev.customData.fotosLoja || [])];
+      const target = idx + dir;
+      if (target < 0 || target >= arr.length) return prev;
+      [arr[idx], arr[target]] = [arr[target], arr[idx]];
+      return {
+        ...prev,
+        customData: { ...prev.customData, fotosLoja: arr }
+      };
+    });
+  };
+
+  const handleImportSiteFromMl = async (mlItemId) => {
+    if (!mlItemId || !editingOverride) return;
+    setImportingSiteMl(true);
+    try {
+      const imported = await importMlDataForFt({
+        mlItemId,
+        ftId: editingOverride.ftBase.indiceFt,
+        empresaId: profile?.empresa_id,
+        copyPhotosToStorage: true,
+      });
+
+      setEditingOverride(prev => ({
+        ...prev,
+        customData: {
+          ...prev.customData,
+          tituloLoja: prev.customData.tituloLoja || imported.tituloLoja || prev.ftBase.nomePeca,
+          descricaoLoja: imported.descricaoLoja || prev.customData.descricaoLoja,
+          fotosLoja: imported.fotosLoja?.length ? imported.fotosLoja : prev.customData.fotosLoja,
+          medidaComCaixa: imported.medidaComCaixa || prev.customData.medidaComCaixa,
+          pesoComCaixa: imported.pesoComCaixa || prev.customData.pesoComCaixa,
+          mlItemIdVinculado: imported.mlItemId,
+        }
+      }));
+
+      alert(`✅ Importado do ML (${imported.mlItemId}): ${imported.fotosLoja?.length || 0} foto(s)${imported.descricaoLoja ? ', descrição' : ''}${imported.medidaComCaixa ? ', medidas' : ''}${imported.pesoComCaixa ? ' e peso' : ''}. Clique em "Salvar Substituição Local" para gravar.`);
+    } catch (err) {
+      alert('Erro ao importar do Mercado Livre: ' + err.message);
+    } finally {
+      setImportingSiteMl(false);
+    }
+  };
+
+  const handleBatchImportSiteFromMl = async () => {
+    const empresaId = profile?.empresa_id;
+    if (!empresaId) return alert('Empresa não identificada.');
+    if (!mlListings.length) return alert('Nenhum anúncio do Mercado Livre sincronizado ainda. Sincronize primeiro em Estoque → Anúncios Mercado Livre.');
+
+    const siteOverrides = overrides.site || {};
+    const candidates = savedFts.filter(ft => {
+      const linked = findMlListingsForFt(mlListings, ft.indiceFt);
+      const cur = siteOverrides[ft.indiceFt] || {};
+      return linked.length > 0 && !(cur.fotosLoja?.length > 0 && cur.descricaoLoja);
+    });
+
+    if (candidates.length === 0) {
+      return alert('Todos os produtos vinculados ao Mercado Livre já possuem fotos e descrição na aba Site Próprio!');
+    }
+
+    if (!window.confirm(`Foram encontrados ${candidates.length} produto(s) vinculados ao Mercado Livre sem fotos/descrição completas no Site Próprio.\n\nDeseja importar fotos, descrições, medidas e pesos automaticamente agora?`)) {
+      return;
+    }
+
+    setBatchSiteImportStatus({ total: candidates.length, done: 0, errors: 0 });
+    let done = 0;
+    let errors = 0;
+    const nextSiteOverrides = { ...siteOverrides };
+
+    for (const ft of candidates) {
+      try {
+        const linked = findMlListingsForFt(mlListings, ft.indiceFt);
+        const imported = await importMlDataForFt({
+          mlItemId: linked[0].ml_item_id,
+          ftId: ft.indiceFt,
+          empresaId,
+          copyPhotosToStorage: true,
+        });
+
+        const cur = nextSiteOverrides[ft.indiceFt] || {};
+        const mergedSettings = {
+          ...cur,
+          tituloLoja: cur.tituloLoja || imported.tituloLoja || ft.nomePeca,
+          descricaoLoja: cur.descricaoLoja || imported.descricaoLoja,
+          fotosLoja: cur.fotosLoja?.length ? cur.fotosLoja : imported.fotosLoja,
+          medidaComCaixa: cur.medidaComCaixa || ft.medidaComCaixa || imported.medidaComCaixa,
+          pesoComCaixa: cur.pesoComCaixa || ft.pesoComCaixa || imported.pesoComCaixa,
+          mlItemIdVinculado: imported.mlItemId,
+        };
+
+        await supaWrite('ecommerce_overrides', 'POST', {
+          channel_id: 'site',
+          ft_id: ft.indiceFt,
+          settings: mergedSettings,
+        }, {}, 'channel_id,ft_id');
+
+        nextSiteOverrides[ft.indiceFt] = mergedSettings;
+      } catch (err) {
+        console.warn(`[Batch ML Import Site] Falha na FT ${ft.indiceFt}:`, err);
+        errors++;
+      }
+      done++;
+      setBatchSiteImportStatus({ total: candidates.length, done, errors });
+    }
+
+    setOverrides(prev => ({ ...prev, site: nextSiteOverrides }));
+    setBatchSiteImportStatus(null);
+    alert(`✅ Importação concluída no Site Próprio! Processados: ${done} | Erros: ${errors}`);
+  };
+
+  const handleAddCategoria = async (e) => {
+    e.preventDefault();
+    if (!newCategoriaName.trim()) return;
+    try {
+      await createLojaCategoria({
+        empresaId: profile?.empresa_id,
+        nome: newCategoriaName,
+        ordem: lojaCategorias.length + 1,
+      });
+      setNewCategoriaName('');
+      await loadLojaCategorias();
+    } catch (err) {
+      alert('Erro ao criar categoria: ' + err.message);
+    }
+  };
+
+  const handleSeedCategorias = async () => {
+    try {
+      await seedDefaultLojaCategorias(profile?.empresa_id);
+      await loadLojaCategorias();
+    } catch (err) {
+      alert('Erro ao criar categorias iniciais: ' + err.message);
+    }
+  };
+
+  const handleToggleCatAtivo = async (cat) => {
+    try {
+      await toggleLojaCategoriaAtivo(cat.id, !cat.ativo);
+      await loadLojaCategorias();
+    } catch (err) {
+      alert('Erro ao atualizar categoria: ' + err.message);
+    }
+  };
+
+  const handleDeleteCategoria = async (id) => {
+    if (!window.confirm('Excluir esta categoria da loja?')) return;
+    try {
+      await deleteLojaCategoria(id);
+      await loadLojaCategorias();
+    } catch (err) {
+      alert('Erro ao excluir categoria: ' + err.message);
+    }
+  };
+
   const _doSaveOverride = async () => {
     const { ftBase, customData } = editingOverride;
-    const keysToOverride = ['sku', 'custoEmbalagem', 'custoExtra', 'custoEnvio', 'custoEnvioPerc', 'taxaFixaVenda', 'impostosNF', 'taxaMLPerc', 'precoVendaManual', 'precoAnuncio', 'precoRankeamento'];
+    const keysToOverride = [
+      'sku', 'custoEmbalagem', 'custoExtra', 'custoEnvio', 'custoEnvioPerc',
+      'taxaFixaVenda', 'impostosNF', 'taxaMLPerc', 'precoVendaManual',
+      'precoAnuncio', 'precoRankeamento',
+      'tituloLoja', 'descricaoLoja', 'categoriasLoja', 'fotosLoja',
+      'medidaComCaixa', 'pesoComCaixa', 'mlItemIdVinculado'
+    ];
     const finalOps = {};
     const defaults = channelDefaults[activeChannel] || {
       custoEmbalagem: 1.5, custoExtra: 0, custoEnvio: 0, custoEnvioPerc: 0,
@@ -839,15 +1090,17 @@ export default function Vendas() {
 
     keysToOverride.forEach(k => {
       const val = customData[k];
-      const isSet = val !== undefined && val !== null && val !== "";
-      const isDifferentFromGlobal = String(val ?? "") !== String(defaults[k] ?? "");
+      const isSet = Array.isArray(val) ? val.length > 0 : (val !== undefined && val !== null && val !== "");
+      const isDifferentFromGlobal = Array.isArray(val) ? true : String(val ?? "") !== String(defaults[k] ?? "");
       if (isSet && isDifferentFromGlobal) finalOps[k] = val;
     });
 
     const existingOps = overrides[activeChannel]?.[ftBase.indiceFt] || {};
     if (existingOps.precoRealVenda) finalOps.precoRealVenda = existingOps.precoRealVenda;
     if (existingOps.precoRealVendaMes) finalOps.precoRealVendaMes = existingOps.precoRealVendaMes;
-    if (existingOps.cadastrado) {
+    if (activeChannel === 'site') {
+      if (customData.cadastrado) finalOps.cadastrado = true;
+    } else if (existingOps.cadastrado) {
       finalOps.cadastrado = true;
     }
 
@@ -1077,6 +1330,48 @@ export default function Vendas() {
           <div className="table-responsive">
             <div style={{padding: '1.25rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem'}}>
                <div style={{display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap'}}>
+                 {activeChannel === 'site' && (
+                   <>
+                     <button
+                       type="button"
+                       onClick={() => setShowCategoriasModal(true)}
+                       style={{
+                         background: 'var(--bg-secondary)',
+                         color: 'var(--text-primary)',
+                         border: '1px solid var(--border-color)',
+                         borderRadius: '8px',
+                         padding: '0.48rem 0.9rem',
+                         fontWeight: 700,
+                         fontSize: '0.82rem',
+                         cursor: 'pointer',
+                         whiteSpace: 'nowrap'
+                       }}
+                     >
+                       🏷️ Categorias da Loja ({lojaCategorias.length})
+                     </button>
+                     <button
+                       type="button"
+                       onClick={handleBatchImportSiteFromMl}
+                       disabled={Boolean(batchSiteImportStatus)}
+                       style={{
+                         background: 'rgba(251, 191, 36, 0.1)',
+                         color: '#D97706',
+                         border: '1px solid rgba(245, 158, 11, 0.5)',
+                         borderRadius: '8px',
+                         padding: '0.48rem 0.9rem',
+                         fontWeight: 700,
+                         fontSize: '0.82rem',
+                         cursor: batchSiteImportStatus ? 'wait' : 'pointer',
+                         whiteSpace: 'nowrap'
+                       }}
+                       title="Puxar fotos, descrições, medidas e pesos do Mercado Livre para os produtos vinculados"
+                     >
+                       {batchSiteImportStatus
+                         ? `⏳ Importando ML (${batchSiteImportStatus.done}/${batchSiteImportStatus.total})...`
+                         : '⬇️ Importar Dados ML (Lote)'}
+                     </button>
+                   </>
+                 )}
                  {activeChannel === 'ml' && (
                    <button
                      onClick={() => handlePullMlSales(false)}
@@ -1240,6 +1535,28 @@ export default function Vendas() {
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontFamily: 'monospace', fontWeight: 600 }}>
                               🏷️ SKU: {channelFt.sku || baseFt.sku}
                             </span>
+                          )}
+                          {activeChannel === 'site' && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
+                              {channelFt.fotosLoja?.length > 0 ? (
+                                <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: '#059669', fontWeight: 700 }}>
+                                  📷 {channelFt.fotosLoja.length}
+                                </span>
+                              ) : isCadastrado ? (
+                                <span style={{ fontSize: '0.68rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.12)', color: '#DC2626', fontWeight: 700 }}>
+                                  ⚠️ Sem foto
+                                </span>
+                              ) : null}
+                              {(channelFt.categoriasLoja || []).map(catId => {
+                                const cat = lojaCategorias.find(c => c.id === catId);
+                                if (!cat) return null;
+                                return (
+                                  <span key={catId} style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: '999px', background: 'rgba(124, 58, 237, 0.12)', color: '#7C3AED', fontWeight: 600 }}>
+                                    {cat.nome}
+                                  </span>
+                                );
+                              })}
+                            </div>
                           )}
                         </div>
                       </td>
@@ -1532,6 +1849,25 @@ export default function Vendas() {
                             </div>
                           </div>
                         </div>
+
+                        {activeChannel === 'site' && (
+                          <SiteLojaOverrideSection
+                            customData={editingOverride.customData}
+                            ftBase={editingOverride.ftBase}
+                            onChange={handleOverrideChange}
+                            categorias={lojaCategorias}
+                            onManageCategorias={() => setShowCategoriasModal(true)}
+                            onToggleCategoria={handleToggleSiteCategoria}
+                            onUploadFotos={handleUploadSiteFotos}
+                            onRemoveFoto={handleRemoveSiteFoto}
+                            onMoveFoto={handleMoveSiteFoto}
+                            uploadingFotos={uploadingSiteFotos}
+                            mlLinkedListings={findMlListingsForFt(mlListings, editingOverride.ftBase.indiceFt)}
+                            allMlListings={mlListings}
+                            onImportFromMl={handleImportSiteFromMl}
+                            importingMl={importingSiteMl}
+                          />
+                        )}
 
                       </div>
 
@@ -1835,6 +2171,18 @@ export default function Vendas() {
         details={confirmModal.details}
         onConfirm={async () => { closeConfirm(); await confirmModal.onConfirm?.(); }}
         onCancel={closeConfirm}
+      />
+
+      <SiteCategoriasModal
+        isOpen={showCategoriasModal}
+        onClose={() => setShowCategoriasModal(false)}
+        categorias={lojaCategorias}
+        newCategoriaName={newCategoriaName}
+        setNewCategoriaName={setNewCategoriaName}
+        onAddCategoria={handleAddCategoria}
+        onSeedCategorias={handleSeedCategorias}
+        onToggleAtivo={handleToggleCatAtivo}
+        onDeleteCategoria={handleDeleteCategoria}
       />
     </div>
   );
