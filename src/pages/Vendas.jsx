@@ -18,6 +18,7 @@ import MlFtMappingModal from '../components/vendas/MlFtMappingModal';
 import SiteCategoriasModal from '../components/vendas/SiteCategoriasModal';
 import SiteLojaOverrideSection from '../components/vendas/SiteLojaOverrideSection';
 import SiteMlBatchImportModal from '../components/vendas/SiteMlBatchImportModal';
+import SitePedidosModal from '../components/vendas/SitePedidosModal';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import './Vendas.css';
@@ -218,6 +219,7 @@ export default function Vendas() {
   const [importingSiteMl, setImportingSiteMl] = useState(false);
   const [batchSiteImportStatus, setBatchSiteImportStatus] = useState(null);
   const [showSiteMlBatchModal, setShowSiteMlBatchModal] = useState(false);
+  const [showSitePedidosModal, setShowSitePedidosModal] = useState(false);
   const [syncingMlList, setSyncingMlList] = useState(false);
 
   const loadLojaCategorias = async () => {
@@ -1552,6 +1554,24 @@ export default function Vendas() {
                      >
                        🛍️ Vincular &amp; Importar do ML
                      </button>
+                     <button
+                       type="button"
+                       onClick={() => setShowSitePedidosModal(true)}
+                       style={{
+                         background: 'rgba(16, 185, 129, 0.12)',
+                         color: '#059669',
+                         border: '1px solid rgba(16, 185, 129, 0.45)',
+                         borderRadius: '8px',
+                         padding: '0.48rem 0.9rem',
+                         fontWeight: 700,
+                         fontSize: '0.82rem',
+                         cursor: 'pointer',
+                         whiteSpace: 'nowrap'
+                       }}
+                       title="Ver pedidos da loja aem3d.com.br e gerar etiquetas do Melhor Envio"
+                     >
+                       📦 Pedidos do Site &amp; Etiquetas
+                     </button>
                    </>
                  )}
                  {activeChannel === 'ml' && (
@@ -2522,6 +2542,12 @@ export default function Vendas() {
         syncingMlList={syncingMlList}
         onRunBatchImport={handleRunSiteMlBatchImport}
         batchStatus={batchSiteImportStatus}
+      />
+
+      <SitePedidosModal
+        isOpen={showSitePedidosModal}
+        onClose={() => setShowSitePedidosModal(false)}
+        empresaId={profile?.empresa_id}
       />
     </div>
   );
