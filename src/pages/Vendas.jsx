@@ -1153,8 +1153,8 @@ export default function Vendas() {
             ? (imported.variacoesLoja?.length ? imported.variacoesLoja : (cur.variacoesLoja?.length ? cur.variacoesLoja : buildFromFtVars()))
             : (cur.variacoesLoja?.length ? cur.variacoesLoja : (imported.variacoesLoja?.length ? imported.variacoesLoja : buildFromFtVars()));
 
-          // Se houver variações sem foto específica (ou se estiver sobrescrevendo), busca fotos individuais nos anúncios vinculados do ML
-          if (nextVariacoes.length > 0 && (overwriteExisting || nextVariacoes.some((v) => !v.foto || v.foto === (cur.fotosLoja?.[0] || imported.fotosLoja?.[0])))) {
+          // Se houver variações sem galeria de fotos específica (ou se estiver sobrescrevendo), busca as galerias individuais nos anúncios vinculados do ML
+          if (nextVariacoes.length > 0 && (overwriteExisting || nextVariacoes.some((v) => !v.foto || !Array.isArray(v.fotos) || v.fotos.length <= 1 || v.foto === (cur.fotosLoja?.[0] || imported.fotosLoja?.[0])))) {
             const linkedForFt = findMlListingsForFt(updatedMlList, item.ftId);
             if (linkedForFt.length > 0) {
               try {

@@ -273,21 +273,23 @@ export async function importMlDataForFt({ mlItemId, ftId, empresaId, copyPhotosT
         : null;
       const sku = String(v?.seller_custom_field || sellerSkuAttr?.value_name || '').trim();
 
-      let foto = '';
-      const firstPicId = Array.isArray(v?.picture_ids) ? v.picture_ids[0] : null;
-      if (firstPicId) {
-        if (picIdToFinalUrl.has(firstPicId)) {
-          foto = picIdToFinalUrl.get(firstPicId);
+      const picIds = (Array.isArray(v?.picture_ids) ? v.picture_ids : []).slice(0, 8);
+      const varFotos = [];
+      for (let pIdx = 0; pIdx < picIds.length; pIdx++) {
+        const picId = picIds[pIdx];
+        if (!picId) continue;
+        if (picIdToFinalUrl.has(picId)) {
+          varFotos.push(picIdToFinalUrl.get(picId));
         } else {
-          const matchedPic = allPics.find((p) => p?.id === firstPicId);
+          const matchedPic = allPics.find((p) => p?.id === picId);
           const rawUrl = (matchedPic?.secure_url || matchedPic?.url || '').replace(/^http:\/\//i, 'https://');
           if (rawUrl) {
-            if (copyPhotosToStorage && empresaId) {
-              foto = (await mirrorExternalImageToStorage(rawUrl, empresaId, ftId, `var_${v.id || vIdx}`)) || rawUrl;
-            } else {
-              foto = rawUrl;
-            }
-            picIdToFinalUrl.set(firstPicId, foto);
+            const finalUrl =
+              copyPhotosToStorage && empresaId
+                ? (await mirrorExternalImageToStorage(rawUrl, empresaId, ftId, `var_${v.id || vIdx}_${pIdx}`)) || rawUrl
+                : rawUrl;
+            picIdToFinalUrl.set(picId, finalUrl);
+            varFotos.push(finalUrl);
           }
         }
       }
@@ -297,7 +299,8 @@ export async function importMlDataForFt({ mlItemId, ftId, empresaId, copyPhotosT
         mlVariationId: v?.id ? String(v.id) : '',
         nome,
         sku,
-        foto,
+        foto: varFotos[0] || '',
+        fotos: varFotos,
         estoque: Number(v?.available_quantity ?? 0),
         ativo: true,
         variacaoEstoqueId: '',
@@ -360,22 +363,24 @@ export async function fetchVariationPhotosFromMl({ ftId, empresaId, variacoes = 
       const tokens = normName.split(/[\s/|,-]+/).filter((t) => t.length >= 2);
       const varEstId = String(v.variacaoEstoqueId || '').trim();
 
-      let rawPhotoUrl = '';
+      let rawPhotoUrls = [];
 
       // 1. Tenta casar pelo vínculo explícito __var__<variacaoEstoqueId>
       if (varEstId) {
         const byVarLink = mlLinkedListings.find((l) => String(l.ft_id || '').endsWith(`__var__${varEstId}`));
         if (byVarLink) {
           const itemData = await getItemDetails(byVarLink.ml_item_id);
-          rawPhotoUrl =
-            itemData?.pictures?.[0]?.secure_url ||
-            itemData?.pictures?.[0]?.url ||
-            (byVarLink.thumbnail_url || '').replace(/-I\.(jpg|jpeg|webp)$/i, '-O.$1');
+          const pics = Array.isArray(itemData?.pictures)
+            ? itemData.pictures.slice(0, 8).map((p) => p.secure_url || p.url).filter(Boolean)
+            : [];
+          rawPhotoUrls = pics.length > 0
+            ? pics
+            : [(byVarLink.thumbnail_url || '').replace(/-I\.(jpg|jpeg|webp)$/i, '-O.$1')].filter(Boolean);
         }
       }
 
       // 2. Tenta casar dentro de variations[] de um anúncio ML único
-      if (!rawPhotoUrl && normName) {
+      if (rawPhotoUrls.length === 0 && normName) {
         for (const l of mlLinkedListings) {
           const lVars = Array.isArray(l.variations) ? l.variations : [];
           const foundVar = lVars.find((lv) => {
@@ -389,43 +394,53 @@ export async function fetchVariationPhotosFromMl({ ftId, empresaId, variacoes = 
             const mlVar = Array.isArray(itemData?.variations)
               ? itemData.variations.find((mv) => String(mv.id) === String(foundVar.id))
               : null;
-            const picId = mlVar?.picture_ids?.[0];
-            const picObj = picId && Array.isArray(itemData?.pictures)
-              ? itemData.pictures.find((p) => p.id === picId)
-              : null;
-            rawPhotoUrl =
-              picObj?.secure_url ||
-              picObj?.url ||
-              (foundVar.thumbnail_url || '').replace(/-I\.(jpg|jpeg|webp)$/i, '-O.$1');
+            const picIds = Array.isArray(mlVar?.picture_ids) ? mlVar.picture_ids.slice(0, 8) : [];
+            const resolvedPics = picIds
+              .map((pid) => (itemData?.pictures || []).find((p) => p.id === pid))
+              .map((p) => p?.secure_url || p?.url)
+              .filter(Boolean);
+            rawPhotoUrls = resolvedPics.length > 0
+              ? resolvedPics
+              : [(foundVar.thumbnail_url || '').replace(/-I\.(jpg|jpeg|webp)$/i, '-O.$1')].filter(Boolean);
             break;
           }
         }
       }
 
       // 3. Tenta casar pelo título de anúncios ML separados por cor/modelo
-      if (!rawPhotoUrl && tokens.length > 0) {
+      if (rawPhotoUrls.length === 0 && tokens.length > 0) {
         const matchedListing = mlLinkedListings.find((l) => {
           const normTitle = normalize(l.title);
           return normTitle.includes(normName) || tokens.every((t) => new RegExp(`(^|[^a-z0-9])${t}([^a-z0-9]|$)`, 'i').test(normTitle));
         });
         if (matchedListing) {
           const itemData = await getItemDetails(matchedListing.ml_item_id);
-          rawPhotoUrl =
-            itemData?.pictures?.[0]?.secure_url ||
-            itemData?.pictures?.[0]?.url ||
-            (matchedListing.thumbnail_url || '').replace(/-I\.(jpg|jpeg|webp)$/i, '-O.$1');
+          const pics = Array.isArray(itemData?.pictures)
+            ? itemData.pictures.slice(0, 8).map((p) => p.secure_url || p.url).filter(Boolean)
+            : [];
+          rawPhotoUrls = pics.length > 0
+            ? pics
+            : [(matchedListing.thumbnail_url || '').replace(/-I\.(jpg|jpeg|webp)$/i, '-O.$1')].filter(Boolean);
         }
       }
 
-      if (!rawPhotoUrl) return v;
+      if (rawPhotoUrls.length === 0) return v;
 
       matchedCount++;
-      const cleanUrl = rawPhotoUrl.replace(/^http:\/\//i, 'https://');
-      const mirrored = empresaId
-        ? (await mirrorExternalImageToStorage(cleanUrl, empresaId, ftId, `var_${idx}_${Date.now()}`)) || cleanUrl
-        : cleanUrl;
+      const mirroredList = await Promise.all(
+        rawPhotoUrls.map(async (rawUrl, pIdx) => {
+          const cleanUrl = rawUrl.replace(/^http:\/\//i, 'https://');
+          if (!empresaId) return cleanUrl;
+          return (await mirrorExternalImageToStorage(cleanUrl, empresaId, ftId, `var_${idx}_${pIdx}_${Date.now()}`)) || cleanUrl;
+        })
+      );
+      const validFotos = mirroredList.filter(Boolean);
 
-      return { ...v, foto: mirrored };
+      return {
+        ...v,
+        foto: validFotos[0] || v.foto || '',
+        fotos: validFotos,
+      };
     })
   );
 

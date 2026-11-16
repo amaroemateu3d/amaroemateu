@@ -597,8 +597,8 @@ export default function SiteLojaOverrideSection({
                           ) : (
                             <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', textAlign: 'center', lineHeight: 1.1 }}>+ Foto</span>
                           )}
-                          <span style={{ position: 'absolute', bottom: '1px', right: '1px', background: 'rgba(15,23,42,0.75)', color: '#fff', borderRadius: '3px', padding: '0 3px', fontSize: '0.58rem' }}>
-                            📷
+                          <span style={{ position: 'absolute', bottom: '1px', right: '1px', background: 'rgba(15,23,42,0.82)', color: '#fff', borderRadius: '3px', padding: '0 3px', fontSize: '0.58rem', fontWeight: 700 }}>
+                            📷{Array.isArray(v.fotos) && v.fotos.length > 1 ? ` ${v.fotos.length}` : ''}
                           </span>
                           <input
                             type="file"
