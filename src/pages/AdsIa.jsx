@@ -23,6 +23,8 @@ import {
   calculateAdShieldMetrics,
   evaluateAiRecommendation,
   fetchMlCompetitorIntel,
+  fetchMlPromosAndAdsStats,
+  loadPromosAdsCache,
   askGeminiStrategist,
   loadAdsIaRules,
   saveAdsIaRules,
@@ -66,6 +68,12 @@ export default function AdsIa() {
   const [aiReportText, setAiReportText] = useState('');
   const [loadingAiReport, setLoadingAiReport] = useState(false);
   const [applyingFtId, setApplyingFtId] = useState(null);
+
+  // Promoções (% OFF) e Gastos de Ads (7d / 15d / 30d)
+  const [adsPeriod, setAdsPeriod] = useState(30);
+  const [promosAdsCache, setPromosAdsCache] = useState(() => loadPromosAdsCache());
+  const [syncingPromosAds, setSyncingPromosAds] = useState(false);
+  const [promosAdsNote, setPromosAdsNote] = useState('');
 
   const getHeaders = () => ({
     apikey: SUPA_KEY,
@@ -243,9 +251,15 @@ export default function AdsIa() {
           const rowKey = `${ft.indiceFt}__var__${fv.id || vIdx}`;
           const manualKey = `${activeChannel}_${currentMonth}_${rowKey}`;
           const manualAds = adsMetricsMap[manualKey] || adsMetricsMap[`${activeChannel}_${currentMonth}_${ft.indiceFt}`] || {};
+          const mlId = matchedMl?.ml_item_id || '';
+          const promoInfo = mlId ? promosAdsCache?.promosByItem?.[mlId] : null;
+          const adsPeriodStats = mlId ? promosAdsCache?.adsByItem?.[mlId] : null;
+          const apiAdsForPeriod = adsPeriodStats?.[adsPeriod] || null;
 
           const liveMlPrice =
-            activeChannel === 'ml' && parseNumber(matchedMl?.price) > 0
+            activeChannel === 'ml' && parseNumber(promoInfo?.price) > 0
+              ? parseNumber(promoInfo.price)
+              : activeChannel === 'ml' && parseNumber(matchedMl?.price) > 0
               ? parseNumber(matchedMl.price)
               : null;
 
@@ -256,8 +270,17 @@ export default function AdsIa() {
               : {}),
           };
 
-          const metrics = calculateAdShieldMetrics(effFtVar, rules, {
+          const effectiveManualAds = {
             ...manualAds,
+            ...(manualAds.gastoAds === undefined || manualAds.gastoAds === ''
+              ? apiAdsForPeriod
+                ? { gastoAds: apiAdsForPeriod.cost, acosPerc: apiAdsForPeriod.acos }
+                : {}
+              : {}),
+          };
+
+          const metrics = calculateAdShieldMetrics(effFtVar, rules, {
+            ...effectiveManualAds,
             vendasMes: vendasMesFt,
           });
 
@@ -292,6 +315,8 @@ export default function AdsIa() {
             soldQuantityTotal,
             primaryMl: matchedMl,
             linkedListings,
+            promoInfo,
+            adsPeriodStats,
             metrics,
             competitor,
             aiRec,
@@ -307,7 +332,16 @@ export default function AdsIa() {
           const rowKey = `${ft.indiceFt}__ml__${l.ml_item_id || lIdx}`;
           const manualKey = `${activeChannel}_${currentMonth}_${rowKey}`;
           const manualAds = adsMetricsMap[manualKey] || {};
-          const liveMlPrice = parseNumber(l.price) > 0 ? parseNumber(l.price) : null;
+          const mlId = l.ml_item_id || '';
+          const promoInfo = mlId ? promosAdsCache?.promosByItem?.[mlId] : null;
+          const adsPeriodStats = mlId ? promosAdsCache?.adsByItem?.[mlId] : null;
+          const apiAdsForPeriod = adsPeriodStats?.[adsPeriod] || null;
+          const liveMlPrice =
+            parseNumber(promoInfo?.price) > 0
+              ? parseNumber(promoInfo.price)
+              : parseNumber(l.price) > 0
+              ? parseNumber(l.price)
+              : null;
           const effFtMl = {
             ...effFtBase,
             ...(liveMlPrice
@@ -318,8 +352,17 @@ export default function AdsIa() {
           const estoqueAnuncio =
             Number(l.stock_physical ?? l.stock_ml ?? getEstoqueTotalFt(ft));
 
-          const metrics = calculateAdShieldMetrics(effFtMl, rules, {
+          const effectiveManualAds = {
             ...manualAds,
+            ...(manualAds.gastoAds === undefined || manualAds.gastoAds === ''
+              ? apiAdsForPeriod
+                ? { gastoAds: apiAdsForPeriod.cost, acosPerc: apiAdsForPeriod.acos }
+                : {}
+              : {}),
+          };
+
+          const metrics = calculateAdShieldMetrics(effFtMl, rules, {
+            ...effectiveManualAds,
             vendasMes: vendasMesFt,
           });
 
@@ -353,6 +396,8 @@ export default function AdsIa() {
             soldQuantityTotal: null,
             primaryMl: l,
             linkedListings,
+            promoInfo,
+            adsPeriodStats,
             metrics,
             competitor,
             aiRec,
@@ -367,10 +412,34 @@ export default function AdsIa() {
       const manualKey = `${activeChannel}_${currentMonth}_${rowKey}`;
       const manualAds = adsMetricsMap[manualKey] || {};
       const primaryMl = linkedListings[0] || null;
+      const mlId = primaryMl?.ml_item_id || '';
+      const promoInfo = mlId ? promosAdsCache?.promosByItem?.[mlId] : null;
+      const adsPeriodStats = mlId ? promosAdsCache?.adsByItem?.[mlId] : null;
+      const apiAdsForPeriod = adsPeriodStats?.[adsPeriod] || null;
       const estoqueTotal = getEstoqueTotalFt(ft);
 
-      const metrics = calculateAdShieldMetrics(effFtBase, rules, {
+      const liveMlPrice =
+        activeChannel === 'ml' && parseNumber(promoInfo?.price) > 0
+          ? parseNumber(promoInfo.price)
+          : null;
+      const effFtSimple = {
+        ...effFtBase,
+        ...(liveMlPrice
+          ? { precoRealAtivo: liveMlPrice, precoVendaManual: String(liveMlPrice) }
+          : {}),
+      };
+
+      const effectiveManualAds = {
         ...manualAds,
+        ...(manualAds.gastoAds === undefined || manualAds.gastoAds === ''
+          ? apiAdsForPeriod
+            ? { gastoAds: apiAdsForPeriod.cost, acosPerc: apiAdsForPeriod.acos }
+            : {}
+          : {}),
+      };
+
+      const metrics = calculateAdShieldMetrics(effFtSimple, rules, {
+        ...effectiveManualAds,
         vendasMes: vendasMesFt,
       });
 
@@ -400,6 +469,8 @@ export default function AdsIa() {
         soldQuantityTotal: null,
         primaryMl,
         linkedListings,
+        promoInfo,
+        adsPeriodStats,
         metrics,
         competitor,
         aiRec,
@@ -435,6 +506,8 @@ export default function AdsIa() {
     onlyCadastrados,
     statusFilter,
     searchTerm,
+    promosAdsCache,
+    adsPeriod,
   ]);
 
   // Totais do painel superior
@@ -600,6 +673,32 @@ export default function AdsIa() {
     }
   };
 
+  const handleSyncPromosAndAds = async () => {
+    setSyncingPromosAds(true);
+    setPromosAdsNote('');
+    try {
+      const mlIds = mlListings.map((l) => l.ml_item_id).filter(Boolean);
+      const res = await fetchMlPromosAndAdsStats({
+        mlItemIds: mlIds,
+        empresaId: profile?.empresa_id,
+      });
+      setPromosAdsCache(res);
+      const promoCount = Object.values(res.promosByItem || {}).filter((p) => p.promoPerc > 0).length;
+      const adsCount = Object.keys(res.adsByItem || {}).length;
+      if (res.adsStatusNote) {
+        setPromosAdsNote(res.adsStatusNote);
+      } else {
+        setPromosAdsNote(
+          `✅ Sincronizado: ${promoCount} anúncio(s) em promoção ativa e ${adsCount} anúncio(s) com dados de Ads (7/15/30 dias).`
+        );
+      }
+    } catch (err) {
+      alert('Erro ao sincronizar promoções e Ads: ' + err.message);
+    } finally {
+      setSyncingPromosAds(false);
+    }
+  };
+
   const formatBRL = (v) =>
     Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -640,6 +739,30 @@ export default function AdsIa() {
             <Sliders size={16} />
             {showRulesPanel ? 'Ocultar Travas de Margem' : '🛡️ Configurar Travas de Margem'}
           </button>
+          {activeChannel === 'ml' && (
+            <button
+              type="button"
+              onClick={handleSyncPromosAndAds}
+              disabled={syncingPromosAds}
+              style={{
+                padding: '0.52rem 0.95rem',
+                borderRadius: '8px',
+                border: '1px solid #EAB308',
+                background: '#FFE600',
+                color: '#1F2937',
+                fontWeight: 800,
+                fontSize: '0.84rem',
+                cursor: syncingPromosAds ? 'wait' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              title="Puxa a % de promoção ativa e os gastos de Product Ads (7, 15 e 30 dias) direto do Mercado Livre"
+            >
+              <RefreshCw size={15} className={syncingPromosAds ? 'spin' : ''} />
+              {syncingPromosAds ? 'Puxando ML...' : '📡 Puxar Promoções & Ads (7/15/30d)'}
+            </button>
+          )}
           <button
             type="button"
             className="btn-primary"
@@ -944,6 +1067,33 @@ export default function AdsIa() {
               {onlyCadastrados ? '✅ Apenas No Ar no Canal' : '☐ Todos do Catálogo'}
             </button>
 
+            <div style={{ display: 'inline-flex', alignItems: 'center', borderRadius: '8px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+              {[7, 15, 30].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setAdsPeriod(d)}
+                  style={{
+                    padding: '0.42rem 0.75rem',
+                    border: 'none',
+                    background: adsPeriod === d ? 'var(--accent-primary)' : 'var(--bg-secondary)',
+                    color: adsPeriod === d ? '#fff' : 'var(--text-primary)',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Ads {d}d
+                </button>
+              ))}
+            </div>
+
+            {promosAdsNote && (
+              <span style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                {promosAdsNote}
+              </span>
+            )}
+
             {statusFilter !== 'all' && (
               <button
                 type="button"
@@ -1077,11 +1227,33 @@ export default function AdsIa() {
                         </div>
                       </td>
 
-                      {/* Preço Atual e Folga de Desconto */}
+                      {/* Preço Atual, Promoção Ativa e Folga de Desconto */}
                       <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>
-                          {metrics.precoPraticado > 0 ? formatBRL(metrics.precoPraticado) : '—'}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                          <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>
+                            {metrics.precoPraticado > 0 ? formatBRL(metrics.precoPraticado) : '—'}
+                          </span>
+                          {row.promoInfo?.promoPerc > 0 && (
+                            <span
+                              style={{
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                padding: '1px 6px',
+                                borderRadius: '999px',
+                                background: 'rgba(16, 185, 129, 0.16)',
+                                color: '#059669',
+                              }}
+                              title={`Em promoção no ML! Preço cheio: ${formatBRL(row.promoInfo.originalPrice)}`}
+                            >
+                              -{row.promoInfo.promoPerc.toFixed(0)}% PROMO
+                            </span>
+                          )}
                         </div>
+                        {row.promoInfo?.originalPrice > row.promoInfo?.price && (
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textDecoration: 'line-through' }}>
+                            de {formatBRL(row.promoInfo.originalPrice)}
+                          </div>
+                        )}
                         {metrics.descMaxSobrePraticadoPerc > 0 ? (
                           <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>
                             Folga: até -{metrics.descMaxSobrePraticadoPerc.toFixed(0)}% OFF
@@ -1093,46 +1265,62 @@ export default function AdsIa() {
                         )}
                       </td>
 
-                      {/* Gasto em Ads no Mês */}
+                      {/* Gasto em Ads (7d / 15d / 30d) */}
                       <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>R$</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.5"
-                            placeholder="0,00"
-                            value={row.gastoAdsInput}
-                            onChange={(e) =>
-                              handleAdsSpendChange(activeChannel, row.rowKey || row.ftId, e.target.value)
-                            }
-                            style={{
-                              width: '66px',
-                              padding: '3px 5px',
-                              borderRadius: '6px',
-                              border: '1px solid var(--border-color)',
-                              background: 'var(--bg-secondary)',
-                              color: 'var(--text-primary)',
-                              fontSize: '0.78rem',
-                              textAlign: 'right',
-                            }}
-                            title="Informe quanto este anúncio gastou em Ads no mês para descontar da margem"
-                          />
-                        </div>
-                        {metrics.acosRealPerc > 0 && (
-                          <div
-                            style={{
-                              fontSize: '0.68rem',
-                              fontWeight: 700,
-                              color:
-                                metrics.acosRealPerc > parseNumber(rules.acosAlvoPerc)
-                                  ? '#DC2626'
-                                  : '#059669',
-                              marginTop: '2px',
-                            }}
-                          >
-                            ACOS: {metrics.acosRealPerc.toFixed(1)}%
+                        {row.adsPeriodStats ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                            <strong style={{ fontSize: '0.86rem' }}>
+                              {adsPeriod}d: {formatBRL(row.adsPeriodStats[adsPeriod]?.cost || 0)}
+                            </strong>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                              7d: {formatBRL(row.adsPeriodStats[7]?.cost || 0)} • 15d: {formatBRL(row.adsPeriodStats[15]?.cost || 0)} • 30d: {formatBRL(row.adsPeriodStats[30]?.cost || 0)}
+                            </span>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                              {row.adsPeriodStats[adsPeriod]?.clicks || 0} cliques • ACOS {(row.adsPeriodStats[adsPeriod]?.acos || 0).toFixed(1)}%
+                            </span>
                           </div>
+                        ) : (
+                          <>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>R$</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                placeholder="0,00"
+                                value={row.gastoAdsInput}
+                                onChange={(e) =>
+                                  handleAdsSpendChange(activeChannel, row.rowKey || row.ftId, e.target.value)
+                                }
+                                style={{
+                                  width: '66px',
+                                  padding: '3px 5px',
+                                  borderRadius: '6px',
+                                  border: '1px solid var(--border-color)',
+                                  background: 'var(--bg-secondary)',
+                                  color: 'var(--text-primary)',
+                                  fontSize: '0.78rem',
+                                  textAlign: 'right',
+                                }}
+                                title="Informe quanto este anúncio gastou em Ads ou clique em Puxar Promoções & Ads no topo"
+                              />
+                            </div>
+                            {metrics.acosRealPerc > 0 && (
+                              <div
+                                style={{
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  color:
+                                    metrics.acosRealPerc > parseNumber(rules.acosAlvoPerc)
+                                      ? '#DC2626'
+                                      : '#059669',
+                                  marginTop: '2px',
+                                }}
+                              >
+                                ACOS: {metrics.acosRealPerc.toFixed(1)}%
+                              </div>
+                            )}
+                          </>
                         )}
                       </td>
 

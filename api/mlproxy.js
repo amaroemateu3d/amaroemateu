@@ -1,7 +1,7 @@
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, api-version');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -38,6 +38,9 @@ export default async function handler(req, res) {
     }
     if (req.headers['content-type']) {
       forwardHeaders['Content-Type'] = req.headers['content-type'];
+    }
+    if (req.headers['api-version']) {
+      forwardHeaders['api-version'] = req.headers['api-version'];
     }
 
     const fetchOptions = {

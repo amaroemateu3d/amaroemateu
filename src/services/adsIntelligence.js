@@ -457,3 +457,146 @@ Gere um Plano de Ação direto, prático e numerado em Português (Brasil) divid
 
   return data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Sem resposta gerada.';
 }
+
+const STORAGE_PROMOS_ADS_CACHE_KEY = 'am3d_ml_promos_ads_cache_v1';
+
+export function loadPromosAdsCache() {
+  try {
+    const raw = localStorage.getItem(STORAGE_PROMOS_ADS_CACHE_KEY);
+    if (raw) return JSON.parse(raw) || { promosByItem: {}, adsByItem: {} };
+  } catch {
+    // ignore
+  }
+  return { promosByItem: {}, adsByItem: {} };
+}
+
+export function savePromosAdsCache(cacheObj) {
+  try {
+    localStorage.setItem(STORAGE_PROMOS_ADS_CACHE_KEY, JSON.stringify(cacheObj));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Puxa em lote do Mercado Livre:
+ * 1) % de promoção ativa em cada anúncio (/items?ids=...)
+ * 2) Gastos, cliques, vendas e ACOS do Product Ads nos últimos 7, 15 e 30 dias
+ */
+export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
+  const uniqueIds = Array.from(new Set(mlItemIds.filter(Boolean)));
+  const token = await getValidMlToken(empresaId);
+  if (!token?.access_token) {
+    throw new Error('Mercado Livre não conectado. Conecte em Estoque → Anúncios Mercado Livre.');
+  }
+  const headers = { Authorization: `Bearer ${token.access_token}` };
+
+  const promosByItem = {};
+  for (let i = 0; i < uniqueIds.length; i += 20) {
+    const chunk = uniqueIds.slice(i, i + 20);
+    try {
+      const resp = await mlProxyFetch(
+        `/items?ids=${encodeURIComponent(chunk.join(','))}&attributes=id,price,original_price,base_price,status`,
+        { headers }
+      );
+      const list = Array.isArray(resp) ? resp : [];
+      list.forEach((entry) => {
+        const body = entry?.body || entry;
+        if (!body?.id) return;
+        const price = Number(body.price || 0);
+        const originalPrice = Number(body.original_price || 0);
+        const promoPerc =
+          originalPrice > price && originalPrice > 0
+            ? ((originalPrice - price) / originalPrice) * 100
+            : 0;
+        promosByItem[body.id] = {
+          price,
+          originalPrice,
+          promoPerc,
+          status: body.status || '',
+        };
+      });
+    } catch (e) {
+      console.warn('[AdsIA] Aviso ao buscar preços/promoções em lote:', e);
+    }
+  }
+
+  // Busca dados do Product Ads (7, 15 e 30 dias)
+  const adsByItem = {};
+  let adsStatusNote = '';
+  try {
+    const advResp = await mlProxyFetch('/advertising/advertisers?product_id=PADS', {
+      headers: { ...headers, 'api-version': '1' },
+    });
+    const advertisers = Array.isArray(advResp?.advertisers)
+      ? advResp.advertisers
+      : Array.isArray(advResp)
+      ? advResp
+      : [];
+    const adv = advertisers.find((a) => a.site_id === 'MLB') || advertisers[0];
+
+    if (adv?.advertiser_id) {
+      const formatYmd = (d) => d.toISOString().slice(0, 10);
+      const today = new Date();
+      const dateTo = formatYmd(today);
+
+      for (const days of [7, 15, 30]) {
+        const fromDate = new Date(today);
+        fromDate.setDate(today.getDate() - (days - 1));
+        const dateFrom = formatYmd(fromDate);
+
+        try {
+          const adsResp = await mlProxyFetch(
+            `/advertising/MLB/advertisers/${encodeURIComponent(adv.advertiser_id)}/product_ads/ads/search?date_from=${dateFrom}&date_to=${dateTo}&metrics=clicks,prints,cost,acos,total_amount,units_quantity&limit=100`,
+            { headers: { ...headers, 'api-version': '2' } }
+          );
+          const results = Array.isArray(adsResp?.results) ? adsResp.results : [];
+          results.forEach((ad) => {
+            const itemId = ad?.item_id;
+            if (!itemId) return;
+            if (!adsByItem[itemId]) adsByItem[itemId] = {};
+            const m = ad?.metrics || ad || {};
+            const cost = Number(m.cost || 0);
+            const clicks = Number(m.clicks || 0);
+            const prints = Number(m.prints || 0);
+            const salesAmount = Number(m.total_amount || 0);
+            const units = Number(m.units_quantity || 0);
+            const acos =
+              Number(m.acos || 0) > 0
+                ? Number(m.acos)
+                : salesAmount > 0 && cost > 0
+                ? (cost / salesAmount) * 100
+                : 0;
+
+            adsByItem[itemId][days] = {
+              cost,
+              clicks,
+              prints,
+              salesAmount,
+              units,
+              acos,
+            };
+          });
+        } catch (periodErr) {
+          console.warn(`[AdsIA] Aviso ao buscar Product Ads (${days}d):`, periodErr);
+        }
+      }
+    } else {
+      adsStatusNote = 'Conta sem anunciante de Product Ads ativo no ML.';
+    }
+  } catch (adsErr) {
+    adsStatusNote =
+      adsErr?.status === 401 || adsErr?.status === 403
+        ? 'Promoções (%) atualizadas! Para puxar gastos de Ads automaticamente, habilite a permissão "Product Ads" no App do ML (ou informe o gasto manualmente na coluna).'
+        : `Promoções (%) atualizadas! Aviso Product Ads: ${adsErr.message}`;
+  }
+
+  const result = {
+    promosByItem,
+    adsByItem,
+    adsStatusNote,
+    updatedAt: new Date().toISOString(),
+  };
+  savePromosAdsCache(result);
+  return result;
+}
