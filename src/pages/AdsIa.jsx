@@ -194,79 +194,233 @@ export default function AdsIa() {
     };
   };
 
-  // Monta a lista completa analisada pelo motor de IA
+  // Monta a lista completa analisada pelo motor de IA (expandindo variações e anúncios múltiplos)
   const analyzedRows = useMemo(() => {
-    return savedFts
-      .map((ft) => {
-        const isCadastrado = Boolean(overrides[activeChannel]?.[ft.indiceFt]?.cadastrado);
-        const effFt = getEffectiveFt(ft, activeChannel);
-        const vendasMes = Number(
-          vendasMensal[currentMonth]?.[activeChannel]?.[ft.indiceFt] || 0
-        );
-        const manualKey = `${activeChannel}_${currentMonth}_${ft.indiceFt}`;
-        const manualAds = adsMetricsMap[manualKey] || {};
+    const normalizeStr = (s) =>
+      String(s || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
 
-        // Procura anúncio ML vinculado
-        const linkedListings = mlListings.filter((l) => {
-          const base = String(l.ft_id || '').split('__var__')[0];
-          return base === ft.indiceFt;
-        });
-        const primaryMl = linkedListings[0] || null;
-        const soldQuantityTotal =
-          linkedListings.length > 0
-            ? linkedListings.reduce((acc, l) => acc + Number(l.sold_quantity || 0), 0)
-            : null;
+    const expanded = [];
 
-        const estoqueTotal = getEstoqueTotalFt(ft);
-        const metrics = calculateAdShieldMetrics(effFt, rules, {
-          ...manualAds,
-          vendasMes,
-        });
+    savedFts.forEach((ft) => {
+      const isCadastrado = Boolean(overrides[activeChannel]?.[ft.indiceFt]?.cadastrado);
+      const effFtBase = getEffectiveFt(ft, activeChannel);
+      const vendasMesFt = Number(
+        vendasMensal[currentMonth]?.[activeChannel]?.[ft.indiceFt] || 0
+      );
 
-        const competitor = competitorMap[ft.indiceFt] || null;
-
-        const aiRec = evaluateAiRecommendation(
-          {
-            ft,
-            metrics,
-            estoqueTotal,
-            vendasMes,
-            soldQuantityTotal,
-            competitor,
-          },
-          rules
-        );
-
-        return {
-          ft,
-          ftId: ft.indiceFt,
-          nomePeca: ft.nomePeca,
-          sku: effFt.sku || ft.sku || '',
-          isCadastrado,
-          estoqueTotal,
-          vendasMes,
-          soldQuantityTotal,
-          primaryMl,
-          linkedListings,
-          metrics,
-          competitor,
-          aiRec,
-          gastoAdsInput: manualAds.gastoAds ?? '',
-        };
-      })
-      .filter((row) => {
-        if (onlyCadastrados && !row.isCadastrado) return false;
-        if (statusFilter !== 'all' && row.aiRec.severity !== statusFilter) return false;
-        if (searchTerm.trim()) {
-          const q = searchTerm.toLowerCase();
-          return (
-            row.nomePeca.toLowerCase().includes(q) ||
-            row.ftId.toLowerCase().includes(q) ||
-            row.sku.toLowerCase().includes(q)
-          );
-        }
-        return true;
+      // Todos os anúncios do ML vinculados a esta FT
+      const linkedListings = mlListings.filter((l) => {
+        const base = String(l.ft_id || '').split('__var__')[0];
+        return base === ft.indiceFt;
       });
+
+      const ftVars = Array.isArray(ft.variacoesEstoque) ? ft.variacoesEstoque : [];
+
+      // Caso 1: FT possui variações cadastradas no estoque (ex: FT-16 com Preto, Vermelho, Branco, Rosa)
+      if (ftVars.length > 0) {
+        ftVars.forEach((fv, vIdx) => {
+          const varName = String(fv.nome || `Variação ${vIdx + 1}`).trim();
+          const normVar = normalizeStr(varName);
+          const varTokens = normVar.split(/[\s/|,-]+/).filter((t) => t.length >= 2);
+          const varStock = Number(fv.estoqueCasa || 0) + Number(fv.estoqueGalpao || 0);
+
+          // Procura anúncio do ML específico desta variação
+          const matchedMl =
+            linkedListings.find((l) => String(l.ft_id || '') === `${ft.indiceFt}__var__${fv.id}`) ||
+            linkedListings.find((l) => {
+              const normTitleSku = normalizeStr(`${l.sku || ''} ${l.title || ''}`);
+              return (
+                normTitleSku.includes(normVar) ||
+                (varTokens.length > 0 && varTokens.every((t) => normTitleSku.includes(t)))
+              );
+            }) ||
+            (linkedListings.length === 1 ? linkedListings[0] : null);
+
+          const rowKey = `${ft.indiceFt}__var__${fv.id || vIdx}`;
+          const manualKey = `${activeChannel}_${currentMonth}_${rowKey}`;
+          const manualAds = adsMetricsMap[manualKey] || adsMetricsMap[`${activeChannel}_${currentMonth}_${ft.indiceFt}`] || {};
+
+          const liveMlPrice =
+            activeChannel === 'ml' && parseNumber(matchedMl?.price) > 0
+              ? parseNumber(matchedMl.price)
+              : null;
+
+          const effFtVar = {
+            ...effFtBase,
+            ...(liveMlPrice
+              ? { precoRealAtivo: liveMlPrice, precoVendaManual: String(liveMlPrice) }
+              : {}),
+          };
+
+          const metrics = calculateAdShieldMetrics(effFtVar, rules, {
+            ...manualAds,
+            vendasMes: vendasMesFt,
+          });
+
+          const competitor = competitorMap[rowKey] || competitorMap[ft.indiceFt] || null;
+          const soldQuantityTotal =
+            matchedMl?.sold_quantity !== undefined
+              ? Number(matchedMl.sold_quantity || 0)
+              : null;
+
+          const aiRec = evaluateAiRecommendation(
+            {
+              ft,
+              metrics,
+              estoqueTotal: varStock,
+              vendasMes: vendasMesFt,
+              soldQuantityTotal,
+              competitor,
+            },
+            rules
+          );
+
+          expanded.push({
+            rowKey,
+            ft,
+            ftId: ft.indiceFt,
+            nomePeca: ft.nomePeca,
+            variacaoNome: varName,
+            sku: matchedMl?.sku || fv.sku || effFtBase.sku || ft.sku || '',
+            isCadastrado,
+            estoqueTotal: varStock,
+            vendasMes: vendasMesFt,
+            soldQuantityTotal,
+            primaryMl: matchedMl,
+            linkedListings,
+            metrics,
+            competitor,
+            aiRec,
+            gastoAdsInput: manualAds.gastoAds ?? '',
+          });
+        });
+        return;
+      }
+
+      // Caso 2: Sem variacoesEstoque na FT, mas possui múltiplos anúncios do ML vinculados (ex: FT-67, FT-131)
+      if (activeChannel === 'ml' && linkedListings.length > 1) {
+        linkedListings.forEach((l, lIdx) => {
+          const rowKey = `${ft.indiceFt}__ml__${l.ml_item_id || lIdx}`;
+          const manualKey = `${activeChannel}_${currentMonth}_${rowKey}`;
+          const manualAds = adsMetricsMap[manualKey] || {};
+          const liveMlPrice = parseNumber(l.price) > 0 ? parseNumber(l.price) : null;
+          const effFtMl = {
+            ...effFtBase,
+            ...(liveMlPrice
+              ? { precoRealAtivo: liveMlPrice, precoVendaManual: String(liveMlPrice) }
+              : {}),
+          };
+
+          const estoqueAnuncio =
+            Number(l.stock_physical ?? l.stock_ml ?? getEstoqueTotalFt(ft));
+
+          const metrics = calculateAdShieldMetrics(effFtMl, rules, {
+            ...manualAds,
+            vendasMes: vendasMesFt,
+          });
+
+          const competitor = competitorMap[rowKey] || competitorMap[ft.indiceFt] || null;
+          const aiRec = evaluateAiRecommendation(
+            {
+              ft,
+              metrics,
+              estoqueTotal: estoqueAnuncio,
+              vendasMes: vendasMesFt,
+              soldQuantityTotal: null,
+              competitor,
+            },
+            rules
+          );
+
+          const suffixFromSku = String(l.sku || '')
+            .replace(new RegExp(`^FT\\s*-?\\s*\\d+\\s*`, 'i'), '')
+            .trim();
+
+          expanded.push({
+            rowKey,
+            ft,
+            ftId: ft.indiceFt,
+            nomePeca: ft.nomePeca,
+            variacaoNome: suffixFromSku || l.title,
+            sku: l.sku || effFtBase.sku || ft.sku || '',
+            isCadastrado,
+            estoqueTotal: estoqueAnuncio,
+            vendasMes: vendasMesFt,
+            soldQuantityTotal: null,
+            primaryMl: l,
+            linkedListings,
+            metrics,
+            competitor,
+            aiRec,
+            gastoAdsInput: manualAds.gastoAds ?? '',
+          });
+        });
+        return;
+      }
+
+      // Caso 3: Produto simples (sem variações)
+      const rowKey = ft.indiceFt;
+      const manualKey = `${activeChannel}_${currentMonth}_${rowKey}`;
+      const manualAds = adsMetricsMap[manualKey] || {};
+      const primaryMl = linkedListings[0] || null;
+      const estoqueTotal = getEstoqueTotalFt(ft);
+
+      const metrics = calculateAdShieldMetrics(effFtBase, rules, {
+        ...manualAds,
+        vendasMes: vendasMesFt,
+      });
+
+      const competitor = competitorMap[rowKey] || null;
+      const aiRec = evaluateAiRecommendation(
+        {
+          ft,
+          metrics,
+          estoqueTotal,
+          vendasMes: vendasMesFt,
+          soldQuantityTotal: null,
+          competitor,
+        },
+        rules
+      );
+
+      expanded.push({
+        rowKey,
+        ft,
+        ftId: ft.indiceFt,
+        nomePeca: ft.nomePeca,
+        variacaoNome: '',
+        sku: primaryMl?.sku || effFtBase.sku || ft.sku || '',
+        isCadastrado,
+        estoqueTotal,
+        vendasMes: vendasMesFt,
+        soldQuantityTotal: null,
+        primaryMl,
+        linkedListings,
+        metrics,
+        competitor,
+        aiRec,
+        gastoAdsInput: manualAds.gastoAds ?? '',
+      });
+    });
+
+    return expanded.filter((row) => {
+      if (onlyCadastrados && !row.isCadastrado) return false;
+      if (statusFilter !== 'all' && row.aiRec.severity !== statusFilter) return false;
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        return (
+          row.nomePeca.toLowerCase().includes(q) ||
+          row.ftId.toLowerCase().includes(q) ||
+          (row.variacaoNome || '').toLowerCase().includes(q) ||
+          row.sku.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
   }, [
     savedFts,
     overrides,
@@ -300,14 +454,15 @@ export default function AdsIa() {
   }, [analyzedRows]);
 
   const handleAnalyzeSingleCompetitor = async (row) => {
-    setLoadingCompFt(row.ftId);
+    const key = row.rowKey || row.ftId;
+    setLoadingCompFt(key);
     try {
       const intel = await fetchMlCompetitorIntel({
         mlItemId: row.primaryMl?.ml_item_id || '',
-        searchTitle: row.primaryMl?.title || row.nomePeca,
+        searchTitle: row.primaryMl?.title || `${row.nomePeca} ${row.variacaoNome || ''}`.trim(),
         empresaId: profile?.empresa_id,
       });
-      setCompetitorMap((prev) => ({ ...prev, [row.ftId]: intel }));
+      setCompetitorMap((prev) => ({ ...prev, [key]: intel }));
     } catch (err) {
       alert('Erro ao analisar concorrentes: ' + err.message);
     } finally {
@@ -321,13 +476,14 @@ export default function AdsIa() {
     setBatchCompLoading(true);
     try {
       for (const row of targets) {
+        const key = row.rowKey || row.ftId;
         try {
           const intel = await fetchMlCompetitorIntel({
             mlItemId: row.primaryMl?.ml_item_id || '',
-            searchTitle: row.primaryMl?.title || row.nomePeca,
+            searchTitle: row.primaryMl?.title || `${row.nomePeca} ${row.variacaoNome || ''}`.trim(),
             empresaId: profile?.empresa_id,
           });
-          setCompetitorMap((prev) => ({ ...prev, [row.ftId]: intel }));
+          setCompetitorMap((prev) => ({ ...prev, [key]: intel }));
         } catch {
           // continua próximo item
         }
@@ -345,7 +501,8 @@ export default function AdsIa() {
       );
     }
 
-    setApplyingFtId(row.ftId);
+    const key = row.rowKey || row.ftId;
+    setApplyingFtId(key);
     try {
       const curOv = overrides[activeChannel]?.[row.ftId] || {};
       const nextSettings = {
@@ -846,7 +1003,7 @@ export default function AdsIa() {
 
                   return (
                     <tr
-                      key={row.ftId}
+                      key={row.rowKey || row.ftId}
                       style={
                         isCritico
                           ? { background: 'rgba(239, 68, 68, 0.05)' }
@@ -856,11 +1013,25 @@ export default function AdsIa() {
                       }
                     >
                       {/* Produto */}
-                      <td style={{ minWidth: '190px' }}>
+                      <td style={{ minWidth: '210px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                             <span className="badge">{row.ftId}</span>
                             <strong style={{ fontSize: '0.86rem' }}>{row.nomePeca}</strong>
+                            {row.variacaoNome && (
+                              <span
+                                style={{
+                                  fontSize: '0.7rem',
+                                  fontWeight: 800,
+                                  padding: '1px 7px',
+                                  borderRadius: '999px',
+                                  background: 'rgba(124, 58, 237, 0.14)',
+                                  color: '#7C3AED',
+                                }}
+                              >
+                                🎨 {row.variacaoNome}
+                              </span>
+                            )}
                           </div>
                           {row.sku && (
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
@@ -933,7 +1104,7 @@ export default function AdsIa() {
                             placeholder="0,00"
                             value={row.gastoAdsInput}
                             onChange={(e) =>
-                              handleAdsSpendChange(activeChannel, row.ftId, e.target.value)
+                              handleAdsSpendChange(activeChannel, row.rowKey || row.ftId, e.target.value)
                             }
                             style={{
                               width: '66px',
@@ -1021,7 +1192,7 @@ export default function AdsIa() {
                         ) : (
                           <button
                             type="button"
-                            disabled={loadingCompFt === row.ftId}
+                            disabled={loadingCompFt === (row.rowKey || row.ftId)}
                             onClick={() => handleAnalyzeSingleCompetitor(row)}
                             style={{
                               padding: '4px 9px',
@@ -1034,7 +1205,7 @@ export default function AdsIa() {
                               cursor: 'pointer',
                             }}
                           >
-                            {loadingCompFt === row.ftId ? 'Buscando...' : '🔍 Espionar'}
+                            {loadingCompFt === (row.rowKey || row.ftId) ? 'Buscando...' : '🔍 Espionar'}
                           </button>
                         )}
                       </td>
@@ -1073,7 +1244,7 @@ export default function AdsIa() {
                             {aiRec.suggestedPrice && (
                               <button
                                 type="button"
-                                disabled={applyingFtId === row.ftId}
+                                disabled={applyingFtId === (row.rowKey || row.ftId)}
                                 onClick={() =>
                                   handleApplyRecommendedPrice(row, aiRec.suggestedPrice)
                                 }
@@ -1089,7 +1260,7 @@ export default function AdsIa() {
                                   cursor: 'pointer',
                                 }}
                               >
-                                {applyingFtId === row.ftId
+                                {applyingFtId === (row.rowKey || row.ftId)
                                   ? 'Aplicando...'
                                   : `✅ ${aiRec.actionLabel}`}
                               </button>
