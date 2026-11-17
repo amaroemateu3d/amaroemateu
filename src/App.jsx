@@ -6,6 +6,7 @@ import Home from './pages/Home';
 import FichasTecnicas from './pages/FichasTecnicas';
 import Orcamentos from './pages/Orcamentos';
 import Vendas from './pages/Vendas';
+import AdsIa from './pages/AdsIa';
 import Saidas from './pages/Saidas';
 import Pedidos from './pages/Pedidos';
 import Consignados from './pages/Consignados';
@@ -64,6 +65,7 @@ function AppContent() {
           <Route path="orcamentos" element={<Orcamentos />} />
           <Route path="estoque" element={<Estoque />} />
           <Route path="vendas" element={<Vendas />} />
+          <Route path="ads-ia" element={<AdsIa />} />
           <Route path="pedidos" element={<Pedidos />} />
           <Route path="consignados" element={<Consignados />} />
           <Route path="saidas" element={<Saidas />} />

@@ -3,7 +3,7 @@ import { Outlet, NavLink, Link } from 'react-router-dom';
 import {
   LayoutDashboard, Calculator,
   ShoppingCart, TrendingDown, ClipboardList, BarChart3,
-  Download, LogOut, Users, Package, Search, Wallet, Type
+  Download, LogOut, Users, Package, Search, Wallet, Type, Bot
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import './AppLayout.css';
@@ -109,6 +109,11 @@ export default function AppLayout() {
           <NavLink to="/vendas" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
             <ShoppingCart size={20} />
             <span>Vendas Multi-Canal</span>
+          </NavLink>
+
+          <NavLink to="/ads-ia" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
+            <Bot size={20} />
+            <span>IA Ads &amp; Promoções</span>
           </NavLink>
 
           <NavLink to="/pedidos" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
