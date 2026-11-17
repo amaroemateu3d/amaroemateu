@@ -60,12 +60,14 @@ export function getShopeeAppCredentials() {
     }
   }
 
-  const defaultRedirect = typeof window !== 'undefined'
-    ? `${window.location.origin}/estoque`
-    : 'https://amaroemateu.vercel.app/estoque';
+  // Domínio aprovado na Shopee Open Platform Console (Controle AM3D ID 250355)
+  const defaultRedirect = 'https://amaroemateu.vercel.app/estoque';
 
-  // Se o cache local ainda tiver o Test Partner ID antigo (1252796), substitui pelas credenciais Live aprovadas (2053326)
-  if (String(savedCustom.partnerId || '').trim() === '1252796') {
+  // Se o cache local ainda tiver o Test Partner ID antigo (1252796) ou redirect diferente do domínio aprovado, limpa para usar o Live oficial (2053326)
+  if (
+    String(savedCustom.partnerId || '').trim() === '1252796' ||
+    (savedCustom.redirectUri && !String(savedCustom.redirectUri).startsWith('https://amaroemateu.vercel.app'))
+  ) {
     savedCustom = {};
     if (typeof window !== 'undefined') {
       try {

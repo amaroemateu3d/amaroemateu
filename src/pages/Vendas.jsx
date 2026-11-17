@@ -2,7 +2,13 @@ import { useState, useEffect } from 'react';
 import { getResultados, parseNumber, getCustoUnitario, getUnitProductionTime, formatTime } from '../utils/financeCalculators';
 import { Settings, Save, X, Printer, CheckCircle2, RefreshCw, Loader, ShoppingBag, Link2 } from 'lucide-react';
 import { fetchMlPaidOrdersForMonth, parseFtTargetKey, fetchStoredMlListings, syncListingsFromML } from '../services/mercadolivre';
-import { fetchShopeePaidOrdersForMonth } from '../services/shopee';
+import {
+  fetchShopeePaidOrdersForMonth,
+  getShopeeAuthUrl,
+  extractShopeeCodeAndShopId,
+  exchangeShopeeCodeForToken,
+  fetchStoredShopeeToken,
+} from '../services/shopee';
 import {
   fetchLojaCategorias,
   createLojaCategoria,
@@ -209,6 +215,50 @@ export default function Vendas() {
   const [shopeeSalesModal, setShopeeSalesModal] = useState(null);
   const [shopeeUnmappedModal, setShopeeUnmappedModal] = useState({ open: false, items: [], pendingResult: null });
   const [applyingShopeeSales, setApplyingShopeeSales] = useState(false);
+  const [showShopeeConnectModal, setShowShopeeConnectModal] = useState(false);
+  const [shopeeTokenInfo, setShopeeTokenInfo] = useState(null);
+  const [shopeePasteInput, setShopeePasteInput] = useState('');
+  const [connectingShopee, setConnectingShopee] = useState(false);
+
+  useEffect(() => {
+    if (activeChannel === 'shopee') {
+      fetchStoredShopeeToken(profile?.empresa_id).then((tok) => {
+        if (tok?.access_token) setShopeeTokenInfo(tok);
+      }).catch(() => {});
+    }
+  }, [activeChannel, profile?.empresa_id]);
+
+  const handleOpenShopeeAuthWindow = async () => {
+    try {
+      const authUrl = await getShopeeAuthUrl();
+      window.open(authUrl, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      alert('Erro ao gerar link de autorização da Shopee: ' + err.message);
+    }
+  };
+
+  const handleConfirmShopeePaste = async () => {
+    const { code, shopId } = extractShopeeCodeAndShopId(shopeePasteInput);
+    if (!code || !shopId) {
+      return alert('Cole a URL completa (contendo ?code=...&shop_id=...) para concluir a conexão.');
+    }
+    setConnectingShopee(true);
+    try {
+      const saved = await exchangeShopeeCodeForToken({
+        code,
+        shopId,
+        empresaId: profile?.empresa_id,
+      });
+      setShopeeTokenInfo(saved);
+      setShopeePasteInput('');
+      setShowShopeeConnectModal(false);
+      alert(`✅ Loja Shopee conectada com sucesso (${saved?.ml_nickname || shopId})! Agora você já pode clicar em "Puxar Vendas Shopee".`);
+    } catch (err) {
+      alert('Erro ao conectar Shopee: ' + err.message);
+    } finally {
+      setConnectingShopee(false);
+    }
+  };
 
   // Estados da Loja Própria (aba Site Próprio)
   const [lojaCategorias, setLojaCategorias] = useState([]);
@@ -1599,6 +1649,54 @@ export default function Vendas() {
                      {pullingMlSales ? 'Buscando vendas no ML...' : `📦 Puxar Vendas ML (${currentMonth})`}
                    </button>
                  )}
+                 {activeChannel === 'shopee' && (
+                   <>
+                     <button
+                       type="button"
+                       onClick={() => handlePullShopeeSales(false)}
+                       disabled={pullingShopeeSales}
+                       style={{
+                         background: '#EE4D2D',
+                         color: '#FFFFFF',
+                         border: '1px solid #EA580C',
+                         borderRadius: '8px',
+                         padding: '0.5rem 1rem',
+                         fontWeight: 800,
+                         fontSize: '0.84rem',
+                         cursor: pullingShopeeSales ? 'wait' : 'pointer',
+                         display: 'flex',
+                         alignItems: 'center',
+                         gap: '6px',
+                         boxShadow: '0 2px 6px rgba(238,77,45,0.25)',
+                         whiteSpace: 'nowrap'
+                       }}
+                       title="Puxa os pedidos pagos da Shopee neste mês. Na 1ª vez que um item ou modelo aparecer, abre a janela para você vincular à FT correta e memoriza para sempre!"
+                     >
+                       <RefreshCw size={15} className={pullingShopeeSales ? 'spin' : ''} />
+                       {pullingShopeeSales ? 'Buscando vendas na Shopee...' : `🛍️ Puxar Vendas Shopee (${currentMonth})`}
+                     </button>
+                     <button
+                       type="button"
+                       onClick={() => setShowShopeeConnectModal(true)}
+                       style={{
+                         background: shopeeTokenInfo?.access_token ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.1)',
+                         color: shopeeTokenInfo?.access_token ? '#059669' : '#EE4D2D',
+                         border: `1px solid ${shopeeTokenInfo?.access_token ? 'rgba(16, 185, 129, 0.45)' : 'rgba(238, 77, 45, 0.45)'}`,
+                         borderRadius: '8px',
+                         padding: '0.48rem 0.9rem',
+                         fontWeight: 700,
+                         fontSize: '0.82rem',
+                         cursor: 'pointer',
+                         whiteSpace: 'nowrap'
+                       }}
+                       title="Conectar ou reconectar sua loja da Shopee"
+                     >
+                       {shopeeTokenInfo?.access_token
+                         ? `✅ Shopee: ${shopeeTokenInfo.ml_nickname || 'Conectada'}`
+                         : '🔗 Conectar Loja Shopee'}
+                     </button>
+                   </>
+                 )}
                  <button
                    onClick={() => setFilterCadastrados(p => !p)}
                    style={{
@@ -2269,6 +2367,108 @@ export default function Vendas() {
           await handlePullMlSales(true);
         }}
       />
+
+      <MlFtMappingModal
+        isOpen={shopeeUnmappedModal.open}
+        unmappedItems={shopeeUnmappedModal.items}
+        savedFts={savedFts}
+        platform="shopee"
+        customTitle="🔗 Vincular Itens Vendidos na Shopee à FT Correta"
+        onClose={() => {
+          const pending = shopeeUnmappedModal.pendingResult;
+          setShopeeUnmappedModal({ open: false, items: [], pendingResult: null });
+          if (pending) buildShopeeSalesPreview(pending);
+        }}
+        onSaved={async () => {
+          setShopeeUnmappedModal({ open: false, items: [], pendingResult: null });
+          await fetchData();
+          await handlePullShopeeSales(true);
+        }}
+      />
+
+      {showShopeeConnectModal && (
+        <div className="modal-overlay" onClick={() => setShowShopeeConnectModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '560px', width: '95%' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}>🛍️ Conectar Loja Shopee (API Oficial v2)</h3>
+              <button type="button" className="btn-icon" onClick={() => setShowShopeeConnectModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', fontSize: '0.82rem' }}>
+                <strong>App Oficial:</strong> Controle AM3D • <strong>Live Partner ID:</strong> 2053326 (Online)
+                {shopeeTokenInfo?.access_token && (
+                  <div style={{ marginTop: '4px', color: '#059669', fontWeight: 700 }}>
+                    ✅ Conectado: {shopeeTokenInfo.ml_nickname} (Shop ID: {shopeeTokenInfo.ml_user_id})
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.84rem', fontWeight: 700, marginBottom: '6px' }}>
+                  Passo 1: Autorizar no painel da Shopee
+                </div>
+                <button
+                  type="button"
+                  onClick={handleOpenShopeeAuthWindow}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#EE4D2D',
+                    color: '#fff',
+                    fontWeight: 800,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  🔗 1. Abrir Tela de Autorização da Shopee
+                </button>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.84rem', fontWeight: 700, marginBottom: '4px' }}>
+                  Passo 2: Cole o link final após clicar em &quot;Confirm Authorization&quot;
+                </div>
+                <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: '0 0 8px' }}>
+                  Depois de autorizar na Shopee, ela redirecionará para uma página com <code>?code=...&amp;shop_id=...</code> na barra de endereço. Copie o link completo da barra de endereço e cole abaixo:
+                </p>
+                <input
+                  type="text"
+                  placeholder="Cole aqui o link com ?code=...&shop_id=..."
+                  value={shopeePasteInput}
+                  onChange={(e) => setShopeePasteInput(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.84rem',
+                  }}
+                />
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowShopeeConnectModal(false)}>
+                Fechar
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={connectingShopee || !shopeePasteInput.trim()}
+                onClick={handleConfirmShopeePaste}
+                style={{ background: '#EE4D2D', borderColor: '#EA580C' }}
+              >
+                {connectingShopee ? 'Conectando...' : '✅ 2. Confirmar Conexão Shopee'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {mlSalesModal && (
         <div className="modal-overlay" style={{ zIndex: 9998 }}>
