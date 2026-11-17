@@ -64,9 +64,21 @@ export function getShopeeAppCredentials() {
     ? `${window.location.origin}/estoque`
     : 'https://amaroemateu.vercel.app/estoque';
 
+  // Se o cache local ainda tiver o Test Partner ID antigo (1252796), substitui pelas credenciais Live aprovadas (2053326)
+  if (String(savedCustom.partnerId || '').trim() === '1252796') {
+    savedCustom = {};
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(LOCAL_APP_CONFIG_KEY);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   return {
-    partnerId: String(savedCustom.partnerId || import.meta.env.VITE_SHOPEE_PARTNER_ID || '1252796').trim(),
-    partnerKey: String(savedCustom.partnerKey || import.meta.env.VITE_SHOPEE_PARTNER_KEY || 'shpk754946676e536d744c686f6a6c45586d41776646716b6c416e4857417743').trim(),
+    partnerId: String(savedCustom.partnerId || import.meta.env.VITE_SHOPEE_PARTNER_ID || '2053326').trim(),
+    partnerKey: String(savedCustom.partnerKey || import.meta.env.VITE_SHOPEE_PARTNER_KEY || 'shpk4361716f6f794366754d7147594c5a4258514362574a636e6c4b557a486f').trim(),
     redirectUri: String(savedCustom.redirectUri || import.meta.env.VITE_SHOPEE_REDIRECT_URI || defaultRedirect).trim(),
     isTest: savedCustom.isTest !== undefined
       ? Boolean(savedCustom.isTest)
