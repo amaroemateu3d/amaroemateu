@@ -521,8 +521,10 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
     }
   }
 
-  // Busca dados do Product Ads (7, 15 e 30 dias)
+  // Busca dados do Product Ads (campanhas + anúncios em 7, 15 e 30 dias)
   const adsByItem = {};
+  let advertiserId = null;
+  let campaigns = [];
   let adsStatusNote = '';
   try {
     const advResp = await mlProxyFetch('/advertising/advertisers?product_id=PADS', {
@@ -536,9 +538,30 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
     const adv = advertisers.find((a) => a.site_id === 'MLB') || advertisers[0];
 
     if (adv?.advertiser_id) {
+      advertiserId = adv.advertiser_id;
       const formatYmd = (d) => d.toISOString().slice(0, 10);
       const today = new Date();
       const dateTo = formatYmd(today);
+      const from30 = new Date(today);
+      from30.setDate(today.getDate() - 29);
+
+      try {
+        const campResp = await mlProxyFetch(
+          `/advertising/MLB/advertisers/${encodeURIComponent(advertiserId)}/product_ads/campaigns/search?date_from=${formatYmd(from30)}&date_to=${dateTo}&metrics=clicks,prints,cost,acos,total_amount,units_quantity&limit=50`,
+          { headers: { ...headers, 'api-version': '2' } }
+        );
+        campaigns = (Array.isArray(campResp?.results) ? campResp.results : []).map((c) => ({
+          id: c.id,
+          name: c.name,
+          status: c.status,
+          strategy: c.strategy,
+          acosTarget: Number(c.acos_target || 0),
+          dailyBudget: Number(c.daily_budget || c.budget || 0),
+          metrics30d: c.metrics || {},
+        }));
+      } catch (campErr) {
+        console.warn('[AdsIA] Aviso ao listar campanhas:', campErr);
+      }
 
       for (const days of [7, 15, 30]) {
         const fromDate = new Date(today);
@@ -547,7 +570,7 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
 
         try {
           const adsResp = await mlProxyFetch(
-            `/advertising/MLB/advertisers/${encodeURIComponent(adv.advertiser_id)}/product_ads/ads/search?date_from=${dateFrom}&date_to=${dateTo}&metrics=clicks,prints,cost,acos,total_amount,units_quantity&limit=100`,
+            `/advertising/MLB/advertisers/${encodeURIComponent(advertiserId)}/product_ads/ads/search?date_from=${dateFrom}&date_to=${dateTo}&metrics=clicks,prints,cost,acos,total_amount,units_quantity&limit=100`,
             { headers: { ...headers, 'api-version': '2' } }
           );
           const results = Array.isArray(adsResp?.results) ? adsResp.results : [];
@@ -555,6 +578,9 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
             const itemId = ad?.item_id;
             if (!itemId) return;
             if (!adsByItem[itemId]) adsByItem[itemId] = {};
+            if (ad.status) adsByItem[itemId].adStatus = ad.status;
+            if (ad.campaign_id) adsByItem[itemId].campaignId = ad.campaign_id;
+
             const m = ad?.metrics || ad || {};
             const cost = Number(m.cost || 0);
             const clicks = Number(m.clicks || 0);
@@ -592,6 +618,8 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
   }
 
   const result = {
+    advertiserId,
+    campaigns,
     promosByItem,
     adsByItem,
     adsStatusNote,
@@ -599,4 +627,179 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
   };
   savePromosAdsCache(result);
   return result;
+}
+
+export async function updateMlAdStatusOrCampaign({
+  advertiserId,
+  mlItemId,
+  status,
+  campaignId,
+  empresaId,
+}) {
+  if (!advertiserId || !mlItemId) {
+    throw new Error('Advertiser ID ou Item ID ausente. Clique primeiro em "Puxar Promoções & Ads".');
+  }
+  const token = await getValidMlToken(empresaId);
+  const body = {};
+  if (status) body.status = status;
+  if (campaignId) body.campaign_id = Number(campaignId);
+
+  return mlProxyFetch(
+    `/advertising/MLB/advertisers/${encodeURIComponent(advertiserId)}/product_ads/ads/${encodeURIComponent(mlItemId)}`,
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token.access_token}`,
+        'api-version': '2',
+      },
+      body: JSON.stringify(body),
+    }
+  );
+}
+
+export async function createMlAdCampaign({
+  advertiserId,
+  name,
+  acosTarget = 10,
+  dailyBudget = 15,
+  strategy = 'PROFITABILITY',
+  empresaId,
+}) {
+  if (!advertiserId) {
+    throw new Error('Advertiser ID ausente. Clique primeiro em "Puxar Promoções & Ads".');
+  }
+  const token = await getValidMlToken(empresaId);
+  return mlProxyFetch(
+    `/advertising/MLB/advertisers/${encodeURIComponent(advertiserId)}/product_ads/campaigns`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token.access_token}`,
+        'api-version': '2',
+      },
+      body: JSON.stringify({
+        name: String(name || '').trim(),
+        budget: Number(dailyBudget || 15),
+        acos_target: Number(acosTarget || 10),
+        strategy,
+        status: 'active',
+        channel: 'marketplace',
+      }),
+    }
+  );
+}
+
+export async function updateMlAdCampaign({
+  advertiserId,
+  campaignId,
+  status,
+  acosTarget,
+  dailyBudget,
+  empresaId,
+}) {
+  if (!advertiserId || !campaignId) {
+    throw new Error('Advertiser ID ou Campaign ID ausente.');
+  }
+  const token = await getValidMlToken(empresaId);
+  const body = {};
+  if (status) body.status = status;
+  if (acosTarget !== undefined) body.acos_target = Number(acosTarget);
+  if (dailyBudget !== undefined) body.budget = Number(dailyBudget);
+
+  return mlProxyFetch(
+    `/advertising/MLB/advertisers/${encodeURIComponent(advertiserId)}/product_ads/campaigns/${encodeURIComponent(campaignId)}`,
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token.access_token}`,
+        'api-version': '2',
+      },
+      body: JSON.stringify(body),
+    }
+  );
+}
+
+/**
+ * Avalia qual é a melhor escolha de Ads para o anúncio (Ativar / Pausar / Mover Campanha)
+ * cruzando Estoque, Margem Pós-Ads, Gasto em 30d/15d/7d e Vendas.
+ */
+export function evaluateAdsChoice({
+  adStatus,
+  campaignId,
+  campaigns = [],
+  metrics,
+  estoqueTotal,
+  vendasMes,
+  soldQuantityTotal,
+  rules,
+}) {
+  const minMargin = parseNumber(rules.margemMinimaPerc);
+  const acosLimit = parseNumber(rules.acosAlvoPerc || 10);
+  const isActive = adStatus === 'active';
+  const currentCamp = campaigns.find((c) => String(c.id) === String(campaignId));
+
+  // 1. Estoque crítico (<= 2 un) e Ads ativo -> Pausar para não desperdiçar clique
+  if (isActive && estoqueTotal <= parseNumber(rules.estoqueBaixoProtecaoMax || 3)) {
+    return {
+      action: 'pause',
+      badge: '🔥 Pausar Ads (Estoque Baixo)',
+      reason: `Restam apenas ${estoqueTotal} un. em estoque. Pause o Ads para vender sem pagar cliques.`,
+      buttonLabel: '⏸️ Pausar Ads',
+      color: '#D97706',
+    };
+  }
+
+  // 2. Corta-Sangria: gastou sem retorno ou ACOS estourou e margem furou o piso
+  if (
+    isActive &&
+    ((metrics.gastoAdsMes >= Math.max(8, metrics.lucroLiquidoSemAds) && vendasMes === 0) ||
+      (metrics.acosRealPerc > acosLimit * 1.4 && metrics.margemPosAdsPerc < minMargin))
+  ) {
+    return {
+      action: 'pause',
+      badge: '🔴 Cortar Sangria Ads',
+      reason: `Gasto de R$ ${metrics.gastoAdsMes.toFixed(2)} (ACOS ${metrics.acosRealPerc.toFixed(1)}%) está comendo sua margem mínima.`,
+      buttonLabel: '⏸️ Pausar Ads',
+      color: '#DC2626',
+    };
+  }
+
+  // 3. Ads pausado ou não cadastrado, mas tem margem folgada e bom estoque -> Ativar Ads
+  if (
+    !isActive &&
+    estoqueTotal >= 5 &&
+    metrics.precoPraticado > metrics.precoPiso &&
+    metrics.margemSemAdsPerc >= minMargin + 4
+  ) {
+    const isNew = soldQuantityTotal !== null && soldQuantityTotal < 10;
+    return {
+      action: 'activate',
+      badge: isNew ? '🚀 Ativar Ads (Lançamento)' : '📦 Ativar Ads (Giro)',
+      reason: `Margem saudável (${metrics.margemSemAdsPerc.toFixed(1)}%) e ${estoqueTotal} un. em estoque. Bom candidato para Ads dentro de ACOS ${acosLimit}%.`,
+      buttonLabel: '▶️ Ativar Ads',
+      color: '#2563EB',
+    };
+  }
+
+  // 4. Ads ativo e saudável
+  if (isActive) {
+    return {
+      action: 'keep',
+      badge: `🟢 Ads Ativo${currentCamp ? ` (${currentCamp.name})` : ''}`,
+      reason: `Rodando dentro da trava de margem (${metrics.margemPosAdsPerc.toFixed(1)}% líquida).`,
+      buttonLabel: null,
+      color: '#059669',
+    };
+  }
+
+  return {
+    action: 'wait',
+    badge: '⚪ Ads Pausado',
+    reason:
+      estoqueTotal < 5
+        ? 'Estoque baixo — mantenha pausado até repor.'
+        : 'Margem justa — priorize ajuste de preço antes de ligar Ads.',
+    buttonLabel: null,
+    color: '#64748B',
+  };
 }

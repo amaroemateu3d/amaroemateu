@@ -22,8 +22,12 @@ import {
 import {
   calculateAdShieldMetrics,
   evaluateAiRecommendation,
+  evaluateAdsChoice,
   fetchMlCompetitorIntel,
   fetchMlPromosAndAdsStats,
+  updateMlAdStatusOrCampaign,
+  createMlAdCampaign,
+  updateMlAdCampaign,
   loadPromosAdsCache,
   askGeminiStrategist,
   loadAdsIaRules,
@@ -74,6 +78,10 @@ export default function AdsIa() {
   const [promosAdsCache, setPromosAdsCache] = useState(() => loadPromosAdsCache());
   const [syncingPromosAds, setSyncingPromosAds] = useState(false);
   const [promosAdsNote, setPromosAdsNote] = useState('');
+  const [showCampaignsModal, setShowCampaignsModal] = useState(false);
+  const [updatingAdKey, setUpdatingAdKey] = useState(null);
+  const [newCampForm, setNewCampForm] = useState({ name: '', acosTarget: 10, dailyBudget: 15 });
+  const [savingCamp, setSavingCamp] = useState(false);
 
   const getHeaders = () => ({
     apikey: SUPA_KEY,
@@ -689,13 +697,121 @@ export default function AdsIa() {
         setPromosAdsNote(res.adsStatusNote);
       } else {
         setPromosAdsNote(
-          `✅ Sincronizado: ${promoCount} anúncio(s) em promoção ativa e ${adsCount} anúncio(s) com dados de Ads (7/15/30 dias).`
+          `✅ Sincronizado: ${promoCount} anúncio(s) em promoção, ${res.campaigns?.length || 0} campanha(s) e ${adsCount} anúncio(s) em Ads.`
         );
       }
     } catch (err) {
       alert('Erro ao sincronizar promoções e Ads: ' + err.message);
     } finally {
       setSyncingPromosAds(false);
+    }
+  };
+
+  const handleToggleAdStatus = async (row, nextStatus) => {
+    const mlId = row.primaryMl?.ml_item_id;
+    const advId = promosAdsCache?.advertiserId;
+    if (!mlId) return alert('Nenhum anúncio MLB vinculado a esta linha.');
+    if (!advId) return alert('Clique primeiro em "📡 Puxar Promoções & Ads" para identificar sua conta de Ads.');
+
+    const key = row.rowKey || row.ftId;
+    setUpdatingAdKey(key);
+    try {
+      await updateMlAdStatusOrCampaign({
+        advertiserId: advId,
+        mlItemId: mlId,
+        status: nextStatus,
+        campaignId: row.adsPeriodStats?.campaignId,
+        empresaId: profile?.empresa_id,
+      });
+      setPromosAdsCache((prev) => {
+        const nextAdsByItem = {
+          ...(prev.adsByItem || {}),
+          [mlId]: {
+            ...(prev.adsByItem?.[mlId] || {}),
+            adStatus: nextStatus,
+          },
+        };
+        return { ...prev, adsByItem: nextAdsByItem };
+      });
+    } catch (err) {
+      alert(`Erro ao ${nextStatus === 'paused' ? 'pausar' : 'ativar'} Ads no ML: ` + err.message);
+    } finally {
+      setUpdatingAdKey(null);
+    }
+  };
+
+  const handleMoveAdCampaign = async (row, nextCampaignId) => {
+    const mlId = row.primaryMl?.ml_item_id;
+    const advId = promosAdsCache?.advertiserId;
+    if (!mlId || !advId || !nextCampaignId) return;
+    const key = row.rowKey || row.ftId;
+    setUpdatingAdKey(key);
+    try {
+      await updateMlAdStatusOrCampaign({
+        advertiserId: advId,
+        mlItemId: mlId,
+        campaignId: Number(nextCampaignId),
+        status: 'active',
+        empresaId: profile?.empresa_id,
+      });
+      setPromosAdsCache((prev) => ({
+        ...prev,
+        adsByItem: {
+          ...(prev.adsByItem || {}),
+          [mlId]: {
+            ...(prev.adsByItem?.[mlId] || {}),
+            campaignId: Number(nextCampaignId),
+            adStatus: 'active',
+          },
+        },
+      }));
+    } catch (err) {
+      alert('Erro ao mover anúncio de campanha: ' + err.message);
+    } finally {
+      setUpdatingAdKey(null);
+    }
+  };
+
+  const handleCreateCampaign = async (e) => {
+    e.preventDefault();
+    const advId = promosAdsCache?.advertiserId;
+    if (!advId) return alert('Clique primeiro em "📡 Puxar Promoções & Ads".');
+    if (!newCampForm.name.trim()) return alert('Informe o nome da campanha.');
+    setSavingCamp(true);
+    try {
+      await createMlAdCampaign({
+        advertiserId: advId,
+        name: newCampForm.name.trim(),
+        acosTarget: Number(newCampForm.acosTarget || 10),
+        dailyBudget: Number(newCampForm.dailyBudget || 15),
+        empresaId: profile?.empresa_id,
+      });
+      setNewCampForm({ name: '', acosTarget: 10, dailyBudget: 15 });
+      await handleSyncPromosAndAds();
+    } catch (err) {
+      alert('Erro ao criar campanha no ML: ' + err.message);
+    } finally {
+      setSavingCamp(false);
+    }
+  };
+
+  const handleToggleCampaignStatus = async (camp) => {
+    const advId = promosAdsCache?.advertiserId;
+    if (!advId) return;
+    const nextStatus = camp.status === 'active' ? 'paused' : 'active';
+    setSavingCamp(true);
+    try {
+      await updateMlAdCampaign({
+        advertiserId: advId,
+        campaignId: camp.id,
+        status: nextStatus,
+        empresaId: profile?.empresa_id,
+      });
+      await handleSyncPromosAndAds();
+    } catch (err) {
+      alert('Erro ao alterar status da campanha: ' + err.message);
+    } finally {
+      setSavingCamp(false);
     }
   };
 
@@ -740,28 +856,39 @@ export default function AdsIa() {
             {showRulesPanel ? 'Ocultar Travas de Margem' : '🛡️ Configurar Travas de Margem'}
           </button>
           {activeChannel === 'ml' && (
-            <button
-              type="button"
-              onClick={handleSyncPromosAndAds}
-              disabled={syncingPromosAds}
-              style={{
-                padding: '0.52rem 0.95rem',
-                borderRadius: '8px',
-                border: '1px solid #EAB308',
-                background: '#FFE600',
-                color: '#1F2937',
-                fontWeight: 800,
-                fontSize: '0.84rem',
-                cursor: syncingPromosAds ? 'wait' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-              title="Puxa a % de promoção ativa e os gastos de Product Ads (7, 15 e 30 dias) direto do Mercado Livre"
-            >
-              <RefreshCw size={15} className={syncingPromosAds ? 'spin' : ''} />
-              {syncingPromosAds ? 'Puxando ML...' : '📡 Puxar Promoções & Ads (7/15/30d)'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleSyncPromosAndAds}
+                disabled={syncingPromosAds}
+                style={{
+                  padding: '0.52rem 0.95rem',
+                  borderRadius: '8px',
+                  border: '1px solid #EAB308',
+                  background: '#FFE600',
+                  color: '#1F2937',
+                  fontWeight: 800,
+                  fontSize: '0.84rem',
+                  cursor: syncingPromosAds ? 'wait' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+                title="Puxa a % de promoção ativa e os gastos de Product Ads (7, 15 e 30 dias) direto do Mercado Livre"
+              >
+                <RefreshCw size={15} className={syncingPromosAds ? 'spin' : ''} />
+                {syncingPromosAds ? 'Puxando ML...' : '📡 Puxar Promoções & Ads (7/15/30d)'}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowCampaignsModal(true)}
+                style={{ fontWeight: 700 }}
+                title="Ver, criar, ativar ou pausar suas campanhas de Product Ads"
+              >
+                📊 Campanhas Ads ({promosAdsCache?.campaigns?.length || 0})
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -1278,6 +1405,63 @@ export default function AdsIa() {
                             <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
                               {row.adsPeriodStats[adsPeriod]?.clicks || 0} cliques • ACOS {(row.adsPeriodStats[adsPeriod]?.acos || 0).toFixed(1)}%
                             </span>
+                            {activeChannel === 'ml' && (promosAdsCache?.campaigns?.length || 0) > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '3px' }}>
+                                <select
+                                  disabled={updatingAdKey === (row.rowKey || row.ftId)}
+                                  value={row.adsPeriodStats.campaignId || ''}
+                                  onChange={(e) => handleMoveAdCampaign(row, e.target.value)}
+                                  style={{
+                                    maxWidth: '130px',
+                                    padding: '2px 4px',
+                                    borderRadius: '5px',
+                                    border: '1px solid var(--border-color)',
+                                    background: 'var(--bg-secondary)',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '0.68rem',
+                                  }}
+                                  title="Mover este anúncio para outra campanha de Ads"
+                                >
+                                  <option value="">Sem campanha</option>
+                                  {(promosAdsCache.campaigns || []).map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name} ({c.acosTarget}%)
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  disabled={updatingAdKey === (row.rowKey || row.ftId)}
+                                  onClick={() =>
+                                    handleToggleAdStatus(
+                                      row,
+                                      row.adsPeriodStats.adStatus === 'active' ? 'paused' : 'active'
+                                    )
+                                  }
+                                  style={{
+                                    padding: '2px 6px',
+                                    borderRadius: '5px',
+                                    border: 'none',
+                                    background:
+                                      row.adsPeriodStats.adStatus === 'active'
+                                        ? 'rgba(16,185,129,0.16)'
+                                        : 'rgba(148,163,184,0.2)',
+                                    color:
+                                      row.adsPeriodStats.adStatus === 'active' ? '#059669' : '#64748B',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                  }}
+                                  title={
+                                    row.adsPeriodStats.adStatus === 'active'
+                                      ? 'Ads Ativo — Clique para pausar'
+                                      : 'Ads Pausado — Clique para ativar'
+                                  }
+                                >
+                                  {row.adsPeriodStats.adStatus === 'active' ? '▶️ Ativo' : '⏸️ Pausado'}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <>
@@ -1457,6 +1641,63 @@ export default function AdsIa() {
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
                             {aiRec.explanation}
                           </span>
+                          {activeChannel === 'ml' && row.primaryMl?.ml_item_id && (() => {
+                            const adsChoice = evaluateAdsChoice({
+                              adStatus: row.adsPeriodStats?.adStatus,
+                              campaignId: row.adsPeriodStats?.campaignId,
+                              campaigns: promosAdsCache?.campaigns || [],
+                              metrics,
+                              estoqueTotal: row.estoqueTotal,
+                              vendasMes: row.vendasMes,
+                              soldQuantityTotal: row.soldQuantityTotal,
+                              rules,
+                            });
+                            return (
+                              <div
+                                style={{
+                                  marginTop: '4px',
+                                  paddingTop: '4px',
+                                  borderTop: '1px dashed var(--border-color)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: '6px',
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <span style={{ fontSize: '0.7rem', color: adsChoice.color, fontWeight: 700 }}>
+                                  <strong>{adsChoice.badge}:</strong> {adsChoice.reason}
+                                </span>
+                                {adsChoice.buttonLabel && (
+                                  <button
+                                    type="button"
+                                    disabled={updatingAdKey === (row.rowKey || row.ftId)}
+                                    onClick={() =>
+                                      handleToggleAdStatus(
+                                        row,
+                                        adsChoice.action === 'pause' ? 'paused' : 'active'
+                                      )
+                                    }
+                                    style={{
+                                      padding: '2px 8px',
+                                      borderRadius: '5px',
+                                      border: `1px solid ${adsChoice.color}`,
+                                      background: 'transparent',
+                                      color: adsChoice.color,
+                                      fontSize: '0.7rem',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {updatingAdKey === (row.rowKey || row.ftId)
+                                      ? 'Enviando...'
+                                      : adsChoice.buttonLabel}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>
@@ -1594,6 +1835,142 @@ export default function AdsIa() {
                   );
                 })}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Campanhas Product Ads (ML) */}
+      {showCampaignsModal && (
+        <div className="modal-overlay" onClick={() => setShowCampaignsModal(false)}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: '820px', width: '95%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>📊 Campanhas de Product Ads (Mercado Livre)</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  Recomendamos manter 3 ou 4 campanhas fixas (ex: Campeões, Lançamentos, Kits, Giro de Estoque) e mover os anúncios entre elas.
+                </p>
+              </div>
+              <button type="button" className="btn-icon" onClick={() => setShowCampaignsModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ maxHeight: '72vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <form
+                onSubmit={handleCreateCampaign}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 1fr 1fr auto',
+                  gap: '8px',
+                  alignItems: 'end',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                }}
+              >
+                <div>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, display: 'block', marginBottom: '3px' }}>
+                    Nova Campanha (ex: Campeões / Lançamentos)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nome da campanha"
+                    value={newCampForm.name}
+                    onChange={(e) => setNewCampForm({ ...newCampForm, name: e.target.value })}
+                    style={ruleInputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, display: 'block', marginBottom: '3px' }}>
+                    ACOS Alvo (%)
+                  </label>
+                  <input
+                    type="number"
+                    min="2"
+                    max="40"
+                    value={newCampForm.acosTarget}
+                    onChange={(e) => setNewCampForm({ ...newCampForm, acosTarget: e.target.value })}
+                    style={ruleInputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, display: 'block', marginBottom: '3px' }}>
+                    Orçamento/Dia (R$)
+                  </label>
+                  <input
+                    type="number"
+                    min="5"
+                    value={newCampForm.dailyBudget}
+                    onChange={(e) => setNewCampForm({ ...newCampForm, dailyBudget: e.target.value })}
+                    style={ruleInputStyle}
+                  />
+                </div>
+                <button type="submit" className="btn-primary" disabled={savingCamp} style={{ whiteSpace: 'nowrap' }}>
+                  {savingCamp ? 'Criando...' : '+ Criar Campanha'}
+                </button>
+              </form>
+
+              {(promosAdsCache?.campaigns || []).length === 0 ? (
+                <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  Clique em <strong>&quot;📡 Puxar Promoções &amp; Ads (7/15/30d)&quot;</strong> para carregar suas campanhas do Mercado Livre.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {promosAdsCache.campaigns.map((c) => (
+                    <div
+                      key={c.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '10px',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-color)',
+                        background: 'var(--bg-surface)',
+                      }}
+                    >
+                      <div>
+                        <strong style={{ fontSize: '0.9rem' }}>{c.name}</strong>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+                          ID: {c.id} • Orçamento/dia: <strong>{formatBRL(c.dailyBudget)}</strong> • ACOS Alvo: <strong>{c.acosTarget}%</strong> • Gasto 30d: <strong>{formatBRL(c.metrics30d?.cost || 0)}</strong>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            background: c.status === 'active' ? 'rgba(16,185,129,0.14)' : 'rgba(148,163,184,0.2)',
+                            color: c.status === 'active' ? '#059669' : '#64748B',
+                          }}
+                        >
+                          {c.status === 'active' ? 'ATIVA' : 'PAUSADA'}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={savingCamp}
+                          onClick={() => handleToggleCampaignStatus(c)}
+                          className="btn-secondary"
+                          style={{ fontSize: '0.76rem', padding: '4px 10px' }}
+                        >
+                          {c.status === 'active' ? '⏸️ Pausar' : '▶️ Ativar'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
