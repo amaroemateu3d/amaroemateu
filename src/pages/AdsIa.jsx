@@ -2376,6 +2376,163 @@ export default function AdsIa() {
                 </button>
               </div>
 
+              {/* Guia Automático da IA: Quem vai em cada uma das 4 Campanhas */}
+              {(() => {
+                const validRows = analyzedRows.filter(
+                  (r) =>
+                    r.primaryMl?.ml_item_id &&
+                    r.estoqueTotal > parseNumber(rules.estoqueBaixoProtecaoMax || 3) &&
+                    r.metrics.precoPraticado >= r.metrics.precoPiso - 0.05
+                );
+                const seenMlb = new Set();
+                const uniqueMlbRows = validRows.filter((r) => {
+                  const id = r.primaryMl.ml_item_id;
+                  if (seenMlb.has(id)) return false;
+                  seenMlb.add(id);
+                  return true;
+                });
+
+                const buckets = {
+                  campeoes: [],
+                  lancamentos: [],
+                  giro: [],
+                  teste: [],
+                };
+
+                uniqueMlbRows.forEach((r) => {
+                  const sold = r.soldQuantityTotal ?? 0;
+                  const daysNoSale = r.daysSinceLastSale ?? 0;
+                  const highStock = r.estoqueTotal >= parseNumber(rules.estoqueAltoGiroMin || 12);
+
+                  if (sold >= 10 && r.vendasMes >= 2 && r.metrics.margemSemAdsPerc >= 22) {
+                    buckets.campeoes.push(r);
+                  } else if (sold < 10 || daysNoSale >= 30) {
+                    buckets.lancamentos.push(r);
+                  } else if (highStock || daysNoSale >= 15) {
+                    buckets.giro.push(r);
+                  } else {
+                    buckets.teste.push(r);
+                  }
+                });
+
+                const cards = [
+                  {
+                    key: 'campeoes',
+                    title: '1 - Campeoes (Escala)',
+                    meta: 'ACOS 8% • R$ 50/dia',
+                    color: '#059669',
+                    items: buckets.campeoes,
+                  },
+                  {
+                    key: 'lancamentos',
+                    title: '2 - Lancamentos (Rankear)',
+                    meta: 'ACOS 15% • R$ 50/dia',
+                    color: '#2563EB',
+                    items: buckets.lancamentos,
+                  },
+                  {
+                    key: 'giro',
+                    title: '3 - Giro de Estoque',
+                    meta: 'ACOS 12% • R$ 50/dia',
+                    color: '#D97706',
+                    items: buckets.giro,
+                  },
+                  {
+                    key: 'teste',
+                    title: '4 - Teste e Baixo Custo',
+                    meta: 'ACOS 6% • R$ 50/dia',
+                    color: '#64748B',
+                    items: buckets.teste,
+                  },
+                ];
+
+                return (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+                      gap: '10px',
+                    }}
+                  >
+                    {cards.map((b) => (
+                      <div
+                        key={b.key}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${b.color}55`,
+                          background: 'var(--bg-surface)',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '6px',
+                          }}
+                        >
+                          <strong style={{ fontSize: '0.82rem', color: b.color }}>
+                            {b.title} ({b.items.length})
+                          </strong>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                            {b.meta}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            maxHeight: '115px',
+                            overflowY: 'auto',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '4px',
+                            fontSize: '0.73rem',
+                          }}
+                        >
+                          {b.items.length === 0 ? (
+                            <span style={{ color: 'var(--text-secondary)' }}>
+                              Nenhum item neste perfil agora (escolha 1 anúncio qualquer só para criar a campanha no ML).
+                            </span>
+                          ) : (
+                            b.items.map((it) => (
+                              <div
+                                key={it.primaryMl.ml_item_id}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  gap: '6px',
+                                  padding: '3px 6px',
+                                  borderRadius: '5px',
+                                  background: 'var(--bg-secondary)',
+                                }}
+                              >
+                                <span style={{ fontWeight: 700 }}>
+                                  {it.ftId} — {it.nomePeca}
+                                </span>
+                                <code
+                                  onClick={() => {
+                                    navigator.clipboard?.writeText(it.primaryMl.ml_item_id);
+                                  }}
+                                  title="Clique para copiar o código MLB e colar na busca do Mercado Livre"
+                                  style={{
+                                    cursor: 'pointer',
+                                    color: b.color,
+                                    fontWeight: 800,
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {it.primaryMl.ml_item_id} 📋
+                                </code>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
               <form
                 onSubmit={handleCreateCampaign}
                 style={{
