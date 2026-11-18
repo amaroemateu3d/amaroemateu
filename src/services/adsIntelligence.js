@@ -172,8 +172,16 @@ export function calculateAdShieldMetrics(effectiveFt, rules, itemAdsMetrics = {}
     parseNumber(effectiveFt.taxaMLPerc) +
     parseNumber(effectiveFt.custoEnvioPerc);
 
-  const precoBaseVenda = parseNumber(effectiveFt.precoVendaManual);
-  const precoCadastro = precoBaseVenda > 0 ? precoBaseVenda / 0.7 : 0;
+  const precoBaseVenda =
+    parseNumber(effectiveFt.precoVendaSistema) > 0
+      ? parseNumber(effectiveFt.precoVendaSistema)
+      : parseNumber(effectiveFt.precoVendaManual);
+  const precoCadastro =
+    parseNumber(effectiveFt.precoAnuncio) > 0
+      ? parseNumber(effectiveFt.precoAnuncio)
+      : precoBaseVenda > 0
+      ? precoBaseVenda / 0.7
+      : 0;
   const precoPraticado =
     parseNumber(effectiveFt.precoRealAtivo) > 0
       ? parseNumber(effectiveFt.precoRealAtivo)
@@ -753,17 +761,35 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
             }
           });
 
+          // Se houver promoção ativa (started) na Central de Promoções, atualiza price (preço promocional em vigor) e originalPrice (Preço de Cadastro)
+          const bestActive = activePromos.find((ap) => ap.price > 0) || null;
+          const resolvedOriginalPrice =
+            bestActive && bestActive.originalPrice > bestActive.price
+              ? bestActive.originalPrice
+              : itemBase.originalPrice > 0
+              ? itemBase.originalPrice
+              : itemBase.price;
+          const resolvedActivePrice =
+            bestActive && bestActive.price > 0 ? bestActive.price : itemBase.price;
+          const resolvedPromoPerc =
+            resolvedOriginalPrice > resolvedActivePrice && resolvedOriginalPrice > 0
+              ? ((resolvedOriginalPrice - resolvedActivePrice) / resolvedOriginalPrice) * 100
+              : itemBase.promoPerc || 0;
+
           if (!promosByItem[id]) {
             promosByItem[id] = {
-              price: 0,
-              originalPrice: 0,
-              promoPerc: 0,
+              price: resolvedActivePrice,
+              originalPrice: resolvedOriginalPrice,
+              promoPerc: resolvedPromoPerc,
               soldQuantity: 0,
               status: '',
               activePromos,
               candidatePromos,
             };
           } else {
+            promosByItem[id].price = resolvedActivePrice;
+            promosByItem[id].originalPrice = resolvedOriginalPrice;
+            promosByItem[id].promoPerc = resolvedPromoPerc;
             promosByItem[id].activePromos = activePromos;
             promosByItem[id].candidatePromos = candidatePromos;
           }
@@ -1068,6 +1094,96 @@ export async function applyMlSellerPromotion({
     appliedAs: 'promotion',
     promotion: eligible,
     result: res,
+  };
+}
+
+/**
+ * Padroniza o Preço de Cadastro (base price no ML) e já aplica a Promoção de 30% OFF (Preço de Venda)
+ * em um anúncio do Mercado Livre. Se houver um Desconto Individual ativo travando a edição do preço base,
+ * remove temporariamente, atualiza o Preço de Cadastro e recria a promoção de 30% OFF.
+ */
+export async function syncMlBaseCadastroAndPromo({
+  mlItemId,
+  cadastroPrice,
+  vendaPrice,
+  empresaId,
+}) {
+  if (!mlItemId) throw new Error('Item MLB não informado.');
+  const token = await getValidMlToken(empresaId);
+  const headers = { Authorization: `Bearer ${token.access_token}` };
+
+  const cleanCadastro = Number(Number(cadastroPrice).toFixed(2));
+  const cleanVenda = Number(Number(vendaPrice).toFixed(2));
+
+  let promoList = [];
+  try {
+    const promoResp = await mlProxyFetch(
+      `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+      { headers }
+    );
+    promoList = Array.isArray(promoResp)
+      ? promoResp
+      : Array.isArray(promoResp?.results)
+      ? promoResp.results
+      : [];
+  } catch {
+    promoList = [];
+  }
+
+  const startedIndividual = promoList.find(
+    (p) => p.type === 'PRICE_DISCOUNT' && p.status === 'started'
+  );
+
+  let baseUpdated = false;
+  let promoApplied = false;
+
+  try {
+    await mlProxyFetch(`/items/${encodeURIComponent(mlItemId)}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ price: cleanCadastro }),
+    });
+    baseUpdated = true;
+  } catch (putErr) {
+    // Se falhou porque há PRICE_DISCOUNT ativa travando o preço base, remove a promo individual, sobe o Cadastro e recria
+    if (startedIndividual) {
+      try {
+        await mlProxyFetch(
+          `/seller-promotions/items/${encodeURIComponent(mlItemId)}?promotion_type=PRICE_DISCOUNT&promotion_id=${encodeURIComponent(startedIndividual.id || '')}&app_version=v2`,
+          { method: 'DELETE', headers }
+        );
+        await mlProxyFetch(`/items/${encodeURIComponent(mlItemId)}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ price: cleanCadastro }),
+        });
+        baseUpdated = true;
+      } catch (retryErr) {
+        throw new Error(retryErr.message || putErr.message);
+      }
+    } else {
+      throw putErr;
+    }
+  }
+
+  // Agora tenta aplicar/reativar a promoção de 30% OFF (cleanVenda)
+  try {
+    const applyRes = await applyMlSellerPromotion({
+      mlItemId,
+      targetPrice: cleanVenda,
+      empresaId,
+    });
+    promoApplied = applyRes.appliedAs === 'promotion';
+  } catch {
+    promoApplied = false;
+  }
+
+  return {
+    mlItemId,
+    cadastroPrice: cleanCadastro,
+    vendaPrice: cleanVenda,
+    baseUpdated,
+    promoApplied,
   };
 }
 

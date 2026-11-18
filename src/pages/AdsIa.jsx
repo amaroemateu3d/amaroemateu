@@ -32,6 +32,7 @@ import {
   createMlAdCampaign,
   updateMlAdCampaign,
   applyMlSellerPromotion,
+  syncMlBaseCadastroAndPromo,
   loadPromosAdsCache,
   askGeminiStrategist,
   loadAdsIaRules,
@@ -87,6 +88,10 @@ export default function AdsIa() {
   const [newCampForm, setNewCampForm] = useState({ name: '', acosTarget: 10, dailyBudget: 15 });
   const [savingCamp, setSavingCamp] = useState(false);
   const [rampState, setRampState] = useState(() => loadRampState());
+  const [showStandardizeModal, setShowStandardizeModal] = useState(false);
+  const [targetBaseMargin, setTargetBaseMargin] = useState(35);
+  const [standardizingBusy, setStandardizingBusy] = useState(false);
+  const [standardizeProgress, setStandardizeProgress] = useState('');
 
   const handleToggleRamp = (rowKey) => {
     setRampState((prev) => {
@@ -282,15 +287,16 @@ export default function AdsIa() {
           const adsPeriodStats = mlId ? promosAdsCache?.adsByItem?.[mlId] : null;
           const apiAdsForPeriod = adsPeriodStats?.[adsPeriod] || null;
 
-          const liveMlPrice =
-            activeChannel === 'ml' && parseNumber(promoInfo?.price) > 0
-              ? parseNumber(promoInfo.price)
-              : activeChannel === 'ml' && parseNumber(matchedMl?.price) > 0
-              ? parseNumber(matchedMl.price)
-              : null;
+          const hasLivePromoPrice =
+            activeChannel === 'ml' &&
+            Array.isArray(promoInfo?.activePromos) &&
+            promoInfo.activePromos.length > 0 &&
+            parseNumber(promoInfo?.price) > 0;
+          const liveMlPrice = hasLivePromoPrice ? parseNumber(promoInfo.price) : null;
 
           const effFtVar = {
             ...effFtBase,
+            precoVendaSistema: effFtBase.precoVendaManual,
             ...(liveMlPrice
               ? { precoRealAtivo: liveMlPrice, precoVendaManual: String(liveMlPrice) }
               : {}),
@@ -386,14 +392,14 @@ export default function AdsIa() {
           const promoInfo = mlId ? promosAdsCache?.promosByItem?.[mlId] : null;
           const adsPeriodStats = mlId ? promosAdsCache?.adsByItem?.[mlId] : null;
           const apiAdsForPeriod = adsPeriodStats?.[adsPeriod] || null;
-          const liveMlPrice =
-            parseNumber(promoInfo?.price) > 0
-              ? parseNumber(promoInfo.price)
-              : parseNumber(l.price) > 0
-              ? parseNumber(l.price)
-              : null;
+          const hasLivePromoPrice =
+            Array.isArray(promoInfo?.activePromos) &&
+            promoInfo.activePromos.length > 0 &&
+            parseNumber(promoInfo?.price) > 0;
+          const liveMlPrice = hasLivePromoPrice ? parseNumber(promoInfo.price) : null;
           const effFtMl = {
             ...effFtBase,
+            precoVendaSistema: effFtBase.precoVendaManual,
             ...(liveMlPrice
               ? { precoRealAtivo: liveMlPrice, precoVendaManual: String(liveMlPrice) }
               : {}),
@@ -488,12 +494,15 @@ export default function AdsIa() {
       const apiAdsForPeriod = adsPeriodStats?.[adsPeriod] || null;
       const estoqueTotal = getEstoqueTotalFt(ft);
 
-      const liveMlPrice =
-        activeChannel === 'ml' && parseNumber(promoInfo?.price) > 0
-          ? parseNumber(promoInfo.price)
-          : null;
+      const hasLivePromoPriceSimple =
+        activeChannel === 'ml' &&
+        Array.isArray(promoInfo?.activePromos) &&
+        promoInfo.activePromos.length > 0 &&
+        parseNumber(promoInfo?.price) > 0;
+      const liveMlPrice = hasLivePromoPriceSimple ? parseNumber(promoInfo.price) : null;
       const effFtSimple = {
         ...effFtBase,
+        precoVendaSistema: effFtBase.precoVendaManual,
         ...(liveMlPrice
           ? { precoRealAtivo: liveMlPrice, precoVendaManual: String(liveMlPrice) }
           : {}),
@@ -998,6 +1007,187 @@ export default function AdsIa() {
     }
   };
 
+  // Calcula para qualquer FT o Preço de Venda (com 30% OFF e targetMargin% de margem líquida) e o Preço de Cadastro (Venda / 0,70)
+  const computeStandardizedPair = (ftBase, marginPerc = targetBaseMargin) => {
+    const eff = getEffectiveFt(ftBase, activeChannel);
+    const m = calculateAdShieldMetrics(eff, { ...rules, margemMinimaPerc: marginPerc }, {});
+    const denom = 1 - (m.aliquotaCanalPerc + Number(marginPerc || 35)) / 100;
+    const vendaIdeal =
+      denom > 0.08
+        ? Number((m.custoFixoUnit / denom).toFixed(2))
+        : Number((m.precoQueima * 1.5).toFixed(2));
+    const cadastroIdeal = Number((vendaIdeal / 0.7).toFixed(2));
+    const queimaIdeal = Number(m.precoQueima.toFixed(2));
+    return {
+      custoFixoUnit: m.custoFixoUnit,
+      aliquotaCanalPerc: m.aliquotaCanalPerc,
+      vendaIdeal,
+      cadastroIdeal,
+      queimaIdeal,
+    };
+  };
+
+  const handleStandardizeSystemPrices = async (onlyActive = true) => {
+    const targetFts = savedFts.filter((ft) =>
+      onlyActive ? Boolean(overrides[activeChannel]?.[ft.indiceFt]?.cadastrado) : true
+    );
+    if (targetFts.length === 0) return alert('Nenhum produto selecionado para padronizar.');
+
+    setStandardizingBusy(true);
+    setStandardizeProgress(`Atualizando ${targetFts.length} produtos no sistema...`);
+    try {
+      const headers = {
+        ...getHeaders(),
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      };
+      const nextChOverrides = { ...(overrides[activeChannel] || {}) };
+
+      for (const ft of targetFts) {
+        const pair = computeStandardizedPair(ft, targetBaseMargin);
+        const curOv = nextChOverrides[ft.indiceFt] || {};
+        const cleaned = { ...curOv };
+        delete cleaned.precoRealVenda;
+        delete cleaned.precoRealVendaMes;
+
+        const nextSettings = {
+          ...cleaned,
+          cadastrado: curOv.cadastrado ?? true,
+          precoVendaManual: pair.vendaIdeal.toFixed(2),
+          precoAnuncio: pair.cadastroIdeal.toFixed(2),
+          precoRankeamento: pair.queimaIdeal.toFixed(2),
+        };
+
+        await fetch(`${SUPA_URL}/rest/v1/ecommerce_overrides?on_conflict=channel_id,ft_id`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            channel_id: activeChannel,
+            ft_id: ft.indiceFt,
+            settings: nextSettings,
+          }),
+        });
+        nextChOverrides[ft.indiceFt] = nextSettings;
+      }
+
+      setOverrides((prev) => ({
+        ...prev,
+        [activeChannel]: nextChOverrides,
+      }));
+      alert(
+        `✅ ${targetFts.length} produtos padronizados no sistema!\n\n• Valor de Venda (com 30% OFF) = ${targetBaseMargin}% de margem líquida\n• Preço de Cadastro = Valor de Venda / 0,70`
+      );
+    } catch (err) {
+      alert('Erro ao padronizar preços no sistema: ' + err.message);
+    } finally {
+      setStandardizingBusy(false);
+      setStandardizeProgress('');
+    }
+  };
+
+  const handlePushStandardizedToMl = async (specificFt = null) => {
+    const targetFts = specificFt
+      ? [specificFt]
+      : savedFts.filter((ft) => Boolean(overrides[activeChannel]?.[ft.indiceFt]?.cadastrado));
+
+    if (targetFts.length === 0) return;
+
+    if (
+      !specificFt &&
+      !window.confirm(
+        `Deseja atualizar no Mercado Livre o Preço de Cadastro (Venda / 0,70) e ativar a promoção de 30% OFF (com ${targetBaseMargin}% de margem líquida) para todos os anúncios vinculados a essas ${targetFts.length} FTs?`
+      )
+    ) {
+      return;
+    }
+
+    setStandardizingBusy(true);
+    let updatedMlCount = 0;
+    let promoAppliedCount = 0;
+    const errors = [];
+
+    try {
+      const headers = {
+        ...getHeaders(),
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      };
+      const nextChOverrides = { ...(overrides[activeChannel] || {}) };
+
+      for (let i = 0; i < targetFts.length; i++) {
+        const ft = targetFts[i];
+        const pair = computeStandardizedPair(ft, targetBaseMargin);
+        const curOv = nextChOverrides[ft.indiceFt] || {};
+        const cleaned = { ...curOv };
+        delete cleaned.precoRealVenda;
+        delete cleaned.precoRealVendaMes;
+
+        const nextSettings = {
+          ...cleaned,
+          cadastrado: true,
+          precoVendaManual: pair.vendaIdeal.toFixed(2),
+          precoAnuncio: pair.cadastroIdeal.toFixed(2),
+          precoRankeamento: pair.queimaIdeal.toFixed(2),
+        };
+
+        await fetch(`${SUPA_URL}/rest/v1/ecommerce_overrides?on_conflict=channel_id,ft_id`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            channel_id: activeChannel,
+            ft_id: ft.indiceFt,
+            settings: nextSettings,
+          }),
+        });
+        nextChOverrides[ft.indiceFt] = nextSettings;
+
+        // Encontra todos os anúncios MLB vinculados a esta FT
+        const linked = mlListings.filter((l) => {
+          const base = String(l.ft_id || '').split('__var__')[0];
+          return base === ft.indiceFt && l.ml_item_id;
+        });
+
+        for (const l of linked) {
+          setStandardizeProgress(
+            `Enviando ${ft.indiceFt} (${l.ml_item_id}) -> Cadastro R$ ${pair.cadastroIdeal.toFixed(2)} | Promo 30% OFF R$ ${pair.vendaIdeal.toFixed(2)}...`
+          );
+          try {
+            const resMl = await syncMlBaseCadastroAndPromo({
+              mlItemId: l.ml_item_id,
+              cadastroPrice: pair.cadastroIdeal,
+              vendaPrice: pair.vendaIdeal,
+              empresaId: profile?.empresa_id,
+            });
+            if (resMl.baseUpdated) updatedMlCount++;
+            if (resMl.promoApplied) promoAppliedCount++;
+          } catch (mlErr) {
+            errors.push(`${ft.indiceFt} (${l.ml_item_id}): ${mlErr.message}`);
+          }
+        }
+      }
+
+      setOverrides((prev) => ({
+        ...prev,
+        [activeChannel]: nextChOverrides,
+      }));
+
+      await handleSyncPromosAndAds();
+
+      const summary = [
+        `✅ Padronização concluída!`,
+        `• Anúncios ML com Preço de Cadastro atualizado: ${updatedMlCount}`,
+        `• Promoções de 30% OFF aplicadas via API: ${promoAppliedCount}`,
+      ];
+      if (errors.length > 0) {
+        summary.push(`\n⚠️ Avisos (${errors.length}):\n- ${errors.slice(0, 6).join('\n- ')}`);
+      }
+      alert(summary.join('\n'));
+    } catch (err) {
+      alert('Erro ao sincronizar preços com o ML: ' + err.message);
+    } finally {
+      setStandardizingBusy(false);
+      setStandardizeProgress('');
+    }
+  };
+
   const formatBRL = (v) =>
     Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -1070,6 +1260,26 @@ export default function AdsIa() {
                 title="Ver, criar, ativar ou pausar suas campanhas de Product Ads"
               >
                 📊 Campanhas Ads ({promosAdsCache?.campaigns?.length || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowStandardizeModal(true)}
+                style={{
+                  padding: '0.52rem 0.95rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #7C3AED, #2563EB)',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+                title="Recalcula todos os Preços de Cadastro (Venda / 0,70) e Preços de Venda (com 30% OFF garantindo 30% a 40% de margem líquida)"
+              >
+                🎯 Padronizar Preços (Cadastro + 30% OFF)
               </button>
             </>
           )}
@@ -2643,6 +2853,237 @@ export default function AdsIa() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Padronizador de Preços de Cadastro + Venda c/ 30% OFF (Margem 30% a 40%) */}
+      {showStandardizeModal && (
+        <div className="modal-overlay" onClick={() => !standardizingBusy && setShowStandardizeModal(false)}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: '960px', width: '96%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>
+                  🎯 Padronizar Preços de Cadastro &amp; Venda (-30% OFF com Margem de 30% a 40%)
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  Define um <strong>Preço de Cadastro (X)</strong> para cada item de modo que, ao aplicar <strong>30% de promoção</strong>, o <strong>Valor de Venda Final</strong> já entregue entre 30% e 40% de margem líquida (sobrando folga para as promoções da IA até 25%, 20% ou 15%).
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-icon"
+                disabled={standardizingBusy}
+                onClick={() => setShowStandardizeModal(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ maxHeight: '75vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(16, 185, 129, 0.08))',
+                  border: '1px solid rgba(124, 58, 237, 0.35)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 800 }}>
+                    Margem Líquida Alvo no Preço de Venda (após 30% OFF):
+                  </label>
+                  {[30, 35, 40].map((mVal) => (
+                    <button
+                      key={mVal}
+                      type="button"
+                      onClick={() => setTargetBaseMargin(mVal)}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '8px',
+                        border: targetBaseMargin === mVal ? '2px solid #7C3AED' : '1px solid var(--border-color)',
+                        background: targetBaseMargin === mVal ? '#7C3AED' : 'var(--bg-surface)',
+                        color: targetBaseMargin === mVal ? '#fff' : 'var(--text-primary)',
+                        fontWeight: 800,
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {mVal}% {mVal === 35 ? '(Recomendado)' : ''}
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min="25"
+                    max="50"
+                    value={targetBaseMargin}
+                    onChange={(e) => setTargetBaseMargin(Number(e.target.value || 35))}
+                    style={{ ...ruleInputStyle, width: '75px', textAlign: 'center' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    disabled={standardizingBusy}
+                    onClick={() => handleStandardizeSystemPrices(true)}
+                    className="btn-secondary"
+                    style={{ fontWeight: 800, fontSize: '0.8rem' }}
+                  >
+                    💾 1. Salvar Todos no Sistema ({targetBaseMargin}%)
+                  </button>
+                  {activeChannel === 'ml' && (
+                    <button
+                      type="button"
+                      disabled={standardizingBusy}
+                      onClick={() => handlePushStandardizedToMl(null)}
+                      style={{
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: '#059669',
+                        color: '#fff',
+                        fontWeight: 800,
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      🚀 2. Enviar Cadastro + Promo 30% OFF p/ Todos no ML
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {standardizeProgress && (
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: 'rgba(37, 99, 235, 0.12)',
+                    color: '#2563EB',
+                    fontWeight: 700,
+                    fontSize: '0.8rem',
+                  }}
+                >
+                  ⏳ {standardizeProgress}
+                </div>
+              )}
+
+              <div className="table-responsive">
+                <table className="fts-table" style={{ fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr>
+                      <th>FT / Produto</th>
+                      <th style={{ textAlign: 'center' }}>Custo Fixo (Prod+Emb+Taxa)</th>
+                      <th style={{ textAlign: 'center' }}>Comissão ML</th>
+                      <th style={{ textAlign: 'center' }}>🛡️ Piso 25%</th>
+                      <th style={{ textAlign: 'center', color: '#7C3AED' }}>
+                        Novo Preço Cadastro (X)
+                      </th>
+                      <th style={{ textAlign: 'center', color: '#059669' }}>
+                        Venda c/ 30% OFF ({targetBaseMargin}% Margem)
+                      </th>
+                      {activeChannel === 'ml' && (
+                        <th style={{ textAlign: 'center' }}>Enviar p/ ML</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {savedFts
+                      .filter((ft) => Boolean(overrides[activeChannel]?.[ft.indiceFt]?.cadastrado))
+                      .map((ft) => {
+                        const pair = computeStandardizedPair(ft, targetBaseMargin);
+                        const piso25 = computeStandardizedPair(ft, 25).vendaIdeal;
+                        const linkedCount = mlListings.filter((l) => {
+                          const base = String(l.ft_id || '').split('__var__')[0];
+                          return base === ft.indiceFt && l.ml_item_id;
+                        }).length;
+
+                        return (
+                          <tr key={ft.indiceFt}>
+                            <td>
+                              <strong>{ft.indiceFt}</strong> — {ft.nomePeca}
+                              {linkedCount > 0 && (
+                                <span
+                                  style={{
+                                    marginLeft: '6px',
+                                    fontSize: '0.68rem',
+                                    color: 'var(--text-secondary)',
+                                  }}
+                                >
+                                  ({linkedCount} anúncio{linkedCount > 1 ? 's' : ''} ML)
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              {formatBRL(pair.custoFixoUnit)}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              {pair.aliquotaCanalPerc}%
+                            </td>
+                            <td style={{ textAlign: 'center', fontWeight: 700 }}>
+                              {formatBRL(piso25)}
+                            </td>
+                            <td
+                              style={{
+                                textAlign: 'center',
+                                fontWeight: 800,
+                                color: '#7C3AED',
+                                fontSize: '0.88rem',
+                              }}
+                            >
+                              {formatBRL(pair.cadastroIdeal)}
+                            </td>
+                            <td
+                              style={{
+                                textAlign: 'center',
+                                fontWeight: 800,
+                                color: '#059669',
+                                fontSize: '0.88rem',
+                              }}
+                            >
+                              {formatBRL(pair.vendaIdeal)}{' '}
+                              <span style={{ fontSize: '0.68rem', fontWeight: 600 }}>
+                                (-30% OFF)
+                              </span>
+                            </td>
+                            {activeChannel === 'ml' && (
+                              <td style={{ textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  disabled={standardizingBusy || linkedCount === 0}
+                                  onClick={() => handlePushStandardizedToMl(ft)}
+                                  style={{
+                                    padding: '4px 9px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: linkedCount > 0 ? '#2563EB' : '#94A3B8',
+                                    color: '#fff',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    cursor: linkedCount > 0 ? 'pointer' : 'not-allowed',
+                                  }}
+                                >
+                                  🚀 Atualizar no ML
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
