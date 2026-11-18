@@ -1031,8 +1031,40 @@ export async function updateMlAdCampaign({
 }
 
 /**
+ * Remove (sai de) uma promoção ativa na Central de Promoções do Mercado Livre
+ * (ex: sair da Campanha Tradicional Black Friday quando ela trava o preço abaixo do Preço Piso).
+ */
+export async function removeMlSellerPromotion({
+  mlItemId,
+  promotionId,
+  promotionType,
+  empresaId,
+}) {
+  if (!mlItemId || !promotionType) {
+    throw new Error('Item MLB e tipo da promoção são obrigatórios.');
+  }
+  const token = await getValidMlToken(empresaId);
+  const headers = { Authorization: `Bearer ${token.access_token}` };
+
+  const idParam =
+    promotionId && promotionId !== promotionType
+      ? `&promotion_id=${encodeURIComponent(promotionId)}`
+      : '';
+
+  return mlProxyFetch(
+    `/seller-promotions/items/${encodeURIComponent(mlItemId)}?promotion_type=${encodeURIComponent(promotionType)}${idParam}&app_version=v2`,
+    {
+      method: 'DELETE',
+      headers,
+    }
+  );
+}
+
+/**
  * Aplica o preço alvo como PROMOÇÃO (Central de Promoções do ML),
  * mantendo o Preço de Cadastro (original_price) intacto para preservar o selo % OFF!
+ * Se o anúncio estiver preso em uma Campanha Tradicional (ex: Black Friday / DEAL) cujo teto máximo
+ * seja menor que o targetPrice, sai automaticamente dessa campanha e aplica Desconto Individual (PRICE_DISCOUNT).
  */
 export async function applyMlSellerPromotion({
   mlItemId,
@@ -1044,16 +1076,57 @@ export async function applyMlSellerPromotion({
   if (!mlItemId) throw new Error('Item MLB não informado.');
   const token = await getValidMlToken(empresaId);
   const headers = { Authorization: `Bearer ${token.access_token}` };
+  const cleanTarget = Number(Number(targetPrice).toFixed(2));
 
-  const promoResp = await mlProxyFetch(
-    `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
-    { headers }
-  );
-  const promoList = Array.isArray(promoResp)
-    ? promoResp
-    : Array.isArray(promoResp?.results)
-    ? promoResp.results
-    : [];
+  const fetchPromos = async () => {
+    const promoResp = await mlProxyFetch(
+      `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+      { headers }
+    );
+    return Array.isArray(promoResp)
+      ? promoResp
+      : Array.isArray(promoResp?.results)
+      ? promoResp.results
+      : [];
+  };
+
+  let promoList = await fetchPromos();
+
+  // Verifica se há alguma campanha ativa (DEAL, SMART, LIGHTNING, DOD, etc.) travando o preço abaixo do cleanTarget
+  const blockingStartedPromos = promoList.filter((p) => {
+    if (p.status !== 'started') return false;
+    if (promotionId && String(p.id) === String(promotionId)) return false;
+    // Se estamos subindo o preço para corrigir Piso e há uma DEAL/SMART/etc ativa com preço menor que o alvo
+    const curDealPrice = Number(p.price || 0);
+    const maxAllowed = Number(p.max_discounted_price || 0);
+    if (p.type !== 'PRICE_DISCOUNT' && ((maxAllowed > 0 && maxAllowed < cleanTarget - 0.02) || (curDealPrice > 0 && curDealPrice < cleanTarget - 0.02))) {
+      return true;
+    }
+    return false;
+  });
+
+  const removedBlocking = [];
+  for (const bp of blockingStartedPromos) {
+    try {
+      await removeMlSellerPromotion({
+        mlItemId,
+        promotionId: bp.id,
+        promotionType: bp.type,
+        empresaId,
+      });
+      removedBlocking.push(bp);
+    } catch (remErr) {
+      console.warn('[AdsIA] Aviso ao sair de campanha bloqueadora:', remErr);
+    }
+  }
+
+  if (removedBlocking.length > 0) {
+    try {
+      promoList = await fetchPromos();
+    } catch {
+      // mantém lista anterior
+    }
+  }
 
   // Se o usuário escolheu um convite específico de promoção, prioriza ele; senão, pega PRICE_DISCOUNT ou campanha ativa/candidata
   const eligible =
@@ -1061,17 +1134,22 @@ export async function applyMlSellerPromotion({
       ? promoList.find((p) => String(p.id) === String(promotionId) || p.type === promotionType)
       : null) ||
     promoList.find((p) => p.type === 'PRICE_DISCOUNT' && (p.status === 'started' || p.status === 'candidate')) ||
-    promoList.find((p) => (p.type === 'SELLER_CAMPAIGN' || p.type === 'DEAL' || p.type === 'SMART' || p.type === 'MARKETPLACE_CAMPAIGN') && (p.status === 'started' || p.status === 'candidate' || p.status === 'pending')) ||
+    promoList.find(
+      (p) =>
+        (p.type === 'SELLER_CAMPAIGN' || p.type === 'DEAL' || p.type === 'SMART' || p.type === 'MARKETPLACE_CAMPAIGN') &&
+        (p.status === 'started' || p.status === 'candidate' || p.status === 'pending') &&
+        (Number(p.max_discounted_price || 0) === 0 || Number(p.max_discounted_price) >= cleanTarget - 0.05)
+    ) ||
     null;
 
   if (!eligible) {
     return {
-      appliedAs: 'no_eligible_promo',
+      appliedAs: removedBlocking.length > 0 ? 'removed_blocking_deal' : 'no_eligible_promo',
+      removedBlocking,
       promoList,
     };
   }
 
-  const cleanTarget = Number(Number(targetPrice).toFixed(2));
   const payload = {
     deal_price: cleanTarget,
     promotion_id: eligible.id,
@@ -1081,26 +1159,75 @@ export async function applyMlSellerPromotion({
     payload.top_deal_price = Number(Number(eligible.original_price).toFixed(2));
   }
 
-  const res = await mlProxyFetch(
-    `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
-    {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    }
-  );
+  try {
+    const res = await mlProxyFetch(
+      `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      }
+    );
 
-  return {
-    appliedAs: 'promotion',
-    promotion: eligible,
-    result: res,
-  };
+    return {
+      appliedAs: 'promotion',
+      promotion: eligible,
+      removedBlocking,
+      result: res,
+    };
+  } catch (postErr) {
+    // Se a promoção escolhida rejeitou o preço (ex: DEAL com teto oculto) e ela estava ativa, sai dela e tenta PRICE_DISCOUNT
+    if (eligible.status === 'started' && eligible.type !== 'PRICE_DISCOUNT') {
+      try {
+        await removeMlSellerPromotion({
+          mlItemId,
+          promotionId: eligible.id,
+          promotionType: eligible.type,
+          empresaId,
+        });
+        removedBlocking.push(eligible);
+        const freshList = await fetchPromos();
+        const indiv = freshList.find(
+          (p) => p.type === 'PRICE_DISCOUNT' && (p.status === 'started' || p.status === 'candidate')
+        );
+        if (indiv) {
+          const retryPayload = {
+            deal_price: cleanTarget,
+            promotion_id: indiv.id,
+            promotion_type: 'PRICE_DISCOUNT',
+          };
+          const retryRes = await mlProxyFetch(
+            `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+            {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(retryPayload),
+            }
+          );
+          return {
+            appliedAs: 'promotion',
+            promotion: indiv,
+            removedBlocking,
+            result: retryRes,
+          };
+        }
+        return {
+          appliedAs: 'removed_blocking_deal',
+          removedBlocking,
+          promoList: freshList,
+        };
+      } catch {
+        throw postErr;
+      }
+    }
+    throw postErr;
+  }
 }
 
 /**
  * Padroniza o Preço de Cadastro (base price no ML) e já aplica a Promoção de 30% OFF (Preço de Venda)
- * em um anúncio do Mercado Livre. Se houver um Desconto Individual ativo travando a edição do preço base,
- * remove temporariamente, atualiza o Preço de Cadastro e recria a promoção de 30% OFF.
+ * em um anúncio do Mercado Livre. Remove qualquer promoção ativa (PRICE_DISCOUNT, DEAL Black Friday, etc.)
+ * que esteja travando o preço antigo, sobe o Preço de Cadastro e ativa a promoção de 30% OFF.
  */
 export async function syncMlBaseCadastroAndPromo({
   mlItemId,
@@ -1130,41 +1257,31 @@ export async function syncMlBaseCadastroAndPromo({
     promoList = [];
   }
 
-  const startedIndividual = promoList.find(
-    (p) => p.type === 'PRICE_DISCOUNT' && p.status === 'started'
-  );
+  // Remove TODAS as promoções ativas (started) cujo preço atual seja diferente do cleanVenda
+  // (ex: Campanha Tradicional Black Friday travando o item a R$ 27,00 ou Desconto Individual travando PUT /items)
+  const startedPromos = promoList.filter((p) => p.status === 'started');
+  for (const sp of startedPromos) {
+    try {
+      await removeMlSellerPromotion({
+        mlItemId,
+        promotionId: sp.id,
+        promotionType: sp.type,
+        empresaId,
+      });
+    } catch {
+      // ignora se alguma campanha co-participada exigir remoção manual
+    }
+  }
 
   let baseUpdated = false;
   let promoApplied = false;
 
-  try {
-    await mlProxyFetch(`/items/${encodeURIComponent(mlItemId)}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({ price: cleanCadastro }),
-    });
-    baseUpdated = true;
-  } catch (putErr) {
-    // Se falhou porque há PRICE_DISCOUNT ativa travando o preço base, remove a promo individual, sobe o Cadastro e recria
-    if (startedIndividual) {
-      try {
-        await mlProxyFetch(
-          `/seller-promotions/items/${encodeURIComponent(mlItemId)}?promotion_type=PRICE_DISCOUNT&promotion_id=${encodeURIComponent(startedIndividual.id || '')}&app_version=v2`,
-          { method: 'DELETE', headers }
-        );
-        await mlProxyFetch(`/items/${encodeURIComponent(mlItemId)}`, {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify({ price: cleanCadastro }),
-        });
-        baseUpdated = true;
-      } catch (retryErr) {
-        throw new Error(retryErr.message || putErr.message);
-      }
-    } else {
-      throw putErr;
-    }
-  }
+  await mlProxyFetch(`/items/${encodeURIComponent(mlItemId)}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ price: cleanCadastro }),
+  });
+  baseUpdated = true;
 
   // Agora tenta aplicar/reativar a promoção de 30% OFF (cleanVenda)
   try {

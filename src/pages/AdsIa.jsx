@@ -32,6 +32,7 @@ import {
   createMlAdCampaign,
   updateMlAdCampaign,
   applyMlSellerPromotion,
+  removeMlSellerPromotion,
   syncMlBaseCadastroAndPromo,
   loadPromosAdsCache,
   askGeminiStrategist,
@@ -745,8 +746,17 @@ export default function AdsIa() {
             empresaId: profile?.empresa_id,
           });
           if (promoRes.appliedAs === 'promotion') {
+            const removedNote =
+              promoRes.removedBlocking?.length > 0
+                ? `\n(O anúncio também foi retirado automaticamente da campanha "${promoRes.removedBlocking.map((p) => p.name || p.type).join(', ')}" que travava o preço abaixo do Piso.)`
+                : '';
             alert(
-              `🚀 Promoção (${promoRes.promotion?.name || promoRes.promotion?.type || promoLabel}) aplicada no anúncio ${row.primaryMl.ml_item_id}! Preço promocional: R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF mantendo o Cadastro intacto).`
+              `🚀 Promoção (${promoRes.promotion?.name || promoRes.promotion?.type || promoLabel}) aplicada no anúncio ${row.primaryMl.ml_item_id}! Preço promocional: R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF mantendo o Cadastro intacto).${removedNote}`
+            );
+            await handleSyncPromosAndAds();
+          } else if (promoRes.appliedAs === 'removed_blocking_deal') {
+            alert(
+              `✅ Retiramos o anúncio ${row.primaryMl.ml_item_id} da campanha "${promoRes.removedBlocking.map((p) => p.name || p.type).join(', ')}" que estava forçando o preço abaixo do seu Piso!\n\nAgora você pode ativar um Desconto Individual de ${pctOffCadastro}% OFF (R$ ${safePrice.toFixed(2)}) na Central de Promoções.`
             );
             await handleSyncPromosAndAds();
           } else {
@@ -2055,6 +2065,47 @@ export default function AdsIa() {
                                         🎁 ML co-participa {ap.meliPercentage}%
                                       </span>
                                     )}
+                                    <button
+                                      type="button"
+                                      disabled={applyingFtId === (row.rowKey || row.ftId)}
+                                      onClick={async () => {
+                                        if (
+                                          !window.confirm(
+                                            `Deseja retirar o anúncio ${row.primaryMl?.ml_item_id} da promoção "${ap.label}" no Mercado Livre?`
+                                          )
+                                        )
+                                          return;
+                                        const key = row.rowKey || row.ftId;
+                                        setApplyingFtId(key);
+                                        try {
+                                          await removeMlSellerPromotion({
+                                            mlItemId: row.primaryMl.ml_item_id,
+                                            promotionId: ap.id,
+                                            promotionType: ap.type,
+                                            empresaId: profile?.empresa_id,
+                                          });
+                                          await handleSyncPromosAndAds();
+                                        } catch (err) {
+                                          alert('Erro ao sair da promoção: ' + err.message);
+                                        } finally {
+                                          setApplyingFtId(null);
+                                        }
+                                      }}
+                                      style={{
+                                        marginTop: '2px',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        border: '1px solid rgba(220,38,38,0.35)',
+                                        background: 'rgba(220,38,38,0.08)',
+                                        color: '#DC2626',
+                                        fontSize: '0.62rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                      }}
+                                      title={`Sair da campanha "${ap.label}" no Mercado Livre`}
+                                    >
+                                      ✕ Sair desta Promo
+                                    </button>
                                   </div>
                                 ))
                               ) : hasPromoPerc ? (
