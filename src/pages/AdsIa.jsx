@@ -884,13 +884,95 @@ export default function AdsIa() {
         advertiserId: advId,
         name: newCampForm.name.trim(),
         acosTarget: Number(newCampForm.acosTarget || 10),
-        dailyBudget: Number(newCampForm.dailyBudget || 15),
+        dailyBudget: Number(newCampForm.dailyBudget || 50),
         empresaId: profile?.empresa_id,
       });
-      setNewCampForm({ name: '', acosTarget: 10, dailyBudget: 15 });
+      setNewCampForm({ name: '', acosTarget: 10, dailyBudget: 50 });
       await handleSyncPromosAndAds();
     } catch (err) {
       alert('Erro ao criar campanha no ML: ' + err.message);
+    } finally {
+      setSavingCamp(false);
+    }
+  };
+
+  const handleCreateFourStandardCampaigns = async () => {
+    const standardPack = [
+      { name: '1 - Campeoes (Escala)', acosTarget: 8, dailyBudget: 50 },
+      { name: '2 - Lancamentos (Rankear)', acosTarget: 15, dailyBudget: 50 },
+      { name: '3 - Giro de Estoque', acosTarget: 12, dailyBudget: 50 },
+      { name: '4 - Teste e Baixo Custo', acosTarget: 6, dailyBudget: 50 },
+    ];
+
+    let advId = promosAdsCache?.advertiserId;
+    let existingList = promosAdsCache?.campaigns || [];
+
+    setSavingCamp(true);
+    try {
+      if (!advId) {
+        const mlIds = mlListings.map((l) => l.ml_item_id).filter(Boolean);
+        const fresh = await fetchMlPromosAndAdsStats({
+          mlItemIds: mlIds,
+          empresaId: profile?.empresa_id,
+        });
+        setPromosAdsCache(fresh);
+        advId = fresh?.advertiserId;
+        existingList = fresh?.campaigns || [];
+      }
+
+      if (!advId) {
+        alert('Não foi possível identificar sua conta de Product Ads no Mercado Livre. Verifique se o ML está conectado.');
+        return;
+      }
+
+      const createdNames = [];
+      const updatedNames = [];
+      const errors = [];
+
+      for (const preset of standardPack) {
+        const found = existingList.find(
+          (c) => String(c.name || '').trim().toLowerCase() === preset.name.toLowerCase()
+        );
+        try {
+          if (found) {
+            await updateMlAdCampaign({
+              advertiserId: advId,
+              campaignId: found.id,
+              acosTarget: preset.acosTarget,
+              dailyBudget: preset.dailyBudget,
+              empresaId: profile?.empresa_id,
+            });
+            updatedNames.push(preset.name);
+          } else {
+            await createMlAdCampaign({
+              advertiserId: advId,
+              name: preset.name,
+              acosTarget: preset.acosTarget,
+              dailyBudget: preset.dailyBudget,
+              empresaId: profile?.empresa_id,
+            });
+            createdNames.push(preset.name);
+          }
+        } catch (err) {
+          errors.push(`${preset.name}: ${err.message}`);
+        }
+      }
+
+      await handleSyncPromosAndAds();
+
+      const msgParts = [];
+      if (createdNames.length > 0) {
+        msgParts.push(`✅ Criadas com R$ 50,00/dia:\n- ${createdNames.join('\n- ')}`);
+      }
+      if (updatedNames.length > 0) {
+        msgParts.push(`🔄 Atualizadas para R$ 50,00/dia:\n- ${updatedNames.join('\n- ')}`);
+      }
+      if (errors.length > 0) {
+        msgParts.push(`⚠️ Avisos:\n- ${errors.join('\n- ')}`);
+      }
+      alert(msgParts.join('\n\n') || 'Campanhas processadas!');
+    } catch (err) {
+      alert('Erro ao criar pacote de 4 campanhas: ' + err.message);
     } finally {
       setSavingCamp(false);
     }
@@ -2255,6 +2337,45 @@ export default function AdsIa() {
             </div>
 
             <div className="modal-body" style={{ maxHeight: '72vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '10px',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(37, 99, 235, 0.08))',
+                  border: '1px solid rgba(124, 58, 237, 0.35)',
+                }}
+              >
+                <div style={{ fontSize: '0.78rem', lineHeight: 1.4 }}>
+                  <strong style={{ color: '#7C3AED' }}>⚡ Pacote 4 Campanhas Estratégicas (R$ 50,00/dia cada)</strong>
+                  <div style={{ color: 'var(--text-secondary)' }}>
+                    1-Campeões (ACOS 8%) • 2-Lançamentos (ACOS 15%) • 3-Giro de Estoque (ACOS 12%) • 4-Teste/Baixo Custo (ACOS 6%)
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={savingCamp}
+                  onClick={handleCreateFourStandardCampaigns}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#7C3AED',
+                    color: '#fff',
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {savingCamp ? 'Criando no ML...' : '⚡ Criar / Atualizar as 4 Campanhas (R$ 50/dia)'}
+                </button>
+              </div>
+
               <form
                 onSubmit={handleCreateCampaign}
                 style={{
