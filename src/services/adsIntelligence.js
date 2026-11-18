@@ -323,6 +323,30 @@ export function evaluateAiRecommendation(item, rules) {
     };
   }
 
+  // 3.5. Anúncio rodando no Preço de Cadastro cheio no ML (Sem promoção de 30% OFF ativa!)
+  if (
+    promoInfo &&
+    activePromos.length === 0 &&
+    (promoInfo.promoPerc || 0) < 1 &&
+    metrics.precoBaseVenda > 0 &&
+    precoPraticado > metrics.precoBaseVenda + 0.5
+  ) {
+    const targetDeal = Number(Math.max(precoPiso, metrics.precoBaseVenda).toFixed(2));
+    const bestCandidate =
+      candidatePromos.find((p) => p.type === 'PRICE_DISCOUNT') ||
+      goodCampaignInvite ||
+      null;
+    return {
+      severity: 'atencao',
+      badge: '🏷️ Sem Promo Ativa no ML',
+      title: `Rodando no Preço de Cadastro (R$ ${precoPraticado.toFixed(2)}) sem os 30% OFF`,
+      explanation: `No Mercado Livre este item está com o Preço de Cadastro cheio (R$ ${precoPraticado.toFixed(2)}) e sem promoção ativa. Ative a promoção para cair no Preço de Venda de R$ ${targetDeal.toFixed(2)} (-30% OFF)!`,
+      suggestedPrice: targetDeal,
+      actionLabel: `Ativar 30% OFF (R$ ${targetDeal.toFixed(2)})`,
+      recommendedPromo: bestCandidate,
+    };
+  }
+
   // 4. Se houver análise de concorrente carregada, cruza com o Preço Piso
   if (competitor) {
     const refCompPrice =
@@ -1152,11 +1176,16 @@ export async function applyMlSellerPromotion({
 
   const payload = {
     deal_price: cleanTarget,
-    promotion_id: eligible.id,
     promotion_type: eligible.type,
   };
-  if (Number(eligible.original_price || 0) > cleanTarget) {
-    payload.top_deal_price = Number(Number(eligible.original_price).toFixed(2));
+  if (eligible.id && eligible.id !== eligible.type) {
+    payload.promotion_id = eligible.id;
+  }
+  if (eligible.type === 'PRICE_DISCOUNT' && !payload.promotion_id) {
+    const now = new Date();
+    const end = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    payload.start_date = now.toISOString().split('.')[0];
+    payload.finish_date = end.toISOString().split('.')[0];
   }
 
   try {

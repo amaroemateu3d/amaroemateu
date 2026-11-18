@@ -288,12 +288,10 @@ export default function AdsIa() {
           const adsPeriodStats = mlId ? promosAdsCache?.adsByItem?.[mlId] : null;
           const apiAdsForPeriod = adsPeriodStats?.[adsPeriod] || null;
 
-          const hasLivePromoPrice =
-            activeChannel === 'ml' &&
-            Array.isArray(promoInfo?.activePromos) &&
-            promoInfo.activePromos.length > 0 &&
-            parseNumber(promoInfo?.price) > 0;
-          const liveMlPrice = hasLivePromoPrice ? parseNumber(promoInfo.price) : null;
+          const liveMlPrice =
+            activeChannel === 'ml' && parseNumber(promoInfo?.price) > 0
+              ? parseNumber(promoInfo.price)
+              : null;
 
           const effFtVar = {
             ...effFtBase,
@@ -393,11 +391,8 @@ export default function AdsIa() {
           const promoInfo = mlId ? promosAdsCache?.promosByItem?.[mlId] : null;
           const adsPeriodStats = mlId ? promosAdsCache?.adsByItem?.[mlId] : null;
           const apiAdsForPeriod = adsPeriodStats?.[adsPeriod] || null;
-          const hasLivePromoPrice =
-            Array.isArray(promoInfo?.activePromos) &&
-            promoInfo.activePromos.length > 0 &&
-            parseNumber(promoInfo?.price) > 0;
-          const liveMlPrice = hasLivePromoPrice ? parseNumber(promoInfo.price) : null;
+          const liveMlPrice =
+            parseNumber(promoInfo?.price) > 0 ? parseNumber(promoInfo.price) : null;
           const effFtMl = {
             ...effFtBase,
             precoVendaSistema: effFtBase.precoVendaManual,
@@ -495,12 +490,10 @@ export default function AdsIa() {
       const apiAdsForPeriod = adsPeriodStats?.[adsPeriod] || null;
       const estoqueTotal = getEstoqueTotalFt(ft);
 
-      const hasLivePromoPriceSimple =
-        activeChannel === 'ml' &&
-        Array.isArray(promoInfo?.activePromos) &&
-        promoInfo.activePromos.length > 0 &&
-        parseNumber(promoInfo?.price) > 0;
-      const liveMlPrice = hasLivePromoPriceSimple ? parseNumber(promoInfo.price) : null;
+      const liveMlPrice =
+        activeChannel === 'ml' && parseNumber(promoInfo?.price) > 0
+          ? parseNumber(promoInfo.price)
+          : null;
       const effFtSimple = {
         ...effFtBase,
         precoVendaSistema: effFtBase.precoVendaManual,
@@ -1839,10 +1832,17 @@ export default function AdsIa() {
                             </span>
                           )}
                         </div>
-                        {row.promoInfo?.originalPrice > row.promoInfo?.price && (
+                        {row.promoInfo?.originalPrice > row.promoInfo?.price ? (
                           <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textDecoration: 'line-through' }}>
                             de {formatBRL(row.promoInfo.originalPrice)}
                           </div>
+                        ) : (
+                          metrics.precoBaseVenda > 0 &&
+                          metrics.precoPraticado > metrics.precoBaseVenda + 0.5 && (
+                            <div style={{ fontSize: '0.68rem', color: '#D97706', fontWeight: 700 }}>
+                              Meta c/ -30%: {formatBRL(metrics.precoBaseVenda)}
+                            </div>
+                          )
                         )}
                         {metrics.descMaxSobrePraticadoPerc > 0 ? (
                           <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>
