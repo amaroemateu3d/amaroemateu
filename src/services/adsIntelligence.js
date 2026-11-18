@@ -253,6 +253,7 @@ export function evaluateAiRecommendation(item, rules) {
     vendasMes,
     soldQuantityTotal,
     competitor,
+    promoInfo,
   } = item;
 
   const {
@@ -266,6 +267,16 @@ export function evaluateAiRecommendation(item, rules) {
 
   const minMargin = parseNumber(rules.margemMinimaPerc);
   const acosLimit = parseNumber(rules.acosAlvoPerc || 10);
+
+  // Identifica se há convite de promoção/campanha do ML vantajoso (que respeita o Preço Piso)
+  const candidatePromos = Array.isArray(promoInfo?.candidatePromos) ? promoInfo.candidatePromos : [];
+  const activePromos = Array.isArray(promoInfo?.activePromos) ? promoInfo.activePromos : [];
+  const goodCampaignInvite = candidatePromos.find((p) => {
+    if (p.type === 'PRICE_DISCOUNT') return false; // avaliado separadamente se estiver sem promo
+    const refPrice = p.maxDiscountedPrice > 0 ? p.maxDiscountedPrice : p.suggestedPrice;
+    // Se tiver co-participação do ML (meliPercentage), o vendedor recebe um desconto subsidiado
+    return refPrice <= 0 || refPrice >= precoPiso - 0.05;
+  });
 
   // 1. Sem preço configurado
   if (precoPraticado <= 0) {
@@ -404,7 +415,48 @@ export function evaluateAiRecommendation(item, rules) {
     }
   }
 
-  // 8. Saudável
+  // 8. Convite de Campanha/Promoção do ML que respeita o Preço Piso
+  if (goodCampaignInvite && estoqueTotal >= 3) {
+    const rawCampPrice =
+      goodCampaignInvite.suggestedPrice > 0
+        ? goodCampaignInvite.suggestedPrice
+        : goodCampaignInvite.maxDiscountedPrice > 0
+        ? goodCampaignInvite.maxDiscountedPrice
+        : precoPraticado;
+    const safeCampPrice = Number(Math.max(precoPiso, rawCampPrice).toFixed(2));
+    return {
+      severity: 'oportunidade',
+      badge: `✨ Convite ML: ${goodCampaignInvite.label}`,
+      title: `Oportunidade de entrar na campanha "${goodCampaignInvite.label}" a R$ ${safeCampPrice.toFixed(2)}`,
+      explanation: `O Mercado Livre liberou convite para "${goodCampaignInvite.label}"${goodCampaignInvite.meliPercentage > 0 ? ` (com ${goodCampaignInvite.meliPercentage}% pago pelo ML!)` : ''} e o preço exigido respeita seu Preço Piso (R$ ${precoPiso.toFixed(2)}). Vale ativar para ganhar selo e destaque!`,
+      suggestedPrice: safeCampPrice,
+      actionLabel: `Ativar ${goodCampaignInvite.label} (R$ ${safeCampPrice.toFixed(2)})`,
+      recommendedPromo: goodCampaignInvite,
+    };
+  }
+
+  // 9. Anúncio rodando no preço cheio sem selo de desconto ativo, mas com promo individual liberada
+  const priceDiscountCandidate = candidatePromos.find((p) => p.type === 'PRICE_DISCOUNT');
+  if (
+    activePromos.length === 0 &&
+    (promoInfo?.promoPerc || 0) < 1 &&
+    priceDiscountCandidate &&
+    estoqueTotal >= 3 &&
+    precoPraticado >= precoPiso
+  ) {
+    const targetDeal = Number(Math.max(precoPiso, precoPraticado).toFixed(2));
+    return {
+      severity: 'oportunidade',
+      badge: '🏷️ Ativar Selo % OFF',
+      title: 'Anúncio sem promoção ativa — Ativar Desconto Individual',
+      explanation: `Este item está sem faixa de desconto riscado no ML, mas possui Desconto Individual liberado na Central de Promoções. Ative o preço de venda (R$ ${targetDeal.toFixed(2)}) como promoção para exibir o selo % OFF!`,
+      suggestedPrice: targetDeal,
+      actionLabel: `Ativar Promo R$ ${targetDeal.toFixed(2)}`,
+      recommendedPromo: priceDiscountCandidate,
+    };
+  }
+
+  // 10. Saudável
   return {
     severity: 'saudavel',
     badge: '🟢 Saudável',
@@ -578,9 +630,31 @@ export function savePromosAdsCache(cacheObj) {
   }
 }
 
+const PROMO_TYPE_LABELS = {
+  PRICE_DISCOUNT: 'Desconto Individual',
+  DEAL: 'Campanha Tradicional ML',
+  DOD: 'Oferta do Dia',
+  LIGHTNING: 'Oferta Relâmpago',
+  SMART: 'Desconto Inteligente',
+  MARKETPLACE_CAMPAIGN: 'Campanha Co-participada ML',
+  SELLER_CAMPAIGN: 'Campanha do Vendedor',
+  PRE_NEGOTIATED: 'Desconto Pré-Negociado',
+  UNHEALTHY_STOCK: 'Queima de Estoque ML',
+  VOLUME: 'Desconto por Quantidade',
+};
+
+export function formatMlPromoType(type, name) {
+  const cleanName = String(name || '').trim();
+  const baseLabel = PROMO_TYPE_LABELS[type] || type || 'Promoção ML';
+  if (cleanName && cleanName.toLowerCase() !== baseLabel.toLowerCase()) {
+    return `${baseLabel} (${cleanName})`;
+  }
+  return baseLabel;
+}
+
 /**
  * Puxa em lote do Mercado Livre:
- * 1) % de promoção ativa em cada anúncio (/items?ids=...)
+ * 1) % de promoção ativa em cada anúncio (/items?ids=...) + promoções vigentes/convites (/seller-promotions/items/{id})
  * 2) Gastos, cliques, vendas e ACOS do Product Ads nos últimos 7, 15 e 30 dias
  */
 export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
@@ -615,11 +689,89 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
           promoPerc,
           soldQuantity: Number(body.sold_quantity || 0),
           status: body.status || '',
+          activePromos: [],
+          candidatePromos: [],
         };
       });
     } catch (e) {
       console.warn('[AdsIA] Aviso ao buscar preços/promoções em lote:', e);
     }
+  }
+
+  // Busca promoções vigentes (started) e convites disponíveis (candidate/pending) na Central de Promoções ML
+  for (let i = 0; i < uniqueIds.length; i += 8) {
+    const chunk = uniqueIds.slice(i, i + 8);
+    await Promise.all(
+      chunk.map(async (id) => {
+        try {
+          const pResp = await mlProxyFetch(
+            `/seller-promotions/items/${encodeURIComponent(id)}?app_version=v2`,
+            { headers }
+          );
+          const rawList = Array.isArray(pResp)
+            ? pResp
+            : Array.isArray(pResp?.results)
+            ? pResp.results
+            : [];
+          const activePromos = [];
+          const candidatePromos = [];
+          const itemBase = promosByItem[id] || { price: 0, originalPrice: 0, promoPerc: 0 };
+
+          rawList.forEach((p) => {
+            if (!p || !p.type) return;
+            const suggestedPrice = Number(
+              p.price || p.suggested_discounted_price || p.max_discounted_price || p.min_discounted_price || 0
+            );
+            const origPrice = Number(p.original_price || itemBase.originalPrice || itemBase.price || 0);
+            const discountPerc =
+              origPrice > suggestedPrice && suggestedPrice > 0
+                ? ((origPrice - suggestedPrice) / origPrice) * 100
+                : itemBase.promoPerc || 0;
+
+            const normalized = {
+              id: p.id || p.type,
+              type: p.type,
+              name: p.name || '',
+              label: formatMlPromoType(p.type, p.name),
+              status: p.status,
+              price: Number(p.price || 0),
+              originalPrice: origPrice,
+              suggestedPrice,
+              minDiscountedPrice: Number(p.min_discounted_price || 0),
+              maxDiscountedPrice: Number(p.max_discounted_price || 0),
+              discountPerc,
+              meliPercentage: Number(p.meli_percentage || 0),
+              sellerPercentage: Number(p.seller_percentage || 0),
+              startDate: p.start_date || null,
+              finishDate: p.finish_date || null,
+            };
+
+            if (p.status === 'started') {
+              activePromos.push(normalized);
+            } else if (p.status === 'candidate' || p.status === 'pending') {
+              candidatePromos.push(normalized);
+            }
+          });
+
+          if (!promosByItem[id]) {
+            promosByItem[id] = {
+              price: 0,
+              originalPrice: 0,
+              promoPerc: 0,
+              soldQuantity: 0,
+              status: '',
+              activePromos,
+              candidatePromos,
+            };
+          } else {
+            promosByItem[id].activePromos = activePromos;
+            promosByItem[id].candidatePromos = candidatePromos;
+          }
+        } catch {
+          // alguns anúncios podem não retornar promoções
+        }
+      })
+    );
   }
 
   // Busca data da última venda paga de cada item nos últimos 45 dias
@@ -856,7 +1008,13 @@ export async function updateMlAdCampaign({
  * Aplica o preço alvo como PROMOÇÃO (Central de Promoções do ML),
  * mantendo o Preço de Cadastro (original_price) intacto para preservar o selo % OFF!
  */
-export async function applyMlSellerPromotion({ mlItemId, targetPrice, empresaId }) {
+export async function applyMlSellerPromotion({
+  mlItemId,
+  targetPrice,
+  promotionId,
+  promotionType,
+  empresaId,
+}) {
   if (!mlItemId) throw new Error('Item MLB não informado.');
   const token = await getValidMlToken(empresaId);
   const headers = { Authorization: `Bearer ${token.access_token}` };
@@ -871,10 +1029,13 @@ export async function applyMlSellerPromotion({ mlItemId, targetPrice, empresaId 
     ? promoResp.results
     : [];
 
-  // Prioriza PRICE_DISCOUNT (Desconto por item) ou SELLER_CAMPAIGN ativa/candidata
+  // Se o usuário escolheu um convite específico de promoção, prioriza ele; senão, pega PRICE_DISCOUNT ou campanha ativa/candidata
   const eligible =
+    (promotionId
+      ? promoList.find((p) => String(p.id) === String(promotionId) || p.type === promotionType)
+      : null) ||
     promoList.find((p) => p.type === 'PRICE_DISCOUNT' && (p.status === 'started' || p.status === 'candidate')) ||
-    promoList.find((p) => (p.type === 'SELLER_CAMPAIGN' || p.type === 'DEAL') && (p.status === 'started' || p.status === 'candidate')) ||
+    promoList.find((p) => (p.type === 'SELLER_CAMPAIGN' || p.type === 'DEAL' || p.type === 'SMART' || p.type === 'MARKETPLACE_CAMPAIGN') && (p.status === 'started' || p.status === 'candidate' || p.status === 'pending')) ||
     null;
 
   if (!eligible) {

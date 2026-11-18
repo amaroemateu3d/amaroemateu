@@ -344,6 +344,7 @@ export default function AdsIa() {
               vendasMes: vendasMesFt,
               soldQuantityTotal,
               competitor,
+              promoInfo,
             },
             rowRules
           );
@@ -440,6 +441,7 @@ export default function AdsIa() {
               vendasMes: vendasMesFt,
               soldQuantityTotal: soldQtyMl,
               competitor,
+              promoInfo,
             },
             rowRules
           );
@@ -536,6 +538,7 @@ export default function AdsIa() {
           vendasMes: vendasMesFt,
           soldQuantityTotal: soldQtySimple,
           competitor,
+          promoInfo,
         },
         rowRules
       );
@@ -654,7 +657,7 @@ export default function AdsIa() {
     }
   };
 
-  const handleApplyRecommendedPrice = async (row, newPrice) => {
+  const handleApplyRecommendedPrice = async (row, newPrice, promoTarget = null) => {
     const safePrice = Number(newPrice);
     if (!safePrice || safePrice < row.metrics.precoPiso - 0.02) {
       return alert(
@@ -662,6 +665,7 @@ export default function AdsIa() {
       );
     }
 
+    const chosenPromo = promoTarget || row.aiRec?.recommendedPromo || null;
     const key = row.rowKey || row.ftId;
     setApplyingFtId(key);
     try {
@@ -719,23 +723,26 @@ export default function AdsIa() {
             ? Math.round(((cadastroRef - safePrice) / cadastroRef) * 100)
             : 0;
 
+        const promoLabel = chosenPromo?.label || 'Central de Promoções';
         const pushToMl = window.confirm(
-          `✅ Preço alvo R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF s/ Cadastro de R$ ${cadastroRef.toFixed(2)}) salvo no sistema!\n\nDeseja aplicar esse desconto na Central de Promoções do anúncio ${row.primaryMl.ml_item_id} no Mercado Livre (mantendo o Preço de Cadastro intacto)?`
+          `✅ Preço alvo R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF s/ Cadastro de R$ ${cadastroRef.toFixed(2)}) salvo no sistema!\n\nDeseja ativar/atualizar "${promoLabel}" no anúncio ${row.primaryMl.ml_item_id} no Mercado Livre (mantendo o Preço de Cadastro intacto)?`
         );
         if (pushToMl) {
           const promoRes = await applyMlSellerPromotion({
             mlItemId: row.primaryMl.ml_item_id,
             targetPrice: safePrice,
+            promotionId: chosenPromo?.id,
+            promotionType: chosenPromo?.type,
             empresaId: profile?.empresa_id,
           });
           if (promoRes.appliedAs === 'promotion') {
             alert(
-              `🚀 Promoção aplicada no anúncio ${row.primaryMl.ml_item_id}! Preço promocional: R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF mantendo o Cadastro intacto).`
+              `🚀 Promoção (${promoRes.promotion?.name || promoRes.promotion?.type || promoLabel}) aplicada no anúncio ${row.primaryMl.ml_item_id}! Preço promocional: R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF mantendo o Cadastro intacto).`
             );
             await handleSyncPromosAndAds();
           } else {
             alert(
-              `ℹ️ O anúncio ${row.primaryMl.ml_item_id} não retornou uma campanha de Desconto Individual aberta pela API.\n\nPara não apagar seu Preço de Cadastro (R$ ${cadastroRef.toFixed(2)}), não alteramos o preço base.\n👉 Entre na Central de Promoções do ML e coloque o preço promocional em R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF).`
+              `ℹ️ O anúncio ${row.primaryMl.ml_item_id} não retornou uma campanha elegível aberta pela API.\n\nPara não apagar seu Preço de Cadastro (R$ ${cadastroRef.toFixed(2)}), não alteramos o preço base.\n👉 Entre na Central de Promoções do ML e coloque o preço promocional em R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF).`
             );
           }
         }
@@ -984,17 +991,6 @@ export default function AdsIa() {
               </button>
             </>
           )}
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={batchCompLoading}
-            onClick={handleBatchCompetitorScan}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            title="Busca o Price to Win e os preços dos concorrentes da 1ª página para os produtos listados"
-          >
-            <Search size={16} />
-            {batchCompLoading ? 'Analisando Concorrência...' : '🔍 Analisar Concorrentes (Lote)'}
-          </button>
         </div>
       </div>
 
@@ -1407,7 +1403,7 @@ export default function AdsIa() {
                   <th style={{ textAlign: 'center' }}>Preço Atual &amp; Folga</th>
                   <th style={{ textAlign: 'center' }}>Gasto Ads (R$) / ACOS</th>
                   <th style={{ textAlign: 'center' }}>Margem Real</th>
-                  <th style={{ textAlign: 'center' }}>🔍 Concorrentes</th>
+                  <th style={{ textAlign: 'center' }}>🏷️ Promoção Vigente</th>
                   <th>🤖 Diagnóstico &amp; Ação (Copiloto IA)</th>
                 </tr>
               </thead>
@@ -1696,55 +1692,200 @@ export default function AdsIa() {
                         </div>
                       </td>
 
-                      {/* Radar de Concorrentes */}
-                      <td style={{ textAlign: 'center', minWidth: '145px' }}>
-                        {competitor ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
-                            {competitor.priceToWin > 0 && (
-                              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#2563EB' }}>
-                                Win: {formatBRL(competitor.priceToWin)}
-                              </span>
-                            )}
-                            {competitor.minPrice > 0 && (
-                              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                                1ª Pág: {formatBRL(competitor.minPrice)} a {formatBRL(competitor.maxPrice)}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => setSelectedCompDetail({ row, competitor })}
+                      {/* Promoção Vigente & Convites da Central de Promoções ML */}
+                      <td style={{ textAlign: 'center', minWidth: '175px' }}>
+                        {(() => {
+                          const activePromos = row.promoInfo?.activePromos || [];
+                          const candidatePromos = row.promoInfo?.candidatePromos || [];
+                          const hasPromoPerc = (row.promoInfo?.promoPerc || 0) >= 0.5;
+                          const nonIndividualInvites = candidatePromos.filter(
+                            (p) => p.type !== 'PRICE_DISCOUNT'
+                          );
+
+                          return (
+                            <div
                               style={{
-                                padding: '2px 7px',
-                                borderRadius: '6px',
-                                border: '1px solid var(--border-color)',
-                                background: 'var(--bg-secondary)',
-                                fontSize: '0.68rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px',
+                                alignItems: 'center',
                               }}
                             >
-                              Ver {competitor.competitors?.length || 0} concorrentes
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={loadingCompFt === (row.rowKey || row.ftId)}
-                            onClick={() => handleAnalyzeSingleCompetitor(row)}
-                            style={{
-                              padding: '4px 9px',
-                              borderRadius: '7px',
-                              border: '1px solid var(--border-color)',
-                              background: 'var(--bg-secondary)',
-                              color: 'var(--text-primary)',
-                              fontSize: '0.74rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {loadingCompFt === (row.rowKey || row.ftId) ? 'Buscando...' : '🔍 Espionar'}
-                          </button>
-                        )}
+                              {activePromos.length > 0 ? (
+                                activePromos.map((ap) => (
+                                  <div
+                                    key={ap.id}
+                                    style={{
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      alignItems: 'center',
+                                      gap: '1px',
+                                      padding: '3px 7px',
+                                      borderRadius: '6px',
+                                      background: 'rgba(16, 185, 129, 0.12)',
+                                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                                      width: '100%',
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        fontSize: '0.7rem',
+                                        fontWeight: 800,
+                                        color: '#059669',
+                                      }}
+                                    >
+                                      🟢 {ap.label}
+                                      {ap.discountPerc > 0
+                                        ? ` (-${ap.discountPerc.toFixed(0)}%)`
+                                        : ''}
+                                    </span>
+                                    {ap.originalPrice > (ap.price || row.promoInfo?.price || 0) && (
+                                      <span
+                                        style={{
+                                          fontSize: '0.66rem',
+                                          color: 'var(--text-secondary)',
+                                        }}
+                                      >
+                                        De {formatBRL(ap.originalPrice)} por{' '}
+                                        <strong>
+                                          {formatBRL(ap.price || row.promoInfo?.price)}
+                                        </strong>
+                                      </span>
+                                    )}
+                                    {ap.meliPercentage > 0 && (
+                                      <span
+                                        style={{
+                                          fontSize: '0.64rem',
+                                          fontWeight: 700,
+                                          color: '#7C3AED',
+                                        }}
+                                      >
+                                        🎁 ML co-participa {ap.meliPercentage}%
+                                      </span>
+                                    )}
+                                  </div>
+                                ))
+                              ) : hasPromoPerc ? (
+                                <div
+                                  style={{
+                                    padding: '3px 7px',
+                                    borderRadius: '6px',
+                                    background: 'rgba(16, 185, 129, 0.12)',
+                                    color: '#059669',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  🟢 Promo Ativa (-{row.promoInfo.promoPerc.toFixed(0)}% OFF)
+                                  <div
+                                    style={{
+                                      fontSize: '0.65rem',
+                                      fontWeight: 600,
+                                      color: 'var(--text-secondary)',
+                                    }}
+                                  >
+                                    De {formatBRL(row.promoInfo.originalPrice)} por{' '}
+                                    {formatBRL(row.promoInfo.price)}
+                                  </div>
+                                </div>
+                              ) : (
+                                <span
+                                  style={{
+                                    fontSize: '0.7rem',
+                                    fontWeight: 700,
+                                    color: '#64748B',
+                                    padding: '2px 7px',
+                                    borderRadius: '6px',
+                                    background: 'rgba(100,116,139,0.1)',
+                                  }}
+                                >
+                                  ⚪ Sem promo ativa
+                                </span>
+                              )}
+
+                              {/* Convites / Oportunidades de Campanha disponíveis no ML */}
+                              {nonIndividualInvites.slice(0, 2).map((inv) => {
+                                const reqPrice =
+                                  inv.maxDiscountedPrice > 0
+                                    ? inv.maxDiscountedPrice
+                                    : inv.suggestedPrice;
+                                const isViable =
+                                  reqPrice <= 0 || reqPrice >= metrics.precoPiso - 0.05;
+                                const targetDeal =
+                                  reqPrice > 0
+                                    ? Number(Math.max(metrics.precoPiso, reqPrice).toFixed(2))
+                                    : Number(
+                                        Math.max(
+                                          metrics.precoPiso,
+                                          metrics.precoPraticado
+                                        ).toFixed(2)
+                                      );
+
+                                return isViable ? (
+                                  <div
+                                    key={inv.id}
+                                    style={{
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      alignItems: 'center',
+                                      gap: '2px',
+                                      padding: '3px 6px',
+                                      borderRadius: '6px',
+                                      background: 'rgba(124, 58, 237, 0.1)',
+                                      border: '1px dashed rgba(124, 58, 237, 0.4)',
+                                      width: '100%',
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        fontSize: '0.66rem',
+                                        fontWeight: 800,
+                                        color: '#7C3AED',
+                                      }}
+                                    >
+                                      ✨ Convite: {inv.label}
+                                      {inv.meliPercentage > 0
+                                        ? ` (ML +${inv.meliPercentage}%)`
+                                        : ''}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      disabled={applyingFtId === (row.rowKey || row.ftId)}
+                                      onClick={() =>
+                                        handleApplyRecommendedPrice(row, targetDeal, inv)
+                                      }
+                                      style={{
+                                        padding: '2px 7px',
+                                        borderRadius: '5px',
+                                        border: 'none',
+                                        background: '#7C3AED',
+                                        color: '#fff',
+                                        fontSize: '0.65rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                      }}
+                                      title={`Entrar na promoção "${inv.label}" por ${formatBRL(targetDeal)} (acima do Piso ${formatBRL(metrics.precoPiso)})`}
+                                    >
+                                      Entrar por {formatBRL(targetDeal)}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span
+                                    key={inv.id}
+                                    style={{
+                                      fontSize: '0.64rem',
+                                      color: '#D97706',
+                                      fontWeight: 600,
+                                    }}
+                                    title={`Convite "${inv.label}" exige preço máximo de ${formatBRL(reqPrice)}, que fica abaixo do seu Preço Piso (${formatBRL(metrics.precoPiso)})`}
+                                  >
+                                    ⚠️ {inv.label} (pede {formatBRL(reqPrice)} &lt; Piso)
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Recomendação do Agente Copiloto */}
@@ -1792,7 +1933,11 @@ export default function AdsIa() {
                                   type="button"
                                   disabled={applyingFtId === (row.rowKey || row.ftId)}
                                   onClick={() =>
-                                    handleApplyRecommendedPrice(row, aiRec.suggestedPrice)
+                                    handleApplyRecommendedPrice(
+                                      row,
+                                      aiRec.suggestedPrice,
+                                      aiRec.recommendedPromo || null
+                                    )
                                   }
                                   style={{
                                     padding: '3px 9px',
@@ -1817,6 +1962,79 @@ export default function AdsIa() {
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
                             {aiRec.explanation}
                           </span>
+                          {/* Alerta Extra da IA quando houver Promoção Interessante no ML (e não for a ação principal já exibida) */}
+                          {(() => {
+                            const candidates = row.promoInfo?.candidatePromos || [];
+                            const interestingPromo = candidates.find((p) => {
+                              if (p.type === 'PRICE_DISCOUNT') return false;
+                              if (aiRec.recommendedPromo?.id === p.id) return false;
+                              const reqP =
+                                p.maxDiscountedPrice > 0
+                                  ? p.maxDiscountedPrice
+                                  : p.suggestedPrice;
+                              return reqP <= 0 || reqP >= metrics.precoPiso - 0.05;
+                            });
+                            if (!interestingPromo) return null;
+                            const reqP =
+                              interestingPromo.maxDiscountedPrice > 0
+                                ? interestingPromo.maxDiscountedPrice
+                                : interestingPromo.suggestedPrice;
+                            const dealPrice =
+                              reqP > 0
+                                ? Number(Math.max(metrics.precoPiso, reqP).toFixed(2))
+                                : Number(
+                                    Math.max(
+                                      metrics.precoPiso,
+                                      metrics.precoPraticado
+                                    ).toFixed(2)
+                                  );
+                            return (
+                              <div
+                                style={{
+                                  marginTop: '3px',
+                                  padding: '5px 8px',
+                                  borderRadius: '7px',
+                                  background: 'rgba(124, 58, 237, 0.09)',
+                                  border: '1px solid rgba(124, 58, 237, 0.28)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: '6px',
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    fontSize: '0.7rem',
+                                    fontWeight: 700,
+                                    color: '#7C3AED',
+                                  }}
+                                >
+                                  💡 IA: Convite <strong>{interestingPromo.label}</strong> vale a pena! (Pede{' '}
+                                  {formatBRL(dealPrice)} ≥ Piso {formatBRL(metrics.precoPiso)})
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={applyingFtId === (row.rowKey || row.ftId)}
+                                  onClick={() =>
+                                    handleApplyRecommendedPrice(row, dealPrice, interestingPromo)
+                                  }
+                                  style={{
+                                    padding: '2px 8px',
+                                    borderRadius: '5px',
+                                    border: 'none',
+                                    background: '#7C3AED',
+                                    color: '#fff',
+                                    fontSize: '0.67rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  ✨ Ativar Promo ({formatBRL(dealPrice)})
+                                </button>
+                              </div>
+                            );
+                          })()}
                           {activeChannel === 'ml' && row.primaryMl?.ml_item_id && (() => {
                             const adsChoice = evaluateAdsChoice({
                               adStatus: row.adsPeriodStats?.adStatus,
