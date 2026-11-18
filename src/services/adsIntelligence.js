@@ -1,11 +1,15 @@
 import { getResultados, parseNumber } from '../utils/financeCalculators';
 import { mlProxyFetch, getValidMlToken } from './mercadolivre';
 
-const STORAGE_RULES_KEY = 'am3d_ads_ia_rules_v1';
+const STORAGE_RULES_KEY = 'am3d_ads_ia_rules_v2';
 const STORAGE_ADS_METRICS_KEY = 'am3d_ads_manual_metrics_v1';
+const STORAGE_RAMP_STATE_KEY = 'am3d_ads_ramp_state_v1';
 
 export const DEFAULT_ADS_IA_RULES = {
-  margemMinimaPerc: 15,
+  margemMinimaPerc: 25,
+  margemReaquecimentoPerc: 20,
+  margemRankeamentoPerc: 15,
+  rampaDiaPerc: 1,
   maxDescontoCadastroPerc: 25,
   acosAlvoPerc: 8,
   orcamentoDiarioMaxMl: 15,
@@ -13,9 +17,105 @@ export const DEFAULT_ADS_IA_RULES = {
   estoqueAltoGiroMin: 12,
   estoqueBaixoProtecaoMax: 3,
   regrasPersonalizadas:
-    'Priorizar giro dos itens com mais de 12 unidades prontas em estoque. Nunca vender abaixo da margem líquida mínima. Quando concorrente estiver abaixo do nosso preço piso, sugerir kit para diluir a taxa fixa.',
+    'Margem saudável alvo 25%. Itens sem vendas ou 30+ dias parados vão para 15% (rankeamento). Após destravar venda, subir +1% ao dia até 25%. 15+ dias sem venda vai para 20%.',
   geminiApiKey: '',
 };
+
+export function loadRampState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_RAMP_STATE_KEY);
+    if (raw) return JSON.parse(raw) || {};
+  } catch {
+    // ignore
+  }
+  return {};
+}
+
+export function saveRampState(stateMap) {
+  try {
+    localStorage.setItem(STORAGE_RAMP_STATE_KEY, JSON.stringify(stateMap));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Calcula a Margem Alvo Dinâmica de acordo com o ciclo de vida do anúncio:
+ * - Sem vendas ou 30+ dias sem vender -> 15% (Rankeamento)
+ * - 15 a 29 dias sem vender -> 20% (Reaquecimento)
+ * - Em escalada pós-venda (+1%/dia) -> sobe 1% por dia de 15% até 25%
+ * - Vendendo normalmente -> 25% (Saudável)
+ */
+export function resolveDynamicTargetMargin(
+  { vendasMes = 0, soldQuantityTotal = null, daysSinceLastSale = null, rampStartDate = null },
+  rules
+) {
+  const healthy = parseNumber(rules.margemMinimaPerc || 25);
+  const warm = parseNumber(rules.margemReaquecimentoPerc || 20);
+  const rank = parseNumber(rules.margemRankeamentoPerc || 15);
+  const step = Math.max(0.5, parseNumber(rules.rampaDiaPerc || 1));
+
+  // 1. Mais de 30 dias sem venda -> volta para 15% (Re-rankear)
+  if (daysSinceLastSale !== null && daysSinceLastSale >= 30) {
+    return {
+      phase: 'rerank_30d',
+      badge: `🔄 Re-rankear (${daysSinceLastSale}d s/ venda)`,
+      targetPerc: rank,
+      color: '#DC2626',
+    };
+  }
+
+  // 2. 15 a 29 dias sem venda -> 20% (Reaquecimento)
+  if (daysSinceLastSale !== null && daysSinceLastSale >= 15) {
+    return {
+      phase: 'warm_15d',
+      badge: `⚠️ Reaquecer (${daysSinceLastSale}d s/ venda)`,
+      targetPerc: warm,
+      color: '#D97706',
+    };
+  }
+
+  // 3. Em escalada gradual (+1% por dia após destravar venda)
+  if (rampStartDate) {
+    const startMs = new Date(rampStartDate).getTime();
+    if (!Number.isNaN(startMs)) {
+      const daysElapsed = Math.max(0, Math.floor((Date.now() - startMs) / (1000 * 60 * 60 * 24)));
+      const ramped = Math.min(healthy, rank + daysElapsed * step);
+      if (ramped < healthy) {
+        return {
+          phase: 'ramping',
+          badge: `📈 Escalada +${step}%/dia (Dia ${daysElapsed + 1})`,
+          targetPerc: ramped,
+          color: '#2563EB',
+        };
+      }
+    }
+  }
+
+  // 4. Sem nenhuma venda ainda (nem no mês nem histórico conhecido) -> Rankeamento (15%)
+  const neverSold =
+    vendasMes === 0 &&
+    (soldQuantityTotal === 0 || (soldQuantityTotal === null && daysSinceLastSale === null));
+  if (neverSold) {
+    return {
+      phase: 'rank_new',
+      badge: '🚀 Rankeamento (0 vendas)',
+      targetPerc: rank,
+      color: '#7C3AED',
+    };
+  }
+
+  // 5. Vendendo normalmente -> Margem Saudável (25%)
+  return {
+    phase: 'healthy',
+    badge:
+      daysSinceLastSale !== null
+        ? `🟢 Saudável (vendeu há ${daysSinceLastSale}d)`
+        : '🟢 Margem Saudável',
+    targetPerc: healthy,
+    color: '#059669',
+  };
+}
 
 export function loadAdsIaRules() {
   try {
@@ -496,7 +596,7 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
     const chunk = uniqueIds.slice(i, i + 20);
     try {
       const resp = await mlProxyFetch(
-        `/items?ids=${encodeURIComponent(chunk.join(','))}&attributes=id,price,original_price,base_price,status`,
+        `/items?ids=${encodeURIComponent(chunk.join(','))}&attributes=id,price,original_price,base_price,status,sold_quantity`,
         { headers }
       );
       const list = Array.isArray(resp) ? resp : [];
@@ -513,12 +613,44 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
           price,
           originalPrice,
           promoPerc,
+          soldQuantity: Number(body.sold_quantity || 0),
           status: body.status || '',
         };
       });
     } catch (e) {
       console.warn('[AdsIA] Aviso ao buscar preços/promoções em lote:', e);
     }
+  }
+
+  // Busca data da última venda paga de cada item nos últimos 45 dias
+  const lastSaleByItem = {};
+  try {
+    const sellerId = token.ml_user_id;
+    if (sellerId) {
+      const from45 = new Date();
+      from45.setDate(from45.getDate() - 45);
+      for (let pageOffset = 0; pageOffset < 100; pageOffset += 50) {
+        const ordersResp = await mlProxyFetch(
+          `/orders/search?seller=${encodeURIComponent(sellerId)}&order.status=paid&order.date_closed.from=${encodeURIComponent(from45.toISOString())}&sort=date_desc&limit=50&offset=${pageOffset}`,
+          { headers }
+        );
+        const orders = Array.isArray(ordersResp?.results) ? ordersResp.results : [];
+        orders.forEach((ord) => {
+          const dt = ord.date_closed || ord.date_created;
+          if (!dt) return;
+          (ord.order_items || []).forEach((oi) => {
+            const itId = oi?.item?.id;
+            if (!itId) return;
+            if (!lastSaleByItem[itId] || new Date(dt) > new Date(lastSaleByItem[itId])) {
+              lastSaleByItem[itId] = dt;
+            }
+          });
+        });
+        if (orders.length < 50) break;
+      }
+    }
+  } catch (ordErr) {
+    console.warn('[AdsIA] Aviso ao buscar data da última venda:', ordErr);
   }
 
   // Busca dados do Product Ads (campanhas + anúncios em 7, 15 e 30 dias)
@@ -621,6 +753,7 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
     advertiserId,
     campaigns,
     promosByItem,
+    lastSaleByItem,
     adsByItem,
     adsStatusNote,
     updatedAt: new Date().toISOString(),

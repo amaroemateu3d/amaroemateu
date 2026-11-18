@@ -23,6 +23,9 @@ import {
   calculateAdShieldMetrics,
   evaluateAiRecommendation,
   evaluateAdsChoice,
+  resolveDynamicTargetMargin,
+  loadRampState,
+  saveRampState,
   fetchMlCompetitorIntel,
   fetchMlPromosAndAdsStats,
   updateMlAdStatusOrCampaign,
@@ -82,6 +85,20 @@ export default function AdsIa() {
   const [updatingAdKey, setUpdatingAdKey] = useState(null);
   const [newCampForm, setNewCampForm] = useState({ name: '', acosTarget: 10, dailyBudget: 15 });
   const [savingCamp, setSavingCamp] = useState(false);
+  const [rampState, setRampState] = useState(() => loadRampState());
+
+  const handleToggleRamp = (rowKey) => {
+    setRampState((prev) => {
+      const next = { ...prev };
+      if (next[rowKey]) {
+        delete next[rowKey];
+      } else {
+        next[rowKey] = new Date().toISOString();
+      }
+      saveRampState(next);
+      return next;
+    });
+  };
 
   const getHeaders = () => ({
     apikey: SUPA_KEY,
@@ -287,16 +304,36 @@ export default function AdsIa() {
               : {}),
           };
 
-          const metrics = calculateAdShieldMetrics(effFtVar, rules, {
+          const metricsBase = {
             ...effectiveManualAds,
             vendasMes: vendasMesFt,
-          });
+          };
 
-          const competitor = competitorMap[rowKey] || competitorMap[ft.indiceFt] || null;
+          const lastSaleIso = mlId ? promosAdsCache?.lastSaleByItem?.[mlId] : null;
+          const daysSinceLastSale = lastSaleIso
+            ? Math.max(0, Math.floor((Date.now() - new Date(lastSaleIso).getTime()) / (1000 * 60 * 60 * 24)))
+            : null;
           const soldQuantityTotal =
-            matchedMl?.sold_quantity !== undefined
+            promoInfo?.soldQuantity !== undefined
+              ? Number(promoInfo.soldQuantity)
+              : matchedMl?.sold_quantity !== undefined
               ? Number(matchedMl.sold_quantity || 0)
               : null;
+
+          const dynamicMargin = resolveDynamicTargetMargin(
+            {
+              vendasMes: vendasMesFt,
+              soldQuantityTotal,
+              daysSinceLastSale,
+              rampStartDate: rampState[rowKey],
+            },
+            rules
+          );
+          const rowRules = { ...rules, margemMinimaPerc: dynamicMargin.targetPerc };
+
+          const metrics = calculateAdShieldMetrics(effFtVar, rowRules, metricsBase);
+
+          const competitor = competitorMap[rowKey] || competitorMap[ft.indiceFt] || null;
 
           const aiRec = evaluateAiRecommendation(
             {
@@ -307,7 +344,7 @@ export default function AdsIa() {
               soldQuantityTotal,
               competitor,
             },
-            rules
+            rowRules
           );
 
           expanded.push({
@@ -321,6 +358,9 @@ export default function AdsIa() {
             estoqueTotal: varStock,
             vendasMes: vendasMesFt,
             soldQuantityTotal,
+            daysSinceLastSale,
+            dynamicMargin,
+            rowRules,
             primaryMl: matchedMl,
             linkedListings,
             promoInfo,
@@ -369,7 +409,23 @@ export default function AdsIa() {
               : {}),
           };
 
-          const metrics = calculateAdShieldMetrics(effFtMl, rules, {
+          const lastSaleIso = mlId ? promosAdsCache?.lastSaleByItem?.[mlId] : null;
+          const daysSinceLastSale = lastSaleIso
+            ? Math.max(0, Math.floor((Date.now() - new Date(lastSaleIso).getTime()) / (1000 * 60 * 60 * 24)))
+            : null;
+          const soldQtyMl = promoInfo?.soldQuantity !== undefined ? Number(promoInfo.soldQuantity) : null;
+          const dynamicMargin = resolveDynamicTargetMargin(
+            {
+              vendasMes: vendasMesFt,
+              soldQuantityTotal: soldQtyMl,
+              daysSinceLastSale,
+              rampStartDate: rampState[rowKey],
+            },
+            rules
+          );
+          const rowRules = { ...rules, margemMinimaPerc: dynamicMargin.targetPerc };
+
+          const metrics = calculateAdShieldMetrics(effFtMl, rowRules, {
             ...effectiveManualAds,
             vendasMes: vendasMesFt,
           });
@@ -381,10 +437,10 @@ export default function AdsIa() {
               metrics,
               estoqueTotal: estoqueAnuncio,
               vendasMes: vendasMesFt,
-              soldQuantityTotal: null,
+              soldQuantityTotal: soldQtyMl,
               competitor,
             },
-            rules
+            rowRules
           );
 
           const suffixFromSku = String(l.sku || '')
@@ -401,7 +457,10 @@ export default function AdsIa() {
             isCadastrado,
             estoqueTotal: estoqueAnuncio,
             vendasMes: vendasMesFt,
-            soldQuantityTotal: null,
+            soldQuantityTotal: soldQtyMl,
+            daysSinceLastSale,
+            dynamicMargin,
+            rowRules,
             primaryMl: l,
             linkedListings,
             promoInfo,
@@ -446,7 +505,23 @@ export default function AdsIa() {
           : {}),
       };
 
-      const metrics = calculateAdShieldMetrics(effFtSimple, rules, {
+      const lastSaleIso = mlId ? promosAdsCache?.lastSaleByItem?.[mlId] : null;
+      const daysSinceLastSale = lastSaleIso
+        ? Math.max(0, Math.floor((Date.now() - new Date(lastSaleIso).getTime()) / (1000 * 60 * 60 * 24)))
+        : null;
+      const soldQtySimple = promoInfo?.soldQuantity !== undefined ? Number(promoInfo.soldQuantity) : null;
+      const dynamicMargin = resolveDynamicTargetMargin(
+        {
+          vendasMes: vendasMesFt,
+          soldQuantityTotal: soldQtySimple,
+          daysSinceLastSale,
+          rampStartDate: rampState[rowKey],
+        },
+        rules
+      );
+      const rowRules = { ...rules, margemMinimaPerc: dynamicMargin.targetPerc };
+
+      const metrics = calculateAdShieldMetrics(effFtSimple, rowRules, {
         ...effectiveManualAds,
         vendasMes: vendasMesFt,
       });
@@ -458,10 +533,10 @@ export default function AdsIa() {
           metrics,
           estoqueTotal,
           vendasMes: vendasMesFt,
-          soldQuantityTotal: null,
+          soldQuantityTotal: soldQtySimple,
           competitor,
         },
-        rules
+        rowRules
       );
 
       expanded.push({
@@ -474,7 +549,10 @@ export default function AdsIa() {
         isCadastrado,
         estoqueTotal,
         vendasMes: vendasMesFt,
-        soldQuantityTotal: null,
+        soldQuantityTotal: soldQtySimple,
+        daysSinceLastSale,
+        dynamicMargin,
+        rowRules,
         primaryMl,
         linkedListings,
         promoInfo,
@@ -516,6 +594,7 @@ export default function AdsIa() {
     searchTerm,
     promosAdsCache,
     adsPeriod,
+    rampState,
   ]);
 
   // Totais do painel superior
@@ -955,8 +1034,8 @@ export default function AdsIa() {
             }}
           >
             <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                Margem Líquida Mínima Intocável (%)
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', display: 'block', marginBottom: '4px' }}>
+                🟢 Margem Saudável Alvo (%)
               </label>
               <input
                 type="number"
@@ -965,6 +1044,51 @@ export default function AdsIa() {
                 step="0.5"
                 value={rules.margemMinimaPerc}
                 onChange={(e) => handleRuleChange('margemMinimaPerc', e.target.value)}
+                style={ruleInputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#D97706', display: 'block', marginBottom: '4px' }}>
+                ⚠️ 15+ dias s/ venda (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="60"
+                step="0.5"
+                value={rules.margemReaquecimentoPerc ?? 20}
+                onChange={(e) => handleRuleChange('margemReaquecimentoPerc', e.target.value)}
+                style={ruleInputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#7C3AED', display: 'block', marginBottom: '4px' }}>
+                🚀 Rankear / 30+ dias s/ venda (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="60"
+                step="0.5"
+                value={rules.margemRankeamentoPerc ?? 15}
+                onChange={(e) => handleRuleChange('margemRankeamentoPerc', e.target.value)}
+                style={ruleInputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#2563EB', display: 'block', marginBottom: '4px' }}>
+                📈 Subida Pós-Venda (+%/dia)
+              </label>
+              <input
+                type="number"
+                min="0.5"
+                max="10"
+                step="0.5"
+                value={rules.rampaDiaPerc ?? 1}
+                onChange={(e) => handleRuleChange('rampaDiaPerc', e.target.value)}
                 style={ruleInputStyle}
               />
             </div>
@@ -1333,7 +1457,7 @@ export default function AdsIa() {
                         </div>
                       </td>
 
-                      {/* Preço Piso Intocável */}
+                      {/* Preço Piso Dinâmico (por fase) */}
                       <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <div
                           style={{
@@ -1345,12 +1469,38 @@ export default function AdsIa() {
                             fontWeight: 800,
                             fontSize: '0.86rem',
                           }}
-                          title={`Abaixo de ${formatBRL(metrics.precoPiso)} sua margem líquida cai para menos de ${rules.margemMinimaPerc}%`}
+                          title={`Alvo atual: ${row.dynamicMargin?.targetPerc}% (${row.dynamicMargin?.badge}). Abaixo de ${formatBRL(metrics.precoPiso)} sua margem cai abaixo da meta da fase atual.`}
                         >
-                          {formatBRL(metrics.precoPiso)}
+                          {formatBRL(metrics.precoPiso)} ({row.dynamicMargin?.targetPerc}%)
                         </div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                          Empate 0%: {formatBRL(metrics.precoQueima)}
+                        <div style={{ fontSize: '0.67rem', fontWeight: 700, color: row.dynamicMargin?.color || 'var(--text-secondary)', marginTop: '3px' }}>
+                          {row.dynamicMargin?.badge}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '2px' }}>
+                          <span style={{ fontSize: '0.66rem', color: 'var(--text-secondary)' }}>
+                            0%: {formatBRL(metrics.precoQueima)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRamp(row.rowKey || row.ftId)}
+                            style={{
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              border: '1px solid var(--border-color)',
+                              background: rampState[row.rowKey || row.ftId] ? 'rgba(37,99,235,0.14)' : 'var(--bg-secondary)',
+                              color: rampState[row.rowKey || row.ftId] ? '#2563EB' : 'var(--text-secondary)',
+                              fontSize: '0.64rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                            title={
+                              rampState[row.rowKey || row.ftId]
+                                ? 'Escada +1%/dia ativa — clique para cancelar'
+                                : 'Iniciar subida gradual de +1%/dia de 15% até 25%'
+                            }
+                          >
+                            {rampState[row.rowKey || row.ftId] ? '📈 Escada ON' : '+1%/dia'}
+                          </button>
                         </div>
                       </td>
 
@@ -1515,7 +1665,7 @@ export default function AdsIa() {
                             fontWeight: 800,
                             fontSize: '0.9rem',
                             color:
-                              metrics.margemPosAdsPerc >= parseNumber(rules.margemMinimaPerc)
+                              metrics.margemPosAdsPerc >= parseNumber(row.rowRules?.margemMinimaPerc ?? rules.margemMinimaPerc)
                                 ? 'var(--success)'
                                 : 'var(--danger)',
                           }}
@@ -1650,7 +1800,7 @@ export default function AdsIa() {
                               estoqueTotal: row.estoqueTotal,
                               vendasMes: row.vendasMes,
                               soldQuantityTotal: row.soldQuantityTotal,
-                              rules,
+                              rules: row.rowRules || rules,
                             });
                             return (
                               <div
