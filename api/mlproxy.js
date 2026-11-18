@@ -48,7 +48,7 @@ export default async function handler(req, res) {
       headers: forwardHeaders
     };
 
-    if (req.method !== 'GET' && req.method !== 'HEAD' && req.body !== undefined && req.body !== null) {
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'DELETE' && req.body !== undefined && req.body !== null) {
       const contentType = String(req.headers['content-type'] || '').toLowerCase();
       if (typeof req.body === 'object' && !(req.body instanceof Buffer)) {
         if (contentType.includes('application/x-www-form-urlencoded')) {

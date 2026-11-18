@@ -766,6 +766,7 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
               name: p.name || '',
               label: formatMlPromoType(p.type, p.name),
               status: p.status,
+              offerId: p.ref_id || p.offer_id || (Array.isArray(p.offers) && p.offers[0]?.id) || null,
               price: Number(p.price || 0),
               originalPrice: origPrice,
               suggestedPrice,
@@ -1062,6 +1063,7 @@ export async function removeMlSellerPromotion({
   mlItemId,
   promotionId,
   promotionType,
+  offerId,
   empresaId,
 }) {
   if (!mlItemId || !promotionType) {
@@ -1070,18 +1072,95 @@ export async function removeMlSellerPromotion({
   const token = await getValidMlToken(empresaId);
   const headers = { Authorization: `Bearer ${token.access_token}` };
 
-  const idParam =
-    promotionId && promotionId !== promotionType
-      ? `&promotion_id=${encodeURIComponent(promotionId)}`
-      : '';
+  let resolvedOfferId = offerId || null;
+  let allPromos = null;
 
-  return mlProxyFetch(
-    `/seller-promotions/items/${encodeURIComponent(mlItemId)}?promotion_type=${encodeURIComponent(promotionType)}${idParam}&app_version=v2`,
-    {
-      method: 'DELETE',
-      headers,
+  const loadPromosIfNeeded = async () => {
+    if (allPromos) return allPromos;
+    try {
+      const resp = await mlProxyFetch(
+        `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+        { headers }
+      );
+      allPromos = Array.isArray(resp)
+        ? resp
+        : Array.isArray(resp?.results)
+        ? resp.results
+        : [];
+    } catch {
+      allPromos = [];
     }
-  );
+    return allPromos;
+  };
+
+  if (
+    !resolvedOfferId &&
+    (promotionType === 'SMART' ||
+      promotionType === 'PRE_NEGOTIATED' ||
+      promotionType === 'MARKETPLACE_CAMPAIGN')
+  ) {
+    const list = await loadPromosIfNeeded();
+    const match = list.find(
+      (p) =>
+        (promotionId && String(p.id) === String(promotionId)) ||
+        p.type === promotionType
+    );
+    resolvedOfferId =
+      match?.ref_id ||
+      match?.offer_id ||
+      (Array.isArray(match?.offers) && match.offers[0]?.id) ||
+      null;
+  }
+
+  const buildDeleteUrl = (pType, pId, oId) => {
+    const idParam =
+      pId && pId !== pType ? `&promotion_id=${encodeURIComponent(pId)}` : '';
+    const offerParam = oId ? `&offer_id=${encodeURIComponent(oId)}` : '';
+    return `/seller-promotions/items/${encodeURIComponent(mlItemId)}?promotion_type=${encodeURIComponent(pType)}${idParam}${offerParam}&app_version=v2`;
+  };
+
+  try {
+    return await mlProxyFetch(
+      buildDeleteUrl(promotionType, promotionId, resolvedOfferId),
+      {
+        method: 'DELETE',
+        headers,
+      }
+    );
+  } catch (err) {
+    // Se tentou sair de uma DEAL (Campanha Tradicional) mas há uma SMART (Desconto Inteligente) empilhada por cima, remove a SMART primeiro e depois a DEAL
+    if (promotionType === 'DEAL' || promotionType === 'SELLER_CAMPAIGN') {
+      const list = await loadPromosIfNeeded();
+      const stackedSmart = list.filter(
+        (p) =>
+          p.status === 'started' &&
+          (p.type === 'SMART' ||
+            p.type === 'PRE_NEGOTIATED' ||
+            p.type === 'MARKETPLACE_CAMPAIGN')
+      );
+      if (stackedSmart.length > 0) {
+        for (const sp of stackedSmart) {
+          const spOffer =
+            sp.ref_id ||
+            sp.offer_id ||
+            (Array.isArray(sp.offers) && sp.offers[0]?.id) ||
+            null;
+          await mlProxyFetch(buildDeleteUrl(sp.type, sp.id, spOffer), {
+            method: 'DELETE',
+            headers,
+          });
+        }
+        return await mlProxyFetch(
+          buildDeleteUrl(promotionType, promotionId, resolvedOfferId),
+          {
+            method: 'DELETE',
+            headers,
+          }
+        );
+      }
+    }
+    throw err;
+  }
 }
 
 /**
@@ -1286,15 +1365,17 @@ export async function syncMlBaseCadastroAndPromo({
     promoList = [];
   }
 
-  // Remove TODAS as promoções ativas (started) cujo preço atual seja diferente do cleanVenda
-  // (ex: Campanha Tradicional Black Friday travando o item a R$ 27,00 ou Desconto Individual travando PUT /items)
-  const startedPromos = promoList.filter((p) => p.status === 'started');
+  // Remove TODAS as promoções ativas (started) — começando por SMART/PRE_NEGOTIATED empilhadas e depois DEAL/PRICE_DISCOUNT
+  const startedPromos = promoList
+    .filter((p) => p.status === 'started')
+    .sort((a, b) => (a.type === 'SMART' || a.type === 'PRE_NEGOTIATED' ? -1 : b.type === 'SMART' || b.type === 'PRE_NEGOTIATED' ? 1 : 0));
   for (const sp of startedPromos) {
     try {
       await removeMlSellerPromotion({
         mlItemId,
         promotionId: sp.id,
         promotionType: sp.type,
+        offerId: sp.ref_id || sp.offer_id || (Array.isArray(sp.offers) && sp.offers[0]?.id) || null,
         empresaId,
       });
     } catch {

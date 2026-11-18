@@ -2082,6 +2082,7 @@ export default function AdsIa() {
                                             mlItemId: row.primaryMl.ml_item_id,
                                             promotionId: ap.id,
                                             promotionType: ap.type,
+                                            offerId: ap.offerId || null,
                                             empresaId: profile?.empresa_id,
                                           });
                                           await handleSyncPromosAndAds();
