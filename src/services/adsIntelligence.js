@@ -853,6 +853,64 @@ export async function updateMlAdCampaign({
 }
 
 /**
+ * Aplica o preço alvo como PROMOÇÃO (Central de Promoções do ML),
+ * mantendo o Preço de Cadastro (original_price) intacto para preservar o selo % OFF!
+ */
+export async function applyMlSellerPromotion({ mlItemId, targetPrice, empresaId }) {
+  if (!mlItemId) throw new Error('Item MLB não informado.');
+  const token = await getValidMlToken(empresaId);
+  const headers = { Authorization: `Bearer ${token.access_token}` };
+
+  const promoResp = await mlProxyFetch(
+    `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+    { headers }
+  );
+  const promoList = Array.isArray(promoResp)
+    ? promoResp
+    : Array.isArray(promoResp?.results)
+    ? promoResp.results
+    : [];
+
+  // Prioriza PRICE_DISCOUNT (Desconto por item) ou SELLER_CAMPAIGN ativa/candidata
+  const eligible =
+    promoList.find((p) => p.type === 'PRICE_DISCOUNT' && (p.status === 'started' || p.status === 'candidate')) ||
+    promoList.find((p) => (p.type === 'SELLER_CAMPAIGN' || p.type === 'DEAL') && (p.status === 'started' || p.status === 'candidate')) ||
+    null;
+
+  if (!eligible) {
+    return {
+      appliedAs: 'no_eligible_promo',
+      promoList,
+    };
+  }
+
+  const cleanTarget = Number(Number(targetPrice).toFixed(2));
+  const payload = {
+    deal_price: cleanTarget,
+    promotion_id: eligible.id,
+    promotion_type: eligible.type,
+  };
+  if (Number(eligible.original_price || 0) > cleanTarget) {
+    payload.top_deal_price = Number(Number(eligible.original_price).toFixed(2));
+  }
+
+  const res = await mlProxyFetch(
+    `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    }
+  );
+
+  return {
+    appliedAs: 'promotion',
+    promotion: eligible,
+    result: res,
+  };
+}
+
+/**
  * Avalia qual é a melhor escolha de Ads para o anúncio (Ativar / Pausar / Mover Campanha)
  * cruzando Estoque, Margem Pós-Ads, Gasto em 30d/15d/7d e Vendas.
  */

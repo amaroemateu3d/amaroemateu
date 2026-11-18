@@ -31,6 +31,7 @@ import {
   updateMlAdStatusOrCampaign,
   createMlAdCampaign,
   updateMlAdCampaign,
+  applyMlSellerPromotion,
   loadPromosAdsCache,
   askGeminiStrategist,
   loadAdsIaRules,
@@ -707,22 +708,36 @@ export default function AdsIa() {
         },
       }));
 
-      // Se for Mercado Livre e tiver anúncio vinculado, oferece atualizar no ML também
+      // Se for Mercado Livre e tiver anúncio vinculado, aplica como PROMOÇÃO mantendo o Preço de Cadastro intacto!
       if (activeChannel === 'ml' && row.primaryMl?.ml_item_id) {
+        const cadastroRef =
+          row.promoInfo?.originalPrice ||
+          row.metrics.precoCadastro ||
+          safePrice / 0.7;
+        const pctOffCadastro =
+          cadastroRef > safePrice
+            ? Math.round(((cadastroRef - safePrice) / cadastroRef) * 100)
+            : 0;
+
         const pushToMl = window.confirm(
-          `✅ Preço R$ ${safePrice.toFixed(2)} salvo no sistema para ${row.ftId}!\n\nDeseja também enviar esse novo preço agora diretamente para o anúncio ${row.primaryMl.ml_item_id} no Mercado Livre?`
+          `✅ Preço alvo R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF s/ Cadastro de R$ ${cadastroRef.toFixed(2)}) salvo no sistema!\n\nDeseja aplicar esse desconto na Central de Promoções do anúncio ${row.primaryMl.ml_item_id} no Mercado Livre (mantendo o Preço de Cadastro intacto)?`
         );
         if (pushToMl) {
-          const tok = await getValidMlToken(profile?.empresa_id);
-          await mlProxyFetch(
-            `/items/${encodeURIComponent(row.primaryMl.ml_item_id)}`,
-            {
-              method: 'PUT',
-              headers: { Authorization: `Bearer ${tok.access_token}` },
-              body: JSON.stringify({ price: Number(safePrice.toFixed(2)) }),
-            }
-          );
-          alert(`🚀 Preço do anúncio ${row.primaryMl.ml_item_id} atualizado no Mercado Livre para R$ ${safePrice.toFixed(2)}!`);
+          const promoRes = await applyMlSellerPromotion({
+            mlItemId: row.primaryMl.ml_item_id,
+            targetPrice: safePrice,
+            empresaId: profile?.empresa_id,
+          });
+          if (promoRes.appliedAs === 'promotion') {
+            alert(
+              `🚀 Promoção aplicada no anúncio ${row.primaryMl.ml_item_id}! Preço promocional: R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF mantendo o Cadastro intacto).`
+            );
+            await handleSyncPromosAndAds();
+          } else {
+            alert(
+              `ℹ️ O anúncio ${row.primaryMl.ml_item_id} não retornou uma campanha de Desconto Individual aberta pela API.\n\nPara não apagar seu Preço de Cadastro (R$ ${cadastroRef.toFixed(2)}), não alteramos o preço base.\n👉 Entre na Central de Promoções do ML e coloque o preço promocional em R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF).`
+            );
+          }
         }
       }
     } catch (err) {
@@ -1763,30 +1778,41 @@ export default function AdsIa() {
                               {aiRec.badge} — {aiRec.title}
                             </span>
 
-                            {aiRec.suggestedPrice && (
-                              <button
-                                type="button"
-                                disabled={applyingFtId === (row.rowKey || row.ftId)}
-                                onClick={() =>
-                                  handleApplyRecommendedPrice(row, aiRec.suggestedPrice)
-                                }
-                                style={{
-                                  padding: '3px 9px',
-                                  borderRadius: '6px',
-                                  border: 'none',
-                                  background:
-                                    aiRec.severity === 'critico' ? '#DC2626' : '#2563EB',
-                                  color: '#fff',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 800,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                {applyingFtId === (row.rowKey || row.ftId)
-                                  ? 'Aplicando...'
-                                  : `✅ ${aiRec.actionLabel}`}
-                              </button>
-                            )}
+                            {aiRec.suggestedPrice && (() => {
+                              const cadastroRef =
+                                row.promoInfo?.originalPrice ||
+                                metrics.precoCadastro ||
+                                aiRec.suggestedPrice / 0.7;
+                              const offCadastro =
+                                cadastroRef > aiRec.suggestedPrice
+                                  ? Math.round(((cadastroRef - aiRec.suggestedPrice) / cadastroRef) * 100)
+                                  : 0;
+                              return (
+                                <button
+                                  type="button"
+                                  disabled={applyingFtId === (row.rowKey || row.ftId)}
+                                  onClick={() =>
+                                    handleApplyRecommendedPrice(row, aiRec.suggestedPrice)
+                                  }
+                                  style={{
+                                    padding: '3px 9px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background:
+                                      aiRec.severity === 'critico' ? '#DC2626' : '#2563EB',
+                                    color: '#fff',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                  }}
+                                  title={`Aplica R$ ${aiRec.suggestedPrice.toFixed(2)} como Promoção (${offCadastro}% OFF sobre Cadastro de R$ ${cadastroRef.toFixed(2)})`}
+                                >
+                                  {applyingFtId === (row.rowKey || row.ftId)
+                                    ? 'Aplicando...'
+                                    : `✅ ${aiRec.actionLabel}${offCadastro > 0 ? ` (-${offCadastro}% s/ Cad.)` : ''}`}
+                                </button>
+                              );
+                            })()}
                           </div>
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
                             {aiRec.explanation}
