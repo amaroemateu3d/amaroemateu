@@ -1,5 +1,10 @@
 import { getResultados, parseNumber } from '../utils/financeCalculators';
 import { mlProxyFetch, getValidMlToken } from './mercadolivre';
+import {
+  shopeeProxyFetch,
+  getValidShopeeToken,
+  syncListingsFromShopee,
+} from './shopee';
 
 const STORAGE_RULES_KEY = 'am3d_ads_ia_rules_v2';
 const STORAGE_ADS_METRICS_KEY = 'am3d_ads_manual_metrics_v1';
@@ -786,8 +791,11 @@ export async function fetchMlPromosAndAdsStats({ mlItemIds = [], empresaId }) {
             }
           });
 
-          // Se houver promoção ativa (started) na Central de Promoções, atualiza price (preço promocional em vigor) e originalPrice (Preço de Cadastro)
-          const bestActive = activePromos.find((ap) => ap.price > 0) || null;
+          // Se houver promoção ativa (started) na Central de Promoções, o ML sempre aplica na vitrine o MENOR preço entre as promoções ativas
+          const bestActive =
+            activePromos
+              .filter((ap) => ap.price > 0)
+              .sort((a, b) => a.price - b.price)[0] || null;
           const resolvedOriginalPrice =
             bestActive && bestActive.originalPrice > bestActive.price
               ? bestActive.originalPrice
@@ -1407,6 +1415,277 @@ export async function syncMlBaseCadastroAndPromo({
 
   return {
     mlItemId,
+    cadastroPrice: cleanCadastro,
+    vendaPrice: cleanVenda,
+    baseUpdated,
+    promoApplied,
+  };
+}
+
+/**
+ * Puxa em lote da Shopee (quando a loja Shopee estiver conectada):
+ * 1) Anúncios, preços cheios (original_price) e preços em promoção (current_price)
+ * 2) Promoções da Loja ativas (/api/v2/discount/get_discount_list)
+ * 3) Data da última venda paga nos últimos 45 dias (em janelas de 15d) para calcular a Margem Dinâmica (15% / 20% / 25%)
+ * 4) Campanhas de Shopee Ads (/api/v2/ads/get_product_level_campaign_id_list)
+ */
+export async function fetchShopeePromosAndAdsStats({ empresaId }) {
+  const tokenObj = await getValidShopeeToken(empresaId);
+  const token = tokenObj.access_token;
+  const shopId = tokenObj.ml_user_id;
+
+  const syncRes = await syncListingsFromShopee(empresaId);
+  const listings = syncRes?.listings || [];
+
+  const promosByItem = {};
+  listings.forEach((l) => {
+    const itemId = String(l.ml_item_id || '');
+    if (!itemId) return;
+    const origPrice = Number(l.price || 0);
+    const curPrice = Number(l.price_promo || l.price || 0);
+    const promoPerc =
+      origPrice > curPrice && origPrice > 0
+        ? ((origPrice - curPrice) / origPrice) * 100
+        : 0;
+    const activePromos =
+      promoPerc >= 0.5
+        ? [
+            {
+              id: `SHOPEE_PROMO_${itemId}`,
+              type: 'PRICE_DISCOUNT',
+              name: 'Promoção da Loja Shopee',
+              label: 'Oferta da Loja Shopee',
+              status: 'started',
+              price: curPrice,
+              originalPrice: origPrice,
+              suggestedPrice: curPrice,
+              discountPerc: promoPerc,
+              meliPercentage: 0,
+            },
+          ]
+        : [];
+    const candidatePromos =
+      promoPerc < 0.5
+        ? [
+            {
+              id: `SHOPEE_CAND_${itemId}`,
+              type: 'PRICE_DISCOUNT',
+              name: 'Criar Promoção na Loja Shopee',
+              label: 'Promoção da Loja Shopee',
+              status: 'candidate',
+              price: Number((origPrice * 0.7).toFixed(2)),
+              originalPrice: origPrice,
+              suggestedPrice: Number((origPrice * 0.7).toFixed(2)),
+              discountPerc: 30,
+              meliPercentage: 0,
+            },
+          ]
+        : [];
+
+    promosByItem[itemId] = {
+      price: curPrice,
+      originalPrice: origPrice,
+      promoPerc,
+      soldQuantity: null,
+      status: l.status || 'active',
+      activePromos,
+      candidatePromos,
+    };
+  });
+
+  // Busca data da última venda nos últimos 45 dias (3 blocos de 15 dias)
+  const lastSaleByItem = {};
+  try {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const daySec = 24 * 60 * 60;
+    const chunks15 = [
+      { from: nowSec - 15 * daySec, to: nowSec },
+      { from: nowSec - 30 * daySec, to: nowSec - 15 * daySec },
+      { from: nowSec - 45 * daySec, to: nowSec - 30 * daySec },
+    ];
+    const orderSns = [];
+    for (const rng of chunks15) {
+      const ordList = await shopeeProxyFetch('/api/v2/order/get_order_list', {
+        method: 'GET',
+        token,
+        shopId,
+        query: {
+          time_range_field: 'pay_time',
+          time_from: rng.from,
+          time_to: rng.to,
+          page_size: 50,
+        },
+      });
+      const list = Array.isArray(ordList?.response?.order_list)
+        ? ordList.response.order_list
+        : [];
+      list.forEach((o) => {
+        if (o?.order_sn && !orderSns.includes(o.order_sn)) orderSns.push(o.order_sn);
+      });
+    }
+
+    for (let i = 0; i < Math.min(orderSns.length, 100); i += 50) {
+      const chunk = orderSns.slice(i, i + 50).join(',');
+      const det = await shopeeProxyFetch('/api/v2/order/get_order_detail', {
+        method: 'GET',
+        token,
+        shopId,
+        query: {
+          order_sn_list: chunk,
+          response_optional_fields: 'item_list,pay_time,order_status',
+        },
+      });
+      const orders = Array.isArray(det?.response?.order_list)
+        ? det.response.order_list
+        : [];
+      orders.forEach((ord) => {
+        const payTimeSec = Number(ord.pay_time || ord.create_time || 0);
+        if (!payTimeSec) return;
+        const iso = new Date(payTimeSec * 1000).toISOString();
+        (ord.item_list || []).forEach((it) => {
+          const itId = String(it.item_id || '');
+          if (!itId) return;
+          if (!lastSaleByItem[itId] || new Date(iso) > new Date(lastSaleByItem[itId])) {
+            lastSaleByItem[itId] = iso;
+          }
+        });
+      });
+    }
+  } catch (e) {
+    console.warn('[AdsIA Shopee] Aviso ao buscar histórico de vendas 45d:', e);
+  }
+
+  // Busca campanhas de Shopee Ads se a API de Ads estiver liberada para o App
+  const adsByItem = {};
+  const campaigns = [];
+  try {
+    const campResp = await shopeeProxyFetch(
+      '/api/v2/ads/get_product_level_campaign_id_list',
+      {
+        method: 'GET',
+        token,
+        shopId,
+        query: { ad_type: 'all', offset: 0, limit: 100 },
+      }
+    );
+    const campList = Array.isArray(campResp?.response?.campaign_list)
+      ? campResp.response.campaign_list
+      : [];
+    campList.forEach((c) => {
+      if (c.item_id) {
+        adsByItem[String(c.item_id)] = {
+          campaignId: c.campaign_id,
+          adStatus: c.ad_status === 'ongoing' ? 'active' : 'paused',
+          7: { cost: 0, clicks: 0, prints: 0, units: 0, totalAmount: 0, acos: 0 },
+          15: { cost: 0, clicks: 0, prints: 0, units: 0, totalAmount: 0, acos: 0 },
+          30: { cost: 0, clicks: 0, prints: 0, units: 0, totalAmount: 0, acos: 0 },
+        };
+      }
+    });
+  } catch {
+    // Escopo de Shopee Ads opcional
+  }
+
+  return {
+    updatedAt: new Date().toISOString(),
+    advertiserId: shopId,
+    campaigns,
+    promosByItem,
+    adsByItem,
+    lastSaleByItem,
+    listings,
+  };
+}
+
+/**
+ * Atualiza o Preço de Cadastro (original_price) de um anúncio na Shopee
+ * e aplica o Preço Promocional (30% OFF) via API de Descontos da Shopee (/api/v2/discount).
+ */
+export async function syncShopeeBaseCadastroAndPromo({
+  itemId,
+  variations = [],
+  cadastroPrice,
+  vendaPrice,
+  empresaId,
+}) {
+  if (!itemId) throw new Error('ID do item Shopee não informado.');
+  const tokenObj = await getValidShopeeToken(empresaId);
+  const token = tokenObj.access_token;
+  const shopId = tokenObj.ml_user_id;
+
+  const cleanCadastro = Number(Number(cadastroPrice).toFixed(2));
+  const cleanVenda = Number(Number(vendaPrice).toFixed(2));
+
+  const priceList =
+    Array.isArray(variations) && variations.length > 0
+      ? variations.map((v) => ({
+          model_id: Number(v.model_id || v.id || 0),
+          original_price: cleanCadastro,
+        }))
+      : [{ model_id: 0, original_price: cleanCadastro }];
+
+  let baseUpdated = false;
+  let promoApplied = false;
+
+  await shopeeProxyFetch('/api/v2/product/update_price', {
+    method: 'POST',
+    token,
+    shopId,
+    body: {
+      item_id: Number(itemId),
+      price_list: priceList,
+    },
+  });
+  baseUpdated = true;
+
+  // Tenta criar/adicionar em uma campanha de desconto da loja na Shopee (/api/v2/discount)
+  try {
+    const nowSec = Math.floor(Date.now() / 1000) + 120;
+    const endSec = nowSec + 60 * 24 * 60 * 60; // 60 dias
+    const discResp = await shopeeProxyFetch('/api/v2/discount/add_discount', {
+      method: 'POST',
+      token,
+      shopId,
+      body: {
+        discount_name: `Oferta AM3D ${new Date().toISOString().slice(0, 10)}`,
+        start_time: nowSec,
+        end_time: endSec,
+      },
+    });
+    const discountId = discResp?.response?.discount_id;
+    if (discountId) {
+      const modelPromos =
+        Array.isArray(variations) && variations.length > 0
+          ? variations.map((v) => ({
+              model_id: Number(v.model_id || v.id || 0),
+              model_promotion_price: cleanVenda,
+            }))
+          : [];
+      await shopeeProxyFetch('/api/v2/discount/add_discount_item', {
+        method: 'POST',
+        token,
+        shopId,
+        body: {
+          discount_id: Number(discountId),
+          item_list: [
+            {
+              item_id: Number(itemId),
+              purchase_limit: 0,
+              ...(modelPromos.length > 0
+                ? { model_list: modelPromos }
+                : { item_promotion_price: cleanVenda }),
+            },
+          ],
+        },
+      });
+      promoApplied = true;
+    }
+  } catch (discErr) {
+    console.warn('[AdsIA Shopee] Aviso ao criar desconto promocional na Shopee:', discErr);
+  }
+
+  return {
+    itemId,
     cadastroPrice: cleanCadastro,
     vendaPrice: cleanVenda,
     baseUpdated,

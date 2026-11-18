@@ -19,6 +19,7 @@ import {
   mlProxyFetch,
   getValidMlToken,
 } from '../services/mercadolivre';
+import { fetchStoredShopeeListings } from '../services/shopee';
 import {
   calculateAdShieldMetrics,
   evaluateAiRecommendation,
@@ -28,12 +29,14 @@ import {
   saveRampState,
   fetchMlCompetitorIntel,
   fetchMlPromosAndAdsStats,
+  fetchShopeePromosAndAdsStats,
   updateMlAdStatusOrCampaign,
   createMlAdCampaign,
   updateMlAdCampaign,
   applyMlSellerPromotion,
   removeMlSellerPromotion,
   syncMlBaseCadastroAndPromo,
+  syncShopeeBaseCadastroAndPromo,
   loadPromosAdsCache,
   askGeminiStrategist,
   loadAdsIaRules,
@@ -58,6 +61,7 @@ export default function AdsIa() {
   const [channelDefaults, setChannelDefaults] = useState({});
   const [vendasMensal, setVendasMensal] = useState({});
   const [mlListings, setMlListings] = useState([]);
+  const [shopeeListings, setShopeeListings] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [rules, setRules] = useState(() => loadAdsIaRules());
@@ -117,12 +121,13 @@ export default function AdsIa() {
     setLoading(true);
     try {
       const headers = getHeaders();
-      const [ftsResp, defResp, overResp, salesResp, mlStored] = await Promise.all([
+      const [ftsResp, defResp, overResp, salesResp, mlStored, shopeeStored] = await Promise.all([
         fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=*`, { headers }),
         fetch(`${SUPA_URL}/rest/v1/ecommerce_channel_defaults?select=*`, { headers }),
         fetch(`${SUPA_URL}/rest/v1/ecommerce_overrides?select=*`, { headers }),
         fetch(`${SUPA_URL}/rest/v1/ecommerce_monthly_sales?select=*`, { headers }),
         fetchStoredMlListings(profile?.empresa_id),
+        fetchStoredShopeeListings(profile?.empresa_id),
       ]);
 
       const ftsData = ftsResp.ok ? await ftsResp.json() : [];
@@ -160,6 +165,7 @@ export default function AdsIa() {
       setOverrides(nextOverrides);
       setVendasMensal(nextVendas);
       setMlListings(mlStored || []);
+      setShopeeListings(shopeeStored || []);
     } catch (err) {
       console.error('[AdsIA] Erro ao carregar dados:', err);
     } finally {
@@ -244,6 +250,7 @@ export default function AdsIa() {
         .trim();
 
     const expanded = [];
+    const channelListings = activeChannel === 'shopee' ? shopeeListings : mlListings;
 
     savedFts.forEach((ft) => {
       const isCadastrado = Boolean(overrides[activeChannel]?.[ft.indiceFt]?.cadastrado);
@@ -252,8 +259,8 @@ export default function AdsIa() {
         vendasMensal[currentMonth]?.[activeChannel]?.[ft.indiceFt] || 0
       );
 
-      // Todos os anúncios do ML vinculados a esta FT
-      const linkedListings = mlListings.filter((l) => {
+      // Todos os anúncios do canal atual (ML ou Shopee) vinculados a esta FT
+      const linkedListings = channelListings.filter((l) => {
         const base = String(l.ft_id || '').split('__var__')[0];
         return base === ft.indiceFt;
       });
@@ -289,9 +296,7 @@ export default function AdsIa() {
           const apiAdsForPeriod = adsPeriodStats?.[adsPeriod] || null;
 
           const liveMlPrice =
-            activeChannel === 'ml' && parseNumber(promoInfo?.price) > 0
-              ? parseNumber(promoInfo.price)
-              : null;
+            parseNumber(promoInfo?.price) > 0 ? parseNumber(promoInfo.price) : null;
 
           const effFtVar = {
             ...effFtBase,
@@ -491,9 +496,7 @@ export default function AdsIa() {
       const estoqueTotal = getEstoqueTotalFt(ft);
 
       const liveMlPrice =
-        activeChannel === 'ml' && parseNumber(promoInfo?.price) > 0
-          ? parseNumber(promoInfo.price)
-          : null;
+        parseNumber(promoInfo?.price) > 0 ? parseNumber(promoInfo.price) : null;
       const effFtSimple = {
         ...effFtBase,
         precoVendaSistema: effFtBase.precoVendaManual,
@@ -591,6 +594,7 @@ export default function AdsIa() {
     channelDefaults,
     vendasMensal,
     mlListings,
+    shopeeListings,
     activeChannel,
     currentMonth,
     rules,
@@ -798,6 +802,27 @@ export default function AdsIa() {
     setSyncingPromosAds(true);
     setPromosAdsNote('');
     try {
+      if (activeChannel === 'shopee') {
+        const res = await fetchShopeePromosAndAdsStats({
+          empresaId: profile?.empresa_id,
+        });
+        if (Array.isArray(res.listings) && res.listings.length > 0) {
+          setShopeeListings(res.listings);
+        }
+        setPromosAdsCache((prev) => ({
+          ...prev,
+          promosByItem: { ...(prev?.promosByItem || {}), ...(res.promosByItem || {}) },
+          adsByItem: { ...(prev?.adsByItem || {}), ...(res.adsByItem || {}) },
+          lastSaleByItem: { ...(prev?.lastSaleByItem || {}), ...(res.lastSaleByItem || {}) },
+        }));
+        const promoCount = Object.values(res.promosByItem || {}).filter((p) => p.promoPerc > 0).length;
+        const adsCount = Object.keys(res.adsByItem || {}).length;
+        setPromosAdsNote(
+          `✅ Shopee sincronizada: ${res.listings?.length || 0} anúncio(s), ${promoCount} em promoção e ${adsCount} em Shopee Ads.`
+        );
+        return;
+      }
+
       const mlIds = mlListings.map((l) => l.ml_item_id).filter(Boolean);
       const res = await fetchMlPromosAndAdsStats({
         mlItemIds: mlIds,
@@ -1094,10 +1119,13 @@ export default function AdsIa() {
 
     if (targetFts.length === 0) return;
 
+    const channelName = activeChannel === 'shopee' ? 'Shopee' : 'Mercado Livre';
+    const currentChannelListings = activeChannel === 'shopee' ? shopeeListings : mlListings;
+
     if (
       !specificFt &&
       !window.confirm(
-        `Deseja atualizar no Mercado Livre o Preço de Cadastro (Venda / 0,70) e ativar a promoção de 30% OFF (com ${targetBaseMargin}% de margem líquida) para todos os anúncios vinculados a essas ${targetFts.length} FTs?`
+        `Deseja atualizar no(a) ${channelName} o Preço de Cadastro (Venda / 0,70) e ativar a promoção de 30% OFF (com ${targetBaseMargin}% de margem líquida) para todos os anúncios vinculados a essas ${targetFts.length} FTs?`
       )
     ) {
       return;
@@ -1142,25 +1170,34 @@ export default function AdsIa() {
         });
         nextChOverrides[ft.indiceFt] = nextSettings;
 
-        // Encontra todos os anúncios MLB vinculados a esta FT
-        const linked = mlListings.filter((l) => {
+        // Encontra todos os anúncios vinculados a esta FT no canal atual (ML ou Shopee)
+        const linked = currentChannelListings.filter((l) => {
           const base = String(l.ft_id || '').split('__var__')[0];
           return base === ft.indiceFt && l.ml_item_id;
         });
 
         for (const l of linked) {
           setStandardizeProgress(
-            `Enviando ${ft.indiceFt} (${l.ml_item_id}) -> Cadastro R$ ${pair.cadastroIdeal.toFixed(2)} | Promo 30% OFF R$ ${pair.vendaIdeal.toFixed(2)}...`
+            `Enviando ${ft.indiceFt} (${l.ml_item_id}) p/ ${channelName} -> Cadastro R$ ${pair.cadastroIdeal.toFixed(2)} | Promo 30% OFF R$ ${pair.vendaIdeal.toFixed(2)}...`
           );
           try {
-            const resMl = await syncMlBaseCadastroAndPromo({
-              mlItemId: l.ml_item_id,
-              cadastroPrice: pair.cadastroIdeal,
-              vendaPrice: pair.vendaIdeal,
-              empresaId: profile?.empresa_id,
-            });
-            if (resMl.baseUpdated) updatedMlCount++;
-            if (resMl.promoApplied) promoAppliedCount++;
+            const resSync =
+              activeChannel === 'shopee'
+                ? await syncShopeeBaseCadastroAndPromo({
+                    itemId: l.ml_item_id,
+                    variations: l.variations || [],
+                    cadastroPrice: pair.cadastroIdeal,
+                    vendaPrice: pair.vendaIdeal,
+                    empresaId: profile?.empresa_id,
+                  })
+                : await syncMlBaseCadastroAndPromo({
+                    mlItemId: l.ml_item_id,
+                    cadastroPrice: pair.cadastroIdeal,
+                    vendaPrice: pair.vendaIdeal,
+                    empresaId: profile?.empresa_id,
+                  });
+            if (resSync.baseUpdated) updatedMlCount++;
+            if (resSync.promoApplied) promoAppliedCount++;
           } catch (mlErr) {
             errors.push(`${ft.indiceFt} (${l.ml_item_id}): ${mlErr.message}`);
           }
@@ -1175,8 +1212,8 @@ export default function AdsIa() {
       await handleSyncPromosAndAds();
 
       const summary = [
-        `✅ Padronização concluída!`,
-        `• Anúncios ML com Preço de Cadastro atualizado: ${updatedMlCount}`,
+        `✅ Padronização concluída (${channelName})!`,
+        `• Anúncios com Preço de Cadastro atualizado: ${updatedMlCount}`,
         `• Promoções de 30% OFF aplicadas via API: ${promoAppliedCount}`,
       ];
       if (errors.length > 0) {
@@ -1184,7 +1221,7 @@ export default function AdsIa() {
       }
       alert(summary.join('\n'));
     } catch (err) {
-      alert('Erro ao sincronizar preços com o ML: ' + err.message);
+      alert(`Erro ao sincronizar preços com ${channelName}: ` + err.message);
     } finally {
       setStandardizingBusy(false);
       setStandardizeProgress('');
@@ -1231,61 +1268,67 @@ export default function AdsIa() {
             <Sliders size={16} />
             {showRulesPanel ? 'Ocultar Travas de Margem' : '🛡️ Configurar Travas de Margem'}
           </button>
-          {activeChannel === 'ml' && (
-            <>
-              <button
-                type="button"
-                onClick={handleSyncPromosAndAds}
-                disabled={syncingPromosAds}
-                style={{
-                  padding: '0.52rem 0.95rem',
-                  borderRadius: '8px',
-                  border: '1px solid #EAB308',
-                  background: '#FFE600',
-                  color: '#1F2937',
-                  fontWeight: 800,
-                  fontSize: '0.84rem',
-                  cursor: syncingPromosAds ? 'wait' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-                title="Puxa a % de promoção ativa e os gastos de Product Ads (7, 15 e 30 dias) direto do Mercado Livre"
-              >
-                <RefreshCw size={15} className={syncingPromosAds ? 'spin' : ''} />
-                {syncingPromosAds ? 'Puxando ML...' : '📡 Puxar Promoções & Ads (7/15/30d)'}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowCampaignsModal(true)}
-                style={{ fontWeight: 700 }}
-                title="Ver, criar, ativar ou pausar suas campanhas de Product Ads"
-              >
-                📊 Campanhas Ads ({promosAdsCache?.campaigns?.length || 0})
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowStandardizeModal(true)}
-                style={{
-                  padding: '0.52rem 0.95rem',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: 'linear-gradient(135deg, #7C3AED, #2563EB)',
-                  color: '#fff',
-                  fontWeight: 800,
-                  fontSize: '0.84rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-                title="Recalcula todos os Preços de Cadastro (Venda / 0,70) e Preços de Venda (com 30% OFF garantindo 30% a 40% de margem líquida)"
-              >
-                🎯 Padronizar Preços (Cadastro + 30% OFF)
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={handleSyncPromosAndAds}
+            disabled={syncingPromosAds}
+            style={{
+              padding: '0.52rem 0.95rem',
+              borderRadius: '8px',
+              border: activeChannel === 'shopee' ? '1px solid #EA580C' : '1px solid #EAB308',
+              background: activeChannel === 'shopee' ? '#EE4D2D' : '#FFE600',
+              color: activeChannel === 'shopee' ? '#fff' : '#1F2937',
+              fontWeight: 800,
+              fontSize: '0.84rem',
+              cursor: syncingPromosAds ? 'wait' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+            title={
+              activeChannel === 'shopee'
+                ? 'Sincroniza anúncios, promoções e histórico de vendas da Shopee'
+                : 'Puxa a % de promoção ativa e os gastos de Product Ads (7, 15 e 30 dias) direto do Mercado Livre'
+            }
+          >
+            <RefreshCw size={15} className={syncingPromosAds ? 'spin' : ''} />
+            {syncingPromosAds
+              ? `Puxando ${activeChannel === 'shopee' ? 'Shopee' : 'ML'}...`
+              : activeChannel === 'shopee'
+              ? '📡 Puxar Promoções & Ads Shopee'
+              : '📡 Puxar Promoções & Ads (7/15/30d)'}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setShowCampaignsModal(true)}
+            style={{ fontWeight: 700 }}
+            title="Ver os 4 grupos estratégicos de Ads e quais produtos colocar em cada um"
+          >
+            {activeChannel === 'shopee'
+              ? '📊 Estratégia Shopee Ads (4 Grupos ROAS)'
+              : `📊 Campanhas Ads (${promosAdsCache?.campaigns?.length || 0})`}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowStandardizeModal(true)}
+            style={{
+              padding: '0.52rem 0.95rem',
+              borderRadius: '8px',
+              border: 'none',
+              background: 'linear-gradient(135deg, #7C3AED, #2563EB)',
+              color: '#fff',
+              fontWeight: 800,
+              fontSize: '0.84rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+            title="Recalcula todos os Preços de Cadastro (Venda / 0,70) e Preços de Venda (com 30% OFF garantindo 30% a 40% de margem líquida)"
+          >
+            🎯 Padronizar Preços (Cadastro + 30% OFF)
+          </button>
         </div>
       </div>
 
@@ -2379,7 +2422,7 @@ export default function AdsIa() {
                               </div>
                             );
                           })()}
-                          {activeChannel === 'ml' && row.primaryMl?.ml_item_id && (() => {
+                          {(activeChannel === 'shopee' || row.primaryMl?.ml_item_id) && (() => {
                             const adsChoice = evaluateAdsChoice({
                               adStatus: row.adsPeriodStats?.adStatus,
                               campaignId: row.adsPeriodStats?.campaignId,
@@ -2390,6 +2433,16 @@ export default function AdsIa() {
                               soldQuantityTotal: row.soldQuantityTotal,
                               rules: row.rowRules || rules,
                             });
+                            const shopeeRoasHint =
+                              activeChannel === 'shopee'
+                                ? (row.soldQuantityTotal ?? 0) >= 10 && row.vendasMes >= 2
+                                  ? ' • Perfil 1 Campeões (ROAS Alvo: 12,5 | R$ 10/dia)'
+                                  : (row.soldQuantityTotal ?? 0) < 10 || (row.daysSinceLastSale ?? 0) >= 30
+                                  ? ' • Perfil 2 Lançamento (ROAS Alvo: 6,7 | R$ 7/dia)'
+                                  : row.estoqueTotal >= parseNumber(rules.estoqueAltoGiroMin || 12)
+                                  ? ' • Perfil 3 Giro Estoque (ROAS Alvo: 8,3 | R$ 7/dia)'
+                                  : ' • Perfil 4 Teste/Baixo Custo (ROAS Alvo: 16,5 | R$ 5/dia)'
+                                : '';
                             return (
                               <div
                                 style={{
@@ -2405,8 +2458,9 @@ export default function AdsIa() {
                               >
                                 <span style={{ fontSize: '0.7rem', color: adsChoice.color, fontWeight: 700 }}>
                                   <strong>{adsChoice.badge}:</strong> {adsChoice.reason}
+                                  {shopeeRoasHint}
                                 </span>
-                                {adsChoice.buttonLabel && (
+                                {activeChannel === 'ml' && adsChoice.buttonLabel && (
                                   <button
                                     type="button"
                                     disabled={updatingAdKey === (row.rowKey || row.ftId)}
@@ -2588,9 +2642,15 @@ export default function AdsIa() {
           >
             <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3 style={{ margin: 0 }}>📊 Campanhas de Product Ads (Mercado Livre)</h3>
+                <h3 style={{ margin: 0 }}>
+                  {activeChannel === 'shopee'
+                    ? '📊 Estratégia Shopee Ads — Os 4 Grupos de ROAS Alvo & Orçamento'
+                    : '📊 Campanhas de Product Ads (Mercado Livre)'}
+                </h3>
                 <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Recomendamos manter 3 ou 4 campanhas fixas (ex: Campeões, Lançamentos, Kits, Giro de Estoque) e mover os anúncios entre elas.
+                  {activeChannel === 'shopee'
+                    ? 'Na Shopee o Ads é configurado por produto usando ROAS Alvo (100 ÷ ACOS). Veja abaixo os 4 grupos equivalentes às suas campanhas do ML e quais produtos ativar em cada ROAS:'
+                    : 'Recomendamos manter 3 ou 4 campanhas fixas (ex: Campeões, Lançamentos, Kits, Giro de Estoque) e mover os anúncios entre elas.'}
                 </p>
               </div>
               <button type="button" className="btn-icon" onClick={() => setShowCampaignsModal(false)}>
@@ -2599,58 +2659,78 @@ export default function AdsIa() {
             </div>
 
             <div className="modal-body" style={{ maxHeight: '72vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '10px',
-                  padding: '10px 14px',
-                  borderRadius: '8px',
-                  background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(37, 99, 235, 0.08))',
-                  border: '1px solid rgba(124, 58, 237, 0.35)',
-                }}
-              >
-                <div style={{ fontSize: '0.78rem', lineHeight: 1.4 }}>
-                  <strong style={{ color: '#7C3AED' }}>⚡ Pacote 4 Campanhas Estratégicas (R$ 50,00/dia cada)</strong>
-                  <div style={{ color: 'var(--text-secondary)' }}>
-                    1-Campeões (ACOS 8%) • 2-Lançamentos (ACOS 15%) • 3-Giro de Estoque (ACOS 12%) • 4-Teste/Baixo Custo (ACOS 6%)
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={savingCamp}
-                  onClick={handleCreateFourStandardCampaigns}
+              {activeChannel === 'ml' ? (
+                <div
                   style={{
-                    padding: '7px 14px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '10px',
+                    padding: '10px 14px',
                     borderRadius: '8px',
-                    border: 'none',
-                    background: '#7C3AED',
-                    color: '#fff',
-                    fontSize: '0.8rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
+                    background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(37, 99, 235, 0.08))',
+                    border: '1px solid rgba(124, 58, 237, 0.35)',
                   }}
                 >
-                  {savingCamp ? 'Criando no ML...' : '⚡ Criar / Atualizar as 4 Campanhas (R$ 50/dia)'}
-                </button>
-              </div>
+                  <div style={{ fontSize: '0.78rem', lineHeight: 1.4 }}>
+                    <strong style={{ color: '#7C3AED' }}>⚡ Pacote 4 Campanhas Estratégicas (R$ 50,00/dia cada)</strong>
+                    <div style={{ color: 'var(--text-secondary)' }}>
+                      1-Campeões (ACOS 8%) • 2-Lançamentos (ACOS 15%) • 3-Giro de Estoque (ACOS 12%) • 4-Teste/Baixo Custo (ACOS 6%)
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={savingCamp}
+                    onClick={handleCreateFourStandardCampaigns}
+                    style={{
+                      padding: '7px 14px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: '#7C3AED',
+                      color: '#fff',
+                      fontSize: '0.8rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {savingCamp ? 'Criando no ML...' : '⚡ Criar / Atualizar as 4 Campanhas (R$ 50/dia)'}
+                  </button>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, rgba(238, 77, 45, 0.12), rgba(245, 158, 11, 0.08))',
+                    border: '1px solid rgba(238, 77, 45, 0.35)',
+                    fontSize: '0.78rem',
+                    lineHeight: 1.45,
+                  }}
+                >
+                  <strong style={{ color: '#EA580C' }}>
+                    🛍️ Como funcionam as 4 Categorias no Shopee Ads (Busca / Descoberta por Produto):
+                  </strong>
+                  <div style={{ color: 'var(--text-secondary)', marginTop: '3px' }}>
+                    Diferente do Mercado Livre (onde você cria 4 pastas), na Shopee você ativa o <strong>Anúncio de Busca/Descoberta nos produtos abaixo</strong> aplicando o <strong>ROAS Personalizado</strong> e o <strong>Orçamento Diário</strong> do grupo correspondente:
+                  </div>
+                </div>
+              )}
 
-              {/* Guia Automático da IA: Quem vai em cada uma das 4 Campanhas */}
+              {/* Guia Automático da IA: Quem vai em cada uma das 4 Campanhas / Grupos ROAS */}
               {(() => {
                 const validRows = analyzedRows.filter(
                   (r) =>
-                    r.primaryMl?.ml_item_id &&
+                    (activeChannel === 'shopee' || r.primaryMl?.ml_item_id) &&
                     r.estoqueTotal > parseNumber(rules.estoqueBaixoProtecaoMax || 3) &&
                     r.metrics.precoPraticado >= r.metrics.precoPiso - 0.05
                 );
-                const seenMlb = new Set();
-                const uniqueMlbRows = validRows.filter((r) => {
-                  const id = r.primaryMl.ml_item_id;
-                  if (seenMlb.has(id)) return false;
-                  seenMlb.add(id);
+                const seenKey = new Set();
+                const uniqueRows = validRows.filter((r) => {
+                  const id = r.primaryMl?.ml_item_id || r.ftId;
+                  if (seenKey.has(id)) return false;
+                  seenKey.add(id);
                   return true;
                 });
 
@@ -2661,14 +2741,14 @@ export default function AdsIa() {
                   teste: [],
                 };
 
-                uniqueMlbRows.forEach((r) => {
+                uniqueRows.forEach((r) => {
                   const sold = r.soldQuantityTotal ?? 0;
                   const daysNoSale = r.daysSinceLastSale ?? 0;
                   const highStock = r.estoqueTotal >= parseNumber(rules.estoqueAltoGiroMin || 12);
 
-                  if (sold >= 10 && r.vendasMes >= 2 && r.metrics.margemSemAdsPerc >= 22) {
+                  if ((sold >= 10 || r.vendasMes >= 3) && r.vendasMes >= 2 && r.metrics.margemSemAdsPerc >= 22) {
                     buckets.campeoes.push(r);
-                  } else if (sold < 10 || daysNoSale >= 30) {
+                  } else if (r.vendasMes === 0 || (r.soldQuantityTotal !== null && sold < 10) || daysNoSale >= 30) {
                     buckets.lancamentos.push(r);
                   } else if (highStock || daysNoSale >= 15) {
                     buckets.giro.push(r);
@@ -2677,36 +2757,68 @@ export default function AdsIa() {
                   }
                 });
 
-                const cards = [
-                  {
-                    key: 'campeoes',
-                    title: '1 - Campeoes (Escala)',
-                    meta: 'ACOS 8% • R$ 50/dia',
-                    color: '#059669',
-                    items: buckets.campeoes,
-                  },
-                  {
-                    key: 'lancamentos',
-                    title: '2 - Lancamentos (Rankear)',
-                    meta: 'ACOS 15% • R$ 50/dia',
-                    color: '#2563EB',
-                    items: buckets.lancamentos,
-                  },
-                  {
-                    key: 'giro',
-                    title: '3 - Giro de Estoque',
-                    meta: 'ACOS 12% • R$ 50/dia',
-                    color: '#D97706',
-                    items: buckets.giro,
-                  },
-                  {
-                    key: 'teste',
-                    title: '4 - Teste e Baixo Custo',
-                    meta: 'ACOS 6% • R$ 50/dia',
-                    color: '#64748B',
-                    items: buckets.teste,
-                  },
-                ];
+                const cards =
+                  activeChannel === 'shopee'
+                    ? [
+                        {
+                          key: 'campeoes',
+                          title: '1 - Campeões (Escala)',
+                          meta: 'ROAS Alvo: 12,5 (ACOS 8%) • R$ 10 a R$ 15/dia por item',
+                          color: '#059669',
+                          items: buckets.campeoes,
+                        },
+                        {
+                          key: 'lancamentos',
+                          title: '2 - Lançamentos (Rankear)',
+                          meta: 'ROAS Alvo: 6,7 (ACOS 15%) • R$ 7 a R$ 10/dia por item',
+                          color: '#2563EB',
+                          items: buckets.lancamentos,
+                        },
+                        {
+                          key: 'giro',
+                          title: '3 - Giro de Estoque',
+                          meta: 'ROAS Alvo: 8,3 (ACOS 12%) • R$ 7 a R$ 10/dia por item',
+                          color: '#D97706',
+                          items: buckets.giro,
+                        },
+                        {
+                          key: 'teste',
+                          title: '4 - Teste e Baixo Custo',
+                          meta: 'ROAS Alvo: 16,5 (ACOS 6%) • R$ 5/dia por item',
+                          color: '#64748B',
+                          items: buckets.teste,
+                        },
+                      ]
+                    : [
+                        {
+                          key: 'campeoes',
+                          title: '1 - Campeoes (Escala)',
+                          meta: 'ACOS 8% • R$ 50/dia',
+                          color: '#059669',
+                          items: buckets.campeoes,
+                        },
+                        {
+                          key: 'lancamentos',
+                          title: '2 - Lancamentos (Rankear)',
+                          meta: 'ACOS 15% • R$ 50/dia',
+                          color: '#2563EB',
+                          items: buckets.lancamentos,
+                        },
+                        {
+                          key: 'giro',
+                          title: '3 - Giro de Estoque',
+                          meta: 'ACOS 12% • R$ 50/dia',
+                          color: '#D97706',
+                          items: buckets.giro,
+                        },
+                        {
+                          key: 'teste',
+                          title: '4 - Teste e Baixo Custo',
+                          meta: 'ACOS 6% • R$ 50/dia',
+                          color: '#64748B',
+                          items: buckets.teste,
+                        },
+                      ];
 
                 return (
                   <div
@@ -2753,40 +2865,43 @@ export default function AdsIa() {
                         >
                           {b.items.length === 0 ? (
                             <span style={{ color: 'var(--text-secondary)' }}>
-                              Nenhum item neste perfil agora (escolha 1 anúncio qualquer só para criar a campanha no ML).
+                              Nenhum item neste perfil agora.
                             </span>
                           ) : (
-                            b.items.map((it) => (
-                              <div
-                                key={it.primaryMl.ml_item_id}
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  gap: '6px',
-                                  padding: '3px 6px',
-                                  borderRadius: '5px',
-                                  background: 'var(--bg-secondary)',
-                                }}
-                              >
-                                <span style={{ fontWeight: 700 }}>
-                                  {it.ftId} — {it.nomePeca}
-                                </span>
-                                <code
-                                  onClick={() => {
-                                    navigator.clipboard?.writeText(it.primaryMl.ml_item_id);
-                                  }}
-                                  title="Clique para copiar o código MLB e colar na busca do Mercado Livre"
+                            b.items.map((it) => {
+                              const codeToCopy = it.primaryMl?.ml_item_id || it.sku || it.ftId;
+                              return (
+                                <div
+                                  key={it.rowKey || it.ftId}
                                   style={{
-                                    cursor: 'pointer',
-                                    color: b.color,
-                                    fontWeight: 800,
-                                    whiteSpace: 'nowrap',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    gap: '6px',
+                                    padding: '3px 6px',
+                                    borderRadius: '5px',
+                                    background: 'var(--bg-secondary)',
                                   }}
                                 >
-                                  {it.primaryMl.ml_item_id} 📋
-                                </code>
-                              </div>
-                            ))
+                                  <span style={{ fontWeight: 700 }}>
+                                    {it.ftId} — {it.nomePeca}
+                                  </span>
+                                  <code
+                                    onClick={() => {
+                                      navigator.clipboard?.writeText(codeToCopy);
+                                    }}
+                                    title="Clique para copiar o código/SKU"
+                                    style={{
+                                      cursor: 'pointer',
+                                      color: b.color,
+                                      fontWeight: 800,
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {codeToCopy} 📋
+                                  </code>
+                                </div>
+                              );
+                            })
                           )}
                         </div>
                       </div>
@@ -2994,25 +3109,23 @@ export default function AdsIa() {
                   >
                     💾 1. Salvar Todos no Sistema ({targetBaseMargin}%)
                   </button>
-                  {activeChannel === 'ml' && (
-                    <button
-                      type="button"
-                      disabled={standardizingBusy}
-                      onClick={() => handlePushStandardizedToMl(null)}
-                      style={{
-                        padding: '8px 14px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        background: '#059669',
-                        color: '#fff',
-                        fontWeight: 800,
-                        fontSize: '0.8rem',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      🚀 2. Enviar Cadastro + Promo 30% OFF p/ Todos no ML
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    disabled={standardizingBusy}
+                    onClick={() => handlePushStandardizedToMl(null)}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: activeChannel === 'shopee' ? '#EE4D2D' : '#059669',
+                      color: '#fff',
+                      fontWeight: 800,
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    🚀 2. Enviar Cadastro + Promo 30% OFF p/ Todos ({activeChannel === 'shopee' ? 'Shopee' : 'ML'})
+                  </button>
                 </div>
               </div>
 
@@ -3037,7 +3150,7 @@ export default function AdsIa() {
                     <tr>
                       <th>FT / Produto</th>
                       <th style={{ textAlign: 'center' }}>Custo Fixo (Prod+Emb+Taxa)</th>
-                      <th style={{ textAlign: 'center' }}>Comissão ML</th>
+                      <th style={{ textAlign: 'center' }}>Comissão Canal</th>
                       <th style={{ textAlign: 'center' }}>🛡️ Piso 25%</th>
                       <th style={{ textAlign: 'center', color: '#7C3AED' }}>
                         Novo Preço Cadastro (X)
@@ -3045,9 +3158,9 @@ export default function AdsIa() {
                       <th style={{ textAlign: 'center', color: '#059669' }}>
                         Venda c/ 30% OFF ({targetBaseMargin}% Margem)
                       </th>
-                      {activeChannel === 'ml' && (
-                        <th style={{ textAlign: 'center' }}>Enviar p/ ML</th>
-                      )}
+                      <th style={{ textAlign: 'center' }}>
+                        Enviar p/ {activeChannel === 'shopee' ? 'Shopee' : 'ML'}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3056,7 +3169,8 @@ export default function AdsIa() {
                       .map((ft) => {
                         const pair = computeStandardizedPair(ft, targetBaseMargin);
                         const piso25 = computeStandardizedPair(ft, 25).vendaIdeal;
-                        const linkedCount = mlListings.filter((l) => {
+                        const currentList = activeChannel === 'shopee' ? shopeeListings : mlListings;
+                        const linkedCount = currentList.filter((l) => {
                           const base = String(l.ft_id || '').split('__var__')[0];
                           return base === ft.indiceFt && l.ml_item_id;
                         }).length;
@@ -3073,7 +3187,7 @@ export default function AdsIa() {
                                     color: 'var(--text-secondary)',
                                   }}
                                 >
-                                  ({linkedCount} anúncio{linkedCount > 1 ? 's' : ''} ML)
+                                  ({linkedCount} anúncio{linkedCount > 1 ? 's' : ''})
                                 </span>
                               )}
                             </td>
@@ -3109,27 +3223,30 @@ export default function AdsIa() {
                                 (-30% OFF)
                               </span>
                             </td>
-                            {activeChannel === 'ml' && (
-                              <td style={{ textAlign: 'center' }}>
-                                <button
-                                  type="button"
-                                  disabled={standardizingBusy || linkedCount === 0}
-                                  onClick={() => handlePushStandardizedToMl(ft)}
-                                  style={{
-                                    padding: '4px 9px',
-                                    borderRadius: '6px',
-                                    border: 'none',
-                                    background: linkedCount > 0 ? '#2563EB' : '#94A3B8',
-                                    color: '#fff',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 700,
-                                    cursor: linkedCount > 0 ? 'pointer' : 'not-allowed',
-                                  }}
-                                >
-                                  🚀 Atualizar no ML
-                                </button>
-                              </td>
-                            )}
+                            <td style={{ textAlign: 'center' }}>
+                              <button
+                                type="button"
+                                disabled={standardizingBusy || linkedCount === 0}
+                                onClick={() => handlePushStandardizedToMl(ft)}
+                                style={{
+                                  padding: '4px 9px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  background:
+                                    linkedCount > 0
+                                      ? activeChannel === 'shopee'
+                                        ? '#EE4D2D'
+                                        : '#2563EB'
+                                      : '#94A3B8',
+                                  color: '#fff',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  cursor: linkedCount > 0 ? 'pointer' : 'not-allowed',
+                                }}
+                              >
+                                🚀 Atualizar {activeChannel === 'shopee' ? 'Shopee' : 'ML'}
+                              </button>
+                            </td>
                           </tr>
                         );
                       })}
