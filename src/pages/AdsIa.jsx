@@ -290,10 +290,14 @@ export default function AdsIa() {
         vendasMensal[currentMonth]?.[activeChannel]?.[ft.indiceFt] || 0
       );
 
-      // Todos os anúncios do canal atual (ML ou Shopee) vinculados a esta FT
+      // Todos os anúncios do canal atual (ML ou Shopee) vinculados a esta FT (no pai ou nas variações)
       const linkedListings = channelListings.filter((l) => {
         const base = String(l.ft_id || '').split('__var__')[0];
-        return base === ft.indiceFt;
+        if (base === ft.indiceFt) return true;
+        if (Array.isArray(l.variations)) {
+          return l.variations.some((v) => String(v.ft_id || '').split('__var__')[0] === ft.indiceFt);
+        }
+        return false;
       });
 
       const ftVars = Array.isArray(ft.variacoesEstoque) ? ft.variacoesEstoque : [];
@@ -523,7 +527,39 @@ export default function AdsIa() {
       const manualAds = adsMetricsMap[manualKey] || {};
       const primaryMl = linkedListings[0] || null;
       const mlId = primaryMl?.ml_item_id || '';
-      const promoInfo = mlId ? promosAdsCache?.promosByItem?.[mlId] : null;
+      const matchedChildVar = Array.isArray(primaryMl?.variations)
+        ? primaryMl.variations.find((v) => String(v.ft_id || '').split('__var__')[0] === ft.indiceFt)
+        : null;
+      const rawPromoInfo = mlId ? promosAdsCache?.promosByItem?.[mlId] : null;
+      const promoInfo = (() => {
+        if (!primaryMl) return rawPromoInfo;
+        const origP = Number(matchedChildVar?.original_price || primaryMl.price || 0);
+        const curP = Number(matchedChildVar?.price || primaryMl.price_promo || primaryMl.price || 0);
+        if (activeChannel === 'shopee' && origP > 0 && curP > 0) {
+          const discP = origP > curP ? ((origP - curP) / origP) * 100 : 0;
+          return {
+            ...(rawPromoInfo || {}),
+            price: curP,
+            originalPrice: origP,
+            promoPerc: discP,
+            status: primaryMl.status || 'active',
+            activePromos: discP >= 0.5 ? [{
+              id: `SHOPEE_PROMO_${mlId}_${ft.indiceFt}`,
+              type: 'PRICE_DISCOUNT',
+              name: 'Promoção da Loja Shopee',
+              label: 'Oferta da Loja Shopee',
+              status: 'started',
+              price: curP,
+              originalPrice: origP,
+              suggestedPrice: curP,
+              discountPerc: discP,
+              meliPercentage: 0,
+            }] : [],
+            candidatePromos: discP < 0.5 ? (rawPromoInfo?.candidatePromos || []) : [],
+          };
+        }
+        return rawPromoInfo;
+      })();
       const adsPeriodStats = mlId ? promosAdsCache?.adsByItem?.[mlId] : null;
       const apiAdsForPeriod = adsPeriodStats?.[adsPeriod] || null;
       const estoqueTotal = getEstoqueTotalFt(ft);
