@@ -1134,7 +1134,7 @@ export default function Estoque() {
       <div className="estoque-header">
         <div>
           <h1 className="page-title"><Package size={28} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '10px' }} />Controle de Estoque</h1>
-          <p className="page-description">Gerencie o estoque físico (<strong>Galpão</strong> e <strong>Casa</strong>) e sincronize em tempo real com a <strong>API Oficial do Mercado Livre</strong>.</p>
+          <p className="page-description">Gerencie seu <strong>estoque físico unificado</strong> e sincronize em tempo real com a <strong>API Oficial do Mercado Livre</strong>.</p>
         </div>
 
         {/* Seletor de Abas: Estoque Físico vs. API Mercado Livre */}
@@ -1260,7 +1260,7 @@ export default function Estoque() {
             <div className="alert alert-info" style={{ marginBottom: '1.5rem', display: 'flex', gap: '10px', alignItems: 'center', backgroundColor: '#EFF6FF', color: '#1E40AF', padding: '12px 16px', borderRadius: '8px', border: '1px solid #BFDBFE' }}>
               <AlertCircle size={20} />
               <div>
-                <strong>Dica:</strong> Clique diretamente sobre <strong>🏭 Galpão</strong> ou <strong>🏠 Casa</strong> em qualquer linha para abrir a caixa de adicionar/retirar unidades daquele estoque. Use o botão <strong><code>+</code></strong> ao lado do ID para cadastrar variações e SKUs.
+                <strong>Dica:</strong> Clique diretamente sobre <strong>📦 Estoque</strong> em qualquer linha para adicionar, retirar ou definir a quantidade exata (ex: <code>+5</code>, <code>-2</code> ou <code>=10</code>). Use o botão <strong><code>+</code></strong> ao lado do ID para cadastrar variações e SKUs.
               </div>
             </div>
 
@@ -1300,31 +1300,15 @@ export default function Estoque() {
                       >
                         Anunciado / Saldo ML {renderSortIcon('anunciados')}
                       </th>
-                      <th style={{ width: '360px', textAlign: 'center' }}>
-                        <div className="th-stock-filters">
-                          <button
-                            type="button"
-                            className={`th-sort-pill ${sortField === 'galpao' ? 'active' : ''}`}
-                            onClick={() => handleSort('galpao')}
-                            title="Ordenar por Estoque Galpão"
-                          >
-                            🏭 Galpão {renderSortIcon('galpao')}
-                          </button>
-                          <button
-                            type="button"
-                            className={`th-sort-pill ${sortField === 'casa' ? 'active' : ''}`}
-                            onClick={() => handleSort('casa')}
-                            title="Ordenar por Estoque Casa"
-                          >
-                            🏠 Casa {renderSortIcon('casa')}
-                          </button>
+                      <th style={{ width: '190px', textAlign: 'center' }}>
+                        <div className="th-stock-filters" style={{ justifyContent: 'center' }}>
                           <button
                             type="button"
                             className={`th-sort-pill ${sortField === 'total' ? 'active' : ''}`}
                             onClick={() => handleSort('total')}
-                            title="Ordenar por Estoque Total (Casa + Galpão)"
+                            title="Ordenar por Estoque"
                           >
-                            📦 Total {renderSortIcon('total')}
+                            📦 Estoque {renderSortIcon('total')}
                           </button>
                         </div>
                       </th>
@@ -1432,26 +1416,16 @@ export default function Estoque() {
                             </div>
                           </td>
                           <td style={{ textAlign: 'center' }}>
-                            <div className="dual-stock-wrap">
+                            <div className="dual-stock-wrap" style={{ justifyContent: 'center' }}>
                               <button
                                 type="button"
-                                className={`stock-badge stock-loc-badge stock-clickable ${item.estoqueGalpao <= 0 ? 'stock-zero' : 'stock-galpao'}`}
+                                className={`stock-badge stock-loc-badge stock-clickable ${totalItem <= 0 ? 'stock-zero' : 'stock-total'}`}
                                 onClick={() => openDirectStockModal(item.rowKey, 'galpao')}
-                                title="Clique para adicionar ou retirar unidades do Galpão"
+                                title="Clique para adicionar, retirar ou definir a quantidade em estoque"
+                                style={{ minWidth: '136px', justifyContent: 'center' }}
                               >
-                                🏭 Galpão: {item.estoqueGalpao} un
+                                📦 Estoque: {totalItem} un
                               </button>
-                              <button
-                                type="button"
-                                className={`stock-badge stock-loc-badge stock-clickable ${item.estoqueCasa <= 0 ? 'stock-zero' : 'stock-casa'}`}
-                                onClick={() => openDirectStockModal(item.rowKey, 'casa')}
-                                title="Clique para adicionar ou retirar unidades de Casa"
-                              >
-                                🏠 Casa: {item.estoqueCasa} un
-                              </button>
-                              <span className={`stock-badge stock-loc-badge ${totalItem <= 0 ? 'stock-zero' : 'stock-total'}`} title="Estoque Total (Casa + Galpão)">
-                                📦 Total: {totalItem} un
-                              </span>
                             </div>
                           </td>
                         </tr>
@@ -1890,7 +1864,7 @@ export default function Estoque() {
                             {hasVars ? (
                               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Ver variações</span>
                             ) : parentPhys.isLinked ? (
-                              <span className="stock-badge stock-total" title={`🏭 Galpão: ${parentPhys.galpao} | 🏠 Casa: ${parentPhys.casa}`}>
+                              <span className="stock-badge stock-total" title={`Estoque físico: ${parentPhys.total} un`}>
                                 📦 {parentPhys.total} un
                               </span>
                             ) : (
@@ -2050,7 +2024,7 @@ export default function Estoque() {
 
                               <td style={{ textAlign: 'center' }}>
                                 {varPhys.isLinked ? (
-                                  <span className="stock-badge stock-total" title={`🏭 Galpão: ${varPhys.galpao} | 🏠 Casa: ${varPhys.casa}`}>
+                                  <span className="stock-badge stock-total" title={`Estoque físico: ${varPhys.total} un`}>
                                     📦 {varPhys.total} un
                                   </span>
                                 ) : (
@@ -2238,7 +2212,7 @@ export default function Estoque() {
                               title="SKU desta variação"
                             />
                             <span style={{ fontSize: '0.73rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                              🏭 {v.estoqueGalpao || 0} | 🏠 {v.estoqueCasa || 0}
+                              📦 {(Number(v.estoqueGalpao) || 0) + (Number(v.estoqueCasa) || 0)} un
                             </span>
                             <button
                               type="button"
@@ -2310,26 +2284,24 @@ export default function Estoque() {
       {directStockModal.isOpen && (() => {
         const directItem = allRows.find(r => r.rowKey === directStockModal.rowKey);
         if (!directItem) return null;
-        const isGalpao = directStockModal.location === 'galpao';
-        const locLabel = isGalpao ? '🏭 Estoque Galpão' : '🏠 Estoque Casa';
-        const currentLocStock = isGalpao ? directItem.estoqueGalpao : directItem.estoqueCasa;
-        const otherLocStock = isGalpao ? directItem.estoqueCasa : directItem.estoqueGalpao;
+        const locLabel = '📦 Estoque';
+        const currentLocStock = (directItem.estoqueGalpao || 0) + (directItem.estoqueCasa || 0);
         const previewLocStock = calculateNewStock(currentLocStock, directStockModal.inputValue);
-        const previewTotalStock = previewLocStock + otherLocStock;
+        const previewTotalStock = previewLocStock;
 
         return (
           <div className="cm-overlay" onClick={(e) => e.target === e.currentTarget && closeDirectStockModal()}>
             <div className="cm-modal cm-edit" style={{ maxWidth: '460px' }}>
               <div className="cm-header">
-                <span className="cm-icon">{isGalpao ? '🏭' : '🏠'}</span>
+                <span className="cm-icon">📦</span>
                 <div className="cm-title-block">
                   <span className="cm-badge cm-edit">
-                    {directStockModal.step === 'input' ? `AJUSTAR ${isGalpao ? 'GALPÃO' : 'CASA'}` : 'CONFIRMAR ALTERAÇÃO'}
+                    {directStockModal.step === 'input' ? 'AJUSTAR ESTOQUE' : 'CONFIRMAR ALTERAÇÃO'}
                   </span>
                   <h3 className="cm-title">
                     {directStockModal.step === 'input'
-                      ? `Adicionar ou retirar em ${isGalpao ? 'Galpão' : 'Casa'}`
-                      : `Confirmar ajuste no ${locLabel}?`}
+                      ? 'Adicionar, retirar ou definir estoque'
+                      : 'Confirmar atualização de estoque?'}
                   </h3>
                 </div>
                 <button className="cm-close" onClick={closeDirectStockModal} aria-label="Fechar">×</button>
@@ -2343,7 +2315,7 @@ export default function Estoque() {
                       <span className="cm-detail-value">{directItem.displayId} — {directItem.nome}</span>
                     </div>
                     <div className="cm-detail-row cm-edit">
-                      <span className="cm-detail-label">Saldo Atual ({locLabel})</span>
+                      <span className="cm-detail-label">Estoque Atual</span>
                       <span className="cm-detail-value"><strong>{currentLocStock} un</strong></span>
                     </div>
                   </div>
@@ -2389,11 +2361,11 @@ export default function Estoque() {
                     </div>
                   </div>
 
-                  <div style={{ background: isGalpao ? '#EFF6FF' : '#ECFDF5', border: `1px solid ${isGalpao ? '#BFDBFE' : '#A7F3D0'}`, color: isGalpao ? '#1D4ED8' : '#047857', padding: '10px 12px', borderRadius: '8px', fontSize: '0.88rem', textAlign: 'center', fontWeight: 600, minHeight: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', padding: '10px 12px', borderRadius: '8px', fontSize: '0.88rem', textAlign: 'center', fontWeight: 600, minHeight: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {String(directStockModal.inputValue || '').trim() !== '' ? (
-                      <span>Novo saldo em {locLabel}: <strong>{currentLocStock} un → {previewLocStock} un</strong> (Total Geral: {previewTotalStock} un)</span>
+                      <span>Novo saldo: <strong>{currentLocStock} un → {previewLocStock} un</strong></span>
                     ) : (
-                      <span style={{ opacity: 0.7 }}>Novo saldo em {locLabel}: <strong>{currentLocStock} un</strong> (Total Geral: {currentLocStock + otherLocStock} un)</span>
+                      <span style={{ opacity: 0.7 }}>Estoque atual: <strong>{currentLocStock} un</strong></span>
                     )}
                   </div>
 
@@ -2419,27 +2391,19 @@ export default function Estoque() {
                       <span className="cm-detail-value">{directItem.displayId} — {directItem.nome}</span>
                     </div>
                     <div className="cm-detail-row cm-edit">
-                      <span className="cm-detail-label">Local Escolhido</span>
-                      <span className="cm-detail-value"><strong>{locLabel}</strong></span>
-                    </div>
-                    <div className="cm-detail-row cm-edit">
                       <span className="cm-detail-label">Movimentação</span>
                       <span className="cm-detail-value"><strong>{directStockModal.inputValue}</strong></span>
                     </div>
                     <div className="cm-detail-row cm-edit">
-                      <span className="cm-detail-label">Saldo Anterior → Novo</span>
+                      <span className="cm-detail-label">Estoque Anterior → Novo</span>
                       <span className="cm-detail-value">
                         {currentLocStock} un → <strong style={{ color: 'var(--accent-primary)', fontSize: '1rem' }}>{previewLocStock} un</strong>
                       </span>
                     </div>
-                    <div className="cm-detail-row cm-edit">
-                      <span className="cm-detail-label">Estoque Total Final</span>
-                      <span className="cm-detail-value"><strong>📦 {previewTotalStock} un</strong></span>
-                    </div>
                   </div>
 
                   <div className="cm-warning" style={{ background: '#FEF3C7', color: '#92400E', borderColor: '#FDE68A' }}>
-                    ⚠️ Confirma a atualização do estoque de <strong>{directItem.displayId}</strong> em <strong>{locLabel}</strong> para <strong>{previewLocStock} unidades</strong>?
+                    ⚠️ Confirma a atualização do estoque de <strong>{directItem.displayId}</strong> para <strong>{previewLocStock} unidades</strong>?
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', marginTop: '4px' }}>
@@ -2540,48 +2504,23 @@ export default function Estoque() {
               <span className="cm-icon">🧹</span>
               <div className="cm-title-block">
                 <span className="cm-badge cm-delete">ZERAR ESTOQUE</span>
-                <h3 className="cm-title">Qual estoque você deseja zerar?</h3>
+                <h3 className="cm-title">Deseja zerar todo o estoque?</h3>
               </div>
               <button className="cm-close" onClick={() => setZeroModalOpen(false)} aria-label="Fechar">×</button>
             </div>
 
             <div className="cm-warning">
-              ⚠️ Esta ação definirá a quantidade dos produtos para <strong>0 (zero)</strong> no local selecionado. Use para iniciar uma nova contagem física.
+              ⚠️ Esta ação definirá a quantidade de <strong>todos os produtos e variações para 0 (zero)</strong>. Use para iniciar uma nova contagem física.
             </div>
 
             <div style={{ padding: '0 1.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <button
-                  type="button"
-                  className="stock-choice-btn galpao"
-                  onClick={() => handleZeroStock('galpao')}
-                >
-                  <Warehouse size={20} />
-                  <div>
-                    <strong>Zerar Só Galpão</strong>
-                    <span>Mantém o estoque de Casa</span>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  className="stock-choice-btn casa"
-                  onClick={() => handleZeroStock('casa')}
-                >
-                  <HomeIcon size={20} />
-                  <div>
-                    <strong>Zerar Só Casa</strong>
-                    <span>Mantém o estoque do Galpão</span>
-                  </div>
-                </button>
-              </div>
-
               <button
                 type="button"
                 className="cm-btn-confirm cm-delete"
                 style={{ width: '100%', padding: '12px', justifyContent: 'center' }}
                 onClick={() => handleZeroStock('ambos')}
               >
-                🗑️ Zerar AMBOS (Galpão e Casa = 0)
+                🗑️ Confirmar — Zerar Todo o Estoque (= 0)
               </button>
 
               <button

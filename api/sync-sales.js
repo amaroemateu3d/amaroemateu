@@ -280,6 +280,7 @@ function resolveFtAndVar({ itemId, variationId, sku, variationName, listingsById
 
 function applyStockDeltaInMemory(ftRow, delta, varId = null) {
   // delta > 0 = venda (abate estoque); delta < 0 = cancelamento (devolve estoque)
+  // Estoque unificado em estoqueGalpao (estoqueCasa = 0)
   if (!ftRow || !ftRow.data || delta === 0) return false;
   const ftData = ftRow.data;
 
@@ -287,61 +288,30 @@ function applyStockDeltaInMemory(ftRow, delta, varId = null) {
     const idx = ftData.variacoesEstoque.findIndex((v) => String(v.id) === String(varId));
     if (idx !== -1) {
       const v = { ...ftData.variacoesEstoque[idx] };
-      let galpao = Number(v.galpao) || 0;
-      let casa = Number(v.casa) || 0;
+      const currentTotal = (Number(v.estoqueGalpao) || 0) + (Number(v.estoqueCasa) || 0);
+      const nextTotal = Math.max(0, currentTotal - delta);
 
-      if (delta > 0) {
-        let remaining = delta;
-        if (galpao >= remaining) {
-          galpao -= remaining;
-          remaining = 0;
-        } else {
-          remaining -= galpao;
-          galpao = 0;
-        }
-        if (remaining > 0) {
-          casa = Math.max(0, casa - remaining);
-        }
-      } else {
-        galpao += Math.abs(delta);
-      }
-
-      v.galpao = galpao;
-      v.casa = casa;
+      v.estoqueGalpao = nextTotal;
+      v.estoqueCasa = 0;
       const newVars = [...ftData.variacoesEstoque];
       newVars[idx] = v;
       ftData.variacoesEstoque = newVars;
-      ftData.estoqueGalpao = newVars.reduce((acc, item) => acc + (Number(item.galpao) || 0), 0);
-      ftData.estoqueCasa = newVars.reduce((acc, item) => acc + (Number(item.casa) || 0), 0);
-      ftRow.estoque = ftData.estoqueGalpao + ftData.estoqueCasa;
+      const sumAll = newVars.reduce((acc, item) => acc + (Number(item.estoqueGalpao) || 0) + (Number(item.estoqueCasa) || 0), 0);
+      ftData.estoqueGalpao = sumAll;
+      ftData.estoqueCasa = 0;
+      ftRow.estoque = sumAll;
       ftRow._dirty = true;
       return true;
     }
   }
 
-  // Sem variação específica: abate/devolve no estoque geral da FT
-  let galpao = Number(ftData.estoqueGalpao) || 0;
-  let casa = Number(ftData.estoqueCasa) || 0;
+  // Sem variação específica: abate/devolve no estoque unificado da FT
+  const currentTotal = (Number(ftData.estoqueGalpao) || 0) + (Number(ftData.estoqueCasa) || 0);
+  const nextTotal = Math.max(0, currentTotal - delta);
 
-  if (delta > 0) {
-    let remaining = delta;
-    if (galpao >= remaining) {
-      galpao -= remaining;
-      remaining = 0;
-    } else {
-      remaining -= galpao;
-      galpao = 0;
-    }
-    if (remaining > 0) {
-      casa = Math.max(0, casa - remaining);
-    }
-  } else {
-    galpao += Math.abs(delta);
-  }
-
-  ftData.estoqueGalpao = galpao;
-  ftData.estoqueCasa = casa;
-  ftRow.estoque = galpao + casa;
+  ftData.estoqueGalpao = nextTotal;
+  ftData.estoqueCasa = 0;
+  ftRow.estoque = nextTotal;
   ftRow._dirty = true;
   return true;
 }

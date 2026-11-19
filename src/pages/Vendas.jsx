@@ -2173,7 +2173,7 @@ export default function Vendas() {
                   const hasVars = variacoes.length > 0;
                   const varsExpanded = hasVars && isFtVarsExpanded(baseFt.indiceFt);
                   const totalStockFt = hasVars
-                    ? variacoes.reduce((acc, v) => acc + (Number(v.galpao) || 0) + (Number(v.casa) || 0), 0)
+                    ? variacoes.reduce((acc, v) => acc + (Number(v.estoqueGalpao) || 0) + (Number(v.estoqueCasa) || 0), 0)
                     : (Number(baseFt.estoqueGalpao) || 0) + (Number(baseFt.estoqueCasa) || 0);
                   const realBadgeLabel = activeChannel === 'shopee'
                     ? '🛍️ Shopee Real (média)'
@@ -2248,7 +2248,7 @@ export default function Vendas() {
                                   color: totalStockFt <= 0 ? '#DC2626' : totalStockFt <= 3 ? '#B45309' : '#047857',
                                   fontWeight: 700
                                 }}
-                                title="Estoque total atual desta FT (Galpão + Casa)"
+                                title="Estoque total atual desta FT"
                               >
                                 📦 Est: {totalStockFt} un
                               </span>
@@ -2435,9 +2435,7 @@ export default function Vendas() {
                       const varId = v.id || `var_${vIdx}`;
                       const varKey = `${baseFt.indiceFt}__var__${varId}`;
                       const varQty = getChannelQty(varKey);
-                      const galpao = Number(v.galpao) || 0;
-                      const casa = Number(v.casa) || 0;
-                      const estTotal = galpao + casa;
+                      const estTotal = (Number(v.estoqueGalpao) || 0) + (Number(v.estoqueCasa) || 0);
                       return (
                         <tr
                           key={varKey}
@@ -2478,9 +2476,6 @@ export default function Vendas() {
                                   }}
                                 >
                                   📦 Estoque: {estTotal} un
-                                </span>
-                                <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
-                                  Galpão: <strong>{galpao}</strong> • Casa: <strong>{casa}</strong>
                                 </span>
                               </div>
                             </td>
