@@ -681,15 +681,8 @@ async function processPlatformOrders({
     }
   }
 
-  if (salesUpserts.length > 0) {
-    await supaFetch('ecommerce_monthly_sales?on_conflict=month,channel_id,ft_id', {
-      method: 'POST',
-      headers: { Prefer: 'resolution=merge-duplicates' },
-      body: JSON.stringify(salesUpserts)
-    });
-  }
-
   // Atualiza preço médio real no ecommerce_overrides
+  const overrideUpserts = [];
   for (const [ftId, qty] of qtyByFt.entries()) {
     const totalRev = revByFt.get(ftId) || 0;
     if (qty <= 0 || totalRev <= 0) continue;
@@ -704,17 +697,24 @@ async function processPlatformOrders({
         precoRealVenda: avgPrice,
         precoRealVendaMes: { ...prevMesMap, [monthStr]: avgPrice }
       };
-      await supaFetch('ecommerce_overrides?on_conflict=channel_id,ft_id', {
-        method: 'POST',
-        headers: { Prefer: 'resolution=merge-duplicates' },
-        body: JSON.stringify({
-          channel_id: platform,
-          ft_id: ftId,
-          settings: nextSettings
-        })
+      overrideUpserts.push({
+        channel_id: platform,
+        ft_id: ftId,
+        settings: nextSettings
       });
       overridesByFt.set(ftId, { ...currentOv, settings: nextSettings });
     }
+  }
+
+  if (salesUpserts.length > 0 || overrideUpserts.length > 0) {
+    await supaFetch('rpc/sync_apply_marketplace_updates', {
+      method: 'POST',
+      body: JSON.stringify({
+        p_sales: salesUpserts,
+        p_overrides: overrideUpserts,
+        p_ft_stocks: []
+      })
+    });
   }
 
   return {
@@ -758,13 +758,14 @@ export default async function handler(req, res) {
     const isBaseline = mode === 'baseline';
     const monthStr = String(req.query?.month || req.body?.month || getCurrentBrazilMonth());
 
-    // 1. Carrega FTs, Listings, Overrides e Pedidos já sincronizados do mês
-    const [ftRows, allListings, allOverrides, existingSynced] = await Promise.all([
-      supaFetch('fichas_tecnicas?select=id,estoque,data&order=id.asc'),
-      supaFetch('marketplace_listings?select=*'),
-      supaFetch('ecommerce_overrides?channel_id=in.(ml,shopee)&select=channel_id,ft_id,settings'),
+    // 1. Carrega FTs, Listings, Overrides (via RPC seguro) e Pedidos já sincronizados do mês
+    const [snapshot, existingSynced] = await Promise.all([
+      supaFetch('rpc/sync_get_catalog_snapshot', { method: 'POST', body: '{}' }),
       supaFetch(`marketplace_orders_synced?month=eq.${encodeURIComponent(monthStr)}&select=*`)
     ]);
+    const ftRows = snapshot?.fts || [];
+    const allListings = snapshot?.listings || [];
+    const allOverrides = snapshot?.overrides || [];
 
     const ftsRowMap = new Map();
     const ftsDataMap = new Map();
@@ -863,15 +864,19 @@ export default async function handler(req, res) {
       summary.shopee = { error: err?.message || String(err) };
     }
 
-    // 4. Persiste somente as FTs que tiveram alteração real de estoque
+    // 4. Persiste somente as FTs que tiveram alteração real de estoque (via RPC seguro)
     const dirtyFts = Array.from(ftsRowMap.values()).filter((r) => r._dirty);
-    for (const ftRow of dirtyFts) {
-      await supaFetch(`fichas_tecnicas?id=eq.${encodeURIComponent(ftRow.id)}`, {
-        method: 'PATCH',
+    if (dirtyFts.length > 0) {
+      await supaFetch('rpc/sync_apply_marketplace_updates', {
+        method: 'POST',
         body: JSON.stringify({
-          data: ftRow.data,
-          estoque: ftRow.estoque,
-          updated_at: new Date().toISOString()
+          p_sales: [],
+          p_overrides: [],
+          p_ft_stocks: dirtyFts.map((ftRow) => ({
+            id: ftRow.id,
+            estoque: ftRow.estoque,
+            data: ftRow.data
+          }))
         })
       });
     }
