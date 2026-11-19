@@ -670,6 +670,13 @@ export async function syncListingsFromShopee(empresaId = DEFAULT_EMPRESA_ID) {
       if (firstWithFt) ftId = firstWithFt.ft_id;
     }
 
+    let effectiveOrig = origPrice;
+    let effectiveCur = currentPrice;
+    if ((!effectiveOrig || effectiveOrig <= 0) && variations.length > 0) {
+      effectiveOrig = Number(variations[0]?.price || 0);
+      effectiveCur = Number(variations[0]?.price_promo || variations[0]?.price || 0);
+    }
+
     const listingRecord = {
       empresa_id: safeEmpId,
       platform: 'shopee',
@@ -679,8 +686,8 @@ export async function syncListingsFromShopee(empresaId = DEFAULT_EMPRESA_ID) {
       thumbnail_url: thumbnail,
       permalink: `https://shopee.com.br/product/${shopId}/${item.item_id}`,
       status: item.item_status === 'NORMAL' ? 'active' : 'paused',
-      price: origPrice > currentPrice && currentPrice > 0 ? origPrice : currentPrice,
-      price_promo: origPrice > currentPrice && currentPrice > 0 ? currentPrice : null,
+      price: effectiveOrig > effectiveCur && effectiveCur > 0 ? effectiveOrig : effectiveCur,
+      price_promo: effectiveOrig > effectiveCur && effectiveCur > 0 ? effectiveCur : null,
       stock_ml: stockShopee,
       stock_physical: existing.stock_physical || null,
       logistic_type: 'shopee_standard',

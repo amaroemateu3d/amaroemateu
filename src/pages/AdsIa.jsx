@@ -328,7 +328,56 @@ export default function AdsIa() {
           const manualKey = `${activeChannel}_${currentMonth}_${rowKey}`;
           const manualAds = adsMetricsMap[manualKey] || adsMetricsMap[`${activeChannel}_${currentMonth}_${ft.indiceFt}`] || {};
           const mlId = matchedMl?.ml_item_id || '';
-          const promoInfo = mlId ? promosAdsCache?.promosByItem?.[mlId] : null;
+          const matchedChildVar = Array.isArray(matchedMl?.variations)
+            ? matchedMl.variations.find((v) => {
+                const vFt = String(v.ft_id || '').split('__var__')[0];
+                if (vFt === ft.indiceFt && (normalizeStr(v.name || v.label || '').includes(normVar) || normVar.includes(normalizeStr(v.name || v.label || '')))) {
+                  return true;
+                }
+                return false;
+              }) || matchedMl.variations.find((v) => String(v.ft_id || '').split('__var__')[0] === ft.indiceFt)
+            : null;
+          const rawPromoInfo = mlId ? promosAdsCache?.promosByItem?.[mlId] : null;
+          const promoInfo = (() => {
+            if (!matchedMl) return rawPromoInfo;
+            const origP = Number(
+              matchedChildVar?.original_price ||
+              (matchedChildVar?.price_promo ? matchedChildVar?.price : 0) ||
+              matchedMl.price ||
+              0
+            );
+            const curP = Number(
+              matchedChildVar?.price_promo ||
+              matchedChildVar?.price ||
+              matchedMl.price_promo ||
+              matchedMl.price ||
+              0
+            );
+            if (activeChannel === 'shopee' && origP > 0 && curP > 0) {
+              const discP = origP > curP ? ((origP - curP) / origP) * 100 : 0;
+              return {
+                ...(rawPromoInfo || {}),
+                price: curP,
+                originalPrice: origP,
+                promoPerc: discP,
+                status: matchedMl.status || 'active',
+                activePromos: discP >= 0.5 ? [{
+                  id: `SHOPEE_PROMO_${mlId}_${ft.indiceFt}`,
+                  type: 'PRICE_DISCOUNT',
+                  name: 'Promoção da Loja Shopee',
+                  label: 'Oferta da Loja Shopee',
+                  status: 'started',
+                  price: curP,
+                  originalPrice: origP,
+                  suggestedPrice: curP,
+                  discountPerc: discP,
+                  meliPercentage: 0,
+                }] : [],
+                candidatePromos: discP < 0.5 ? (rawPromoInfo?.candidatePromos || []) : [],
+              };
+            }
+            return rawPromoInfo;
+          })();
           const adsPeriodStats = mlId ? promosAdsCache?.adsByItem?.[mlId] : null;
           const apiAdsForPeriod = adsPeriodStats?.[adsPeriod] || null;
 
@@ -371,7 +420,16 @@ export default function AdsIa() {
           const dynamicMargin = {
             targetPerc: 30,
             phase: 'fixed',
-            badge: '🔒 30% Fixo',
+            badge: daysSinceLastSale !== null && daysSinceLastSale >= 30
+              ? '⏳ 30+ dias s/ venda'
+              : daysSinceLastSale !== null && daysSinceLastSale >= 15
+              ? '⏳ 15+ dias s/ venda'
+              : '🔒 30% Fixo',
+            color: daysSinceLastSale !== null && daysSinceLastSale >= 30
+              ? '#7C3AED'
+              : daysSinceLastSale !== null && daysSinceLastSale >= 15
+              ? '#D97706'
+              : '#059669',
             reason: 'Margem fixa de 30% definida para proteção total de lucro.',
           };
           const rowRules = { ...rules, margemMinimaPerc: dynamicMargin.targetPerc };
@@ -601,7 +659,16 @@ export default function AdsIa() {
       const dynamicMargin = {
         targetPerc: 30,
         phase: 'fixed',
-        badge: '🔒 30% Fixo',
+        badge: daysSinceLastSale !== null && daysSinceLastSale >= 30
+          ? '⏳ 30+ dias s/ venda'
+          : daysSinceLastSale !== null && daysSinceLastSale >= 15
+          ? '⏳ 15+ dias s/ venda'
+          : '🔒 30% Fixo',
+        color: daysSinceLastSale !== null && daysSinceLastSale >= 30
+          ? '#7C3AED'
+          : daysSinceLastSale !== null && daysSinceLastSale >= 15
+          ? '#D97706'
+          : '#059669',
         reason: 'Margem fixa de 30% definida para proteção total de lucro.',
       };
       const rowRules = { ...rules, margemMinimaPerc: dynamicMargin.targetPerc };
@@ -1480,7 +1547,7 @@ export default function AdsIa() {
           >
             <div>
               <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', display: 'block', marginBottom: '4px' }}>
-                🟢 Margem Saudável Alvo (%)
+                🔒 Margem Mínima Fixa (%)
               </label>
               <input
                 type="number"
@@ -1489,51 +1556,6 @@ export default function AdsIa() {
                 step="0.5"
                 value={rules.margemMinimaPerc}
                 onChange={(e) => handleRuleChange('margemMinimaPerc', e.target.value)}
-                style={ruleInputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#D97706', display: 'block', marginBottom: '4px' }}>
-                ⚠️ 15+ dias s/ venda (%)
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="60"
-                step="0.5"
-                value={rules.margemReaquecimentoPerc ?? 20}
-                onChange={(e) => handleRuleChange('margemReaquecimentoPerc', e.target.value)}
-                style={ruleInputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#7C3AED', display: 'block', marginBottom: '4px' }}>
-                🚀 Rankear / 30+ dias s/ venda (%)
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="60"
-                step="0.5"
-                value={rules.margemRankeamentoPerc ?? 15}
-                onChange={(e) => handleRuleChange('margemRankeamentoPerc', e.target.value)}
-                style={ruleInputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#2563EB', display: 'block', marginBottom: '4px' }}>
-                📈 Subida Pós-Venda (+%/dia)
-              </label>
-              <input
-                type="number"
-                min="0.5"
-                max="10"
-                step="0.5"
-                value={rules.rampaDiaPerc ?? 1}
-                onChange={(e) => handleRuleChange('rampaDiaPerc', e.target.value)}
                 style={ruleInputStyle}
               />
             </div>
@@ -1925,27 +1947,6 @@ export default function AdsIa() {
                           <span style={{ fontSize: '0.66rem', color: 'var(--text-secondary)' }}>
                             0%: {formatBRL(metrics.precoQueima)}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleRamp(row.rowKey || row.ftId)}
-                            style={{
-                              padding: '1px 5px',
-                              borderRadius: '4px',
-                              border: '1px solid var(--border-color)',
-                              background: rampState[row.rowKey || row.ftId] ? 'rgba(37,99,235,0.14)' : 'var(--bg-secondary)',
-                              color: rampState[row.rowKey || row.ftId] ? '#2563EB' : 'var(--text-secondary)',
-                              fontSize: '0.64rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                            }}
-                            title={
-                              rampState[row.rowKey || row.ftId]
-                                ? 'Escada +1%/dia ativa — clique para cancelar'
-                                : 'Iniciar subida gradual de +1%/dia de 15% até 25%'
-                            }
-                          >
-                            {rampState[row.rowKey || row.ftId] ? '📈 Escada ON' : '+1%/dia'}
-                          </button>
                         </div>
                       </td>
 
