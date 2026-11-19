@@ -533,8 +533,19 @@ export default function AdsIa() {
       const rawPromoInfo = mlId ? promosAdsCache?.promosByItem?.[mlId] : null;
       const promoInfo = (() => {
         if (!primaryMl) return rawPromoInfo;
-        const origP = Number(matchedChildVar?.original_price || primaryMl.price || 0);
-        const curP = Number(matchedChildVar?.price || primaryMl.price_promo || primaryMl.price || 0);
+        const origP = Number(
+          matchedChildVar?.original_price ||
+          (matchedChildVar?.price_promo ? matchedChildVar?.price : 0) ||
+          primaryMl.price ||
+          0
+        );
+        const curP = Number(
+          matchedChildVar?.price_promo ||
+          matchedChildVar?.price ||
+          primaryMl.price_promo ||
+          primaryMl.price ||
+          0
+        );
         if (activeChannel === 'shopee' && origP > 0 && curP > 0) {
           const discP = origP > curP ? ((origP - curP) / origP) * 100 : 0;
           return {
