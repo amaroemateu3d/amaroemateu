@@ -197,24 +197,31 @@ export function calculateAdShieldMetrics(effectiveFt, rules, itemAdsMetrics = {}
   const vendasMes = Math.max(0, Number(itemAdsMetrics.vendasMes || 0));
   const faturamentoMes = precoPraticado * vendasMes;
 
+  const gastoAdsUnit = vendasMes > 0 && gastoAdsMes > 0 ? gastoAdsMes / vendasMes : 0;
   const acosRealPerc =
     faturamentoMes > 0 && gastoAdsMes > 0
       ? (gastoAdsMes / faturamentoMes) * 100
       : parseNumber(itemAdsMetrics.acosPerc || 0);
 
   const margemMinima = Math.max(0, parseNumber(rules.margemMinimaPerc));
-  const acosParaPiso = acosRealPerc > 0 ? acosRealPerc : 0;
+  // Se há vendas no mês e gasto em R$, embutimos o custo fixo de Ads por unidade no numerador
+  // (assim o Preço Piso fica 100% ESTÁVEL e nunca muda quando alteramos o preço de venda!)
+  const custoFixoComAds = custoFixoUnit + gastoAdsUnit;
+  const acosParaPiso = gastoAdsUnit > 0 ? 0 : acosRealPerc > 0 ? acosRealPerc : 0;
 
   // Denominador para Preço de Queima (Margem 0%)
   const denomQueima = 1 - (aliquotaCanalPerc + acosParaPiso) / 100;
-  const precoQueima = denomQueima > 0.05 ? custoFixoUnit / denomQueima : custoFixoUnit * 2;
+  const precoQueima = denomQueima > 0.05 ? custoFixoComAds / denomQueima : custoFixoComAds * 2;
 
   // Denominador para Preço Piso (garantindo margemMinima% líquida após todos os custos + Ads)
   const denomPiso = 1 - (aliquotaCanalPerc + acosParaPiso + margemMinima) / 100;
-  const precoPiso = denomPiso > 0.05 ? custoFixoUnit / denomPiso : precoQueima * 1.25;
+  const precoPiso = denomPiso > 0.05 ? custoFixoComAds / denomPiso : precoQueima * 1.25;
 
   // Lucro e margem reais considerando o preço praticado hoje e o gasto de Ads
-  const custoVariavelHoje = precoPraticado * ((aliquotaCanalPerc + acosRealPerc) / 100);
+  const custoVariavelHoje =
+    gastoAdsUnit > 0
+      ? precoPraticado * (aliquotaCanalPerc / 100) + gastoAdsUnit
+      : precoPraticado * ((aliquotaCanalPerc + acosRealPerc) / 100);
   const lucroLiquidoPosAds =
     precoPraticado > 0 ? precoPraticado - custoFixoUnit - custoVariavelHoje : 0;
   const margemPosAdsPerc =
@@ -1102,6 +1109,100 @@ export async function updateMlAdCampaign({
 }
 
 /**
+ * Atualiza instantaneamente (em ~0.3s) os preços e promoções de APENAS 1 anúncio MLB,
+ * evitando recarregar a tabela inteira e perder a posição da rolagem da tela.
+ */
+export async function fetchSingleMlItemPromo({ mlItemId, empresaId }) {
+  if (!mlItemId) return null;
+  const token = await getValidMlToken(empresaId);
+  const headers = { Authorization: `Bearer ${token.access_token}` };
+
+  const [itemResp, pResp] = await Promise.all([
+    mlProxyFetch(
+      `/items/${encodeURIComponent(mlItemId)}?attributes=id,price,original_price,base_price,status,sold_quantity`,
+      { headers }
+    ),
+    mlProxyFetch(
+      `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+      { headers }
+    ).catch(() => []),
+  ]);
+
+  const basePrice = Number(itemResp?.price || 0);
+  const baseOrig = Number(itemResp?.original_price || 0);
+  const rawList = Array.isArray(pResp)
+    ? pResp
+    : Array.isArray(pResp?.results)
+    ? pResp.results
+    : [];
+
+  const activePromos = [];
+  const candidatePromos = [];
+
+  rawList.forEach((p) => {
+    if (!p || !p.type) return;
+    const suggestedPrice = Number(
+      p.price || p.suggested_discounted_price || p.max_discounted_price || p.min_discounted_price || 0
+    );
+    const origPrice = Number(p.original_price || baseOrig || basePrice || 0);
+    const discountPerc =
+      origPrice > suggestedPrice && suggestedPrice > 0
+        ? ((origPrice - suggestedPrice) / origPrice) * 100
+        : 0;
+
+    const normalized = {
+      id: p.id || p.type,
+      type: p.type,
+      name: p.name || '',
+      label: formatMlPromoType(p.type, p.name),
+      status: p.status,
+      offerId: p.ref_id || p.offer_id || (Array.isArray(p.offers) && p.offers[0]?.id) || null,
+      price: Number(p.price || 0),
+      originalPrice: origPrice,
+      suggestedPrice,
+      minDiscountedPrice: Number(p.min_discounted_price || 0),
+      maxDiscountedPrice: Number(p.max_discounted_price || 0),
+      discountPerc,
+      meliPercentage: Number(p.meli_percentage || 0),
+      sellerPercentage: Number(p.seller_percentage || 0),
+      startDate: p.start_date || null,
+      finishDate: p.finish_date || null,
+    };
+
+    if (p.status === 'started') {
+      activePromos.push(normalized);
+    } else if (p.status === 'candidate' || p.status === 'pending') {
+      candidatePromos.push(normalized);
+    }
+  });
+
+  const bestActive =
+    activePromos.filter((ap) => ap.price > 0).sort((a, b) => a.price - b.price)[0] || null;
+  const resolvedOriginalPrice =
+    bestActive && bestActive.originalPrice > bestActive.price
+      ? bestActive.originalPrice
+      : baseOrig > 0
+      ? baseOrig
+      : basePrice;
+  const resolvedActivePrice =
+    bestActive && bestActive.price > 0 ? bestActive.price : basePrice;
+  const resolvedPromoPerc =
+    resolvedOriginalPrice > resolvedActivePrice && resolvedOriginalPrice > 0
+      ? ((resolvedOriginalPrice - resolvedActivePrice) / resolvedOriginalPrice) * 100
+      : 0;
+
+  return {
+    price: resolvedActivePrice,
+    originalPrice: resolvedOriginalPrice,
+    promoPerc: resolvedPromoPerc,
+    soldQuantity: Number(itemResp?.sold_quantity || 0),
+    status: itemResp?.status || '',
+    activePromos,
+    candidatePromos,
+  };
+}
+
+/**
  * Remove (sai de) uma promoção ativa na Central de Promoções do Mercado Livre
  * (ex: sair da Campanha Tradicional Black Friday quando ela trava o preço abaixo do Preço Piso).
  */
@@ -1307,10 +1408,11 @@ export async function applyMlSellerPromotion({
     payload.promotion_id = eligible.id;
   }
   if (eligible.type === 'PRICE_DISCOUNT' && !payload.promotion_id) {
-    const now = new Date();
-    const end = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-    payload.start_date = now.toISOString().split('.')[0];
-    payload.finish_date = end.toISOString().split('.')[0];
+    // Usa sempre a data local do Brasil (GMT-3) para iniciar imediatamente mesmo após as 21h!
+    const brNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const brEnd = new Date(brNow.getTime() + 14 * 24 * 60 * 60 * 1000);
+    payload.start_date = `${brNow.toISOString().slice(0, 10)}T00:00:00`;
+    payload.finish_date = `${brEnd.toISOString().slice(0, 10)}T23:59:59`;
   }
 
   try {

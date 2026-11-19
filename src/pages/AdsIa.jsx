@@ -29,6 +29,7 @@ import {
   saveRampState,
   fetchMlCompetitorIntel,
   fetchMlPromosAndAdsStats,
+  fetchSingleMlItemPromo,
   fetchShopeePromosAndAdsStats,
   updateMlAdStatusOrCampaign,
   createMlAdCampaign,
@@ -174,8 +175,38 @@ export default function AdsIa() {
   };
 
   useEffect(() => {
-    if (session) fetchData();
-  }, [session]);
+    if (session?.user?.id) fetchData();
+  }, [session?.user?.id]);
+
+  // Atualiza APENAS 1 anúncio MLB no cache local (0.3s), sem recarregar a tabela inteira nem voltar ao topo
+  const handleRefreshSingleMlItem = async (mlItemId) => {
+    if (!mlItemId) return;
+    try {
+      const fresh = await fetchSingleMlItemPromo({
+        mlItemId,
+        empresaId: profile?.empresa_id,
+      });
+      if (fresh) {
+        setPromosAdsCache((prev) => {
+          const next = {
+            ...(prev || {}),
+            promosByItem: {
+              ...(prev?.promosByItem || {}),
+              [mlItemId]: fresh,
+            },
+          };
+          try {
+            localStorage.setItem('am3d_ml_promos_ads_cache_v1', JSON.stringify(next));
+          } catch {
+            // ignore
+          }
+          return next;
+        });
+      }
+    } catch {
+      // silencioso
+    }
+  };
 
   const handleRuleChange = (key, val) => {
     setRules((prev) => {
@@ -753,12 +784,12 @@ export default function AdsIa() {
             alert(
               `🚀 Promoção (${promoRes.promotion?.name || promoRes.promotion?.type || promoLabel}) aplicada no anúncio ${row.primaryMl.ml_item_id}! Preço promocional: R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF mantendo o Cadastro intacto).${removedNote}`
             );
-            await handleSyncPromosAndAds();
+            await handleRefreshSingleMlItem(row.primaryMl.ml_item_id);
           } else if (promoRes.appliedAs === 'removed_blocking_deal') {
             alert(
               `✅ Retiramos o anúncio ${row.primaryMl.ml_item_id} da campanha "${promoRes.removedBlocking.map((p) => p.name || p.type).join(', ')}" que estava forçando o preço abaixo do seu Piso!\n\nAgora você pode ativar um Desconto Individual de ${pctOffCadastro}% OFF (R$ ${safePrice.toFixed(2)}) na Central de Promoções.`
             );
-            await handleSyncPromosAndAds();
+            await handleRefreshSingleMlItem(row.primaryMl.ml_item_id);
           } else {
             alert(
               `ℹ️ O anúncio ${row.primaryMl.ml_item_id} não retornou uma campanha elegível aberta pela API.\n\nPara não apagar seu Preço de Cadastro (R$ ${cadastroRef.toFixed(2)}), não alteramos o preço base.\n👉 Entre na Central de Promoções do ML e coloque o preço promocional em R$ ${safePrice.toFixed(2)} (${pctOffCadastro}% OFF).`
@@ -2131,7 +2162,7 @@ export default function AdsIa() {
                                             offerId: ap.offerId || null,
                                             empresaId: profile?.empresa_id,
                                           });
-                                          await handleSyncPromosAndAds();
+                                          await handleRefreshSingleMlItem(row.primaryMl.ml_item_id);
                                         } catch (err) {
                                           alert('Erro ao sair da promoção: ' + err.message);
                                         } finally {
