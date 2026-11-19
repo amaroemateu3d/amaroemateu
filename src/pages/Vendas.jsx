@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { getResultados, parseNumber, getCustoUnitario, getUnitProductionTime, formatTime } from '../utils/financeCalculators';
 import { Settings, Save, X, Printer, CheckCircle2, RefreshCw, Loader, ShoppingBag, Link2 } from 'lucide-react';
 import { fetchMlPaidOrdersForMonth, parseFtTargetKey, fetchStoredMlListings, syncListingsFromML } from '../services/mercadolivre';
@@ -204,6 +204,12 @@ export default function Vendas() {
   const openConfirm = (type, title, details, onConfirm) => setConfirmModal({ isOpen: true, type, title, details, onConfirm });
   const closeConfirm = () => setConfirmModal(m => ({ ...m, isOpen: false }));
 
+  // Controle de expansão de variações na tabela de Vendas (para controle de estoque por cor/modelo)
+  const [expandedVars, setExpandedVars] = useState({});
+  const [expandAllVars, setExpandAllVars] = useState(false);
+  const toggleFtVars = (ftId) => setExpandedVars(prev => ({ ...prev, [ftId]: !prev[ftId] }));
+  const isFtVarsExpanded = (ftId) => expandAllVars || Boolean(expandedVars[ftId]);
+
   // Estados de integração de vendas do Mercado Livre
   const [pullingMlSales, setPullingMlSales] = useState(false);
   const [mlSalesModal, setMlSalesModal] = useState(null);
@@ -404,8 +410,26 @@ export default function Vendas() {
           settings: updatedOps,
         }, {}, 'channel_id,ft_id');
 
-        // Se o usuário marcou para abater a diferença no Estoque Físico
-        if (mlSalesModal.deductStock && item.delta !== 0) {
+        // Se houver detalhamento por variação (breakdown), salva vendas por variação e abate estoque de cada variação!
+        if (Array.isArray(item.breakdown) && item.breakdown.length > 0) {
+          for (const b of item.breakdown) {
+            const varKey = `${item.ftId}__var__${b.varId}`;
+            const oldVarQty = Number(newVendas[currentMonth].ml[varKey] || 0);
+            const varDelta = Number(b.qty || 0) - oldVarQty;
+            newVendas[currentMonth].ml[varKey] = Number(b.qty || 0);
+            if (b.qty > 0) {
+              await supaWrite('ecommerce_monthly_sales', 'POST', {
+                month: currentMonth,
+                channel_id: 'ml',
+                ft_id: varKey,
+                quantity: Number(b.qty || 0),
+              }, {}, 'month,channel_id,ft_id');
+            }
+            if (mlSalesModal.deductStock && varDelta !== 0) {
+              await updateFtStock(item.ftId, varDelta, b.varId);
+            }
+          }
+        } else if (mlSalesModal.deductStock && item.delta !== 0) {
           await updateFtStock(item.ftId, item.delta);
         }
       }
@@ -536,7 +560,26 @@ export default function Vendas() {
           settings: updatedOps,
         }, {}, 'channel_id,ft_id');
 
-        if (shopeeSalesModal.deductStock && item.delta !== 0) {
+        // Se houver detalhamento por variação (breakdown), salva vendas por variação e abate estoque de cada variação!
+        if (Array.isArray(item.breakdown) && item.breakdown.length > 0) {
+          for (const b of item.breakdown) {
+            const varKey = `${item.ftId}__var__${b.varId}`;
+            const oldVarQty = Number(newVendas[currentMonth].shopee[varKey] || 0);
+            const varDelta = Number(b.qty || 0) - oldVarQty;
+            newVendas[currentMonth].shopee[varKey] = Number(b.qty || 0);
+            if (b.qty > 0) {
+              await supaWrite('ecommerce_monthly_sales', 'POST', {
+                month: currentMonth,
+                channel_id: 'shopee',
+                ft_id: varKey,
+                quantity: Number(b.qty || 0),
+              }, {}, 'month,channel_id,ft_id');
+            }
+            if (shopeeSalesModal.deductStock && varDelta !== 0) {
+              await updateFtStock(item.ftId, varDelta, b.varId);
+            }
+          }
+        } else if (shopeeSalesModal.deductStock && item.delta !== 0) {
           await updateFtStock(item.ftId, item.delta);
         }
       }
@@ -656,7 +699,7 @@ export default function Vendas() {
     }
   };
 
-  const updateFtStock = async (ftId, delta) => {
+  const updateFtStock = async (ftId, delta, varId = null) => {
     if (delta === 0) return;
     try {
       const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -673,26 +716,61 @@ export default function Vendas() {
       const row = data[0];
       if (!row) return;
       const rawData = row.data || {};
-      const hasDual = rawData.estoqueGalpao !== undefined || rawData.estoqueCasa !== undefined;
-      let galpao = hasDual ? Number(rawData.estoqueGalpao || 0) : Number(row.estoque ?? 0);
-      let casa = hasDual ? Number(rawData.estoqueCasa || 0) : 0;
+      let newData;
+      let newStock;
 
-      if (delta > 0) {
-        if (galpao >= delta) {
-          galpao -= delta;
-        } else if (galpao > 0) {
-          const rem = delta - galpao;
-          galpao = 0;
-          casa = Math.max(0, casa - rem);
-        } else {
-          casa = Math.max(0, casa - delta);
-        }
+      const vars = Array.isArray(rawData.variacoesEstoque) ? rawData.variacoesEstoque : [];
+      if (varId && vars.length > 0 && vars.some(v => String(v.id) === String(varId))) {
+        const nextVars = vars.map(v => {
+          if (String(v.id) !== String(varId)) return v;
+          let g = Number(v.estoqueGalpao || 0);
+          let c = Number(v.estoqueCasa || 0);
+          if (delta > 0) {
+            if (g >= delta) {
+              g -= delta;
+            } else if (g > 0) {
+              const rem = delta - g;
+              g = 0;
+              c = Math.max(0, c - rem);
+            } else {
+              c = Math.max(0, c - delta);
+            }
+          } else {
+            g -= delta;
+          }
+          return { ...v, estoqueGalpao: Math.max(0, g), estoqueCasa: Math.max(0, c) };
+        });
+        const totalGalpao = nextVars.reduce((acc, v) => acc + Number(v.estoqueGalpao || 0), 0);
+        const totalCasa = nextVars.reduce((acc, v) => acc + Number(v.estoqueCasa || 0), 0);
+        newStock = Math.max(0, totalGalpao + totalCasa);
+        newData = {
+          ...rawData,
+          variacoesEstoque: nextVars,
+          estoqueGalpao: totalGalpao,
+          estoqueCasa: totalCasa,
+        };
       } else {
-        galpao -= delta; // delta negativo devolve pro galpão
-      }
+        const hasDual = rawData.estoqueGalpao !== undefined || rawData.estoqueCasa !== undefined;
+        let galpao = hasDual ? Number(rawData.estoqueGalpao || 0) : Number(row.estoque ?? 0);
+        let casa = hasDual ? Number(rawData.estoqueCasa || 0) : 0;
 
-      const newStock = Math.max(0, galpao + casa); // nunca negativo
-      const newData = { ...rawData, estoqueGalpao: galpao, estoqueCasa: casa };
+        if (delta > 0) {
+          if (galpao >= delta) {
+            galpao -= delta;
+          } else if (galpao > 0) {
+            const rem = delta - galpao;
+            galpao = 0;
+            casa = Math.max(0, casa - rem);
+          } else {
+            casa = Math.max(0, casa - delta);
+          }
+        } else {
+          galpao -= delta; // delta negativo devolve pro galpão
+        }
+
+        newStock = Math.max(0, galpao + casa); // nunca negativo
+        newData = { ...rawData, estoqueGalpao: galpao, estoqueCasa: casa };
+      }
 
       await fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?id=eq.${ftId}`, {
         method: 'PATCH',
@@ -704,8 +782,67 @@ export default function Vendas() {
         },
         body: JSON.stringify({ estoque: newStock, data: newData })
       });
+
+      // Atualiza estado local para refletir o novo estoque imediatamente na tela
+      setSavedFts(prev => prev.map(f => f.indiceFt === ftId ? { ...f, ...newData, estoque: newStock } : f));
     } catch (e) {
       console.error('Erro ao abater estoque:', e);
+    }
+  };
+
+  const handleVarQtyChange = async (ftId, varId, stringVal) => {
+    const val = Math.max(0, parseInt(stringVal, 10) || 0);
+    const varKey = `${ftId}__var__${varId}`;
+    const currentVarVal = Number(vendasMensal[currentMonth]?.[activeChannel]?.[varKey] || 0);
+    const delta = val - currentVarVal;
+
+    const newVendas = { ...vendasMensal };
+    if (!newVendas[currentMonth]) newVendas[currentMonth] = {};
+    if (!newVendas[currentMonth][activeChannel]) newVendas[currentMonth][activeChannel] = {};
+    newVendas[currentMonth][activeChannel][varKey] = val;
+
+    // Recalcula o total da FT pai somando todas as variações
+    const ftObj = savedFts.find(f => f.indiceFt === ftId);
+    const vars = Array.isArray(ftObj?.variacoesEstoque) ? ftObj.variacoesEstoque : [];
+    const totalParent = vars.reduce((acc, v) => {
+      const k = `${ftId}__var__${v.id}`;
+      return acc + Number(newVendas[currentMonth][activeChannel][k] || 0);
+    }, 0);
+    newVendas[currentMonth][activeChannel][ftId] = totalParent;
+    setVendasMensal(newVendas);
+
+    if (delta !== 0) {
+      await updateFtStock(ftId, delta, varId);
+    }
+
+    if (val > 0) {
+      await supaWrite('ecommerce_monthly_sales', 'POST', {
+        month: currentMonth,
+        channel_id: activeChannel,
+        ft_id: varKey,
+        quantity: val
+      }, {}, 'month,channel_id,ft_id');
+    } else {
+      await supaWrite('ecommerce_monthly_sales', 'DELETE', null, {
+        month: currentMonth,
+        channel_id: activeChannel,
+        ft_id: varKey
+      });
+    }
+
+    if (totalParent > 0) {
+      await supaWrite('ecommerce_monthly_sales', 'POST', {
+        month: currentMonth,
+        channel_id: activeChannel,
+        ft_id: ftId,
+        quantity: totalParent
+      }, {}, 'month,channel_id,ft_id');
+    } else {
+      await supaWrite('ecommerce_monthly_sales', 'DELETE', null, {
+        month: currentMonth,
+        channel_id: activeChannel,
+        ft_id: ftId
+      });
     }
   };
 
@@ -1721,6 +1858,27 @@ export default function Vendas() {
                  </span>
                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => { setExpandAllVars(p => !p); setExpandedVars({}); }}
+                    style={{
+                      background: expandAllVars ? '#2563EB' : 'var(--bg-surface)',
+                      color: expandAllVars ? '#fff' : 'var(--text-primary)',
+                      border: expandAllVars ? '1px solid #2563EB' : '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      padding: '0.45rem 0.8rem',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      whiteSpace: 'nowrap'
+                    }}
+                    title="Expandir ou ocultar as variações e estoque de todos os produtos na tabela"
+                  >
+                    🎨 {expandAllVars ? 'Ocultar Variações' : 'Mostrar Variações'}
+                  </button>
                   <div style={{ position: 'relative' }}>
                     <button
                       type="button"
@@ -1891,8 +2049,43 @@ export default function Vendas() {
                   const customKeys = Object.keys(overrides[activeChannel]?.[baseFt.indiceFt] || {}).filter(k => k !== 'cadastrado');
                   const hasCustom = customKeys.length > 0;
                   const pesoUnit = (parseNumber(baseFt.pesoGramas) / Math.max(1, parseNumber(baseFt.quantidade))).toFixed(1);
+                  const variacoes = Array.isArray(baseFt.variacoesEstoque) ? baseFt.variacoesEstoque : [];
+                  const hasVars = variacoes.length > 0;
+                  const varsExpanded = hasVars && isFtVarsExpanded(baseFt.indiceFt);
+                  const totalStockFt = hasVars
+                    ? variacoes.reduce((acc, v) => acc + (Number(v.galpao) || 0) + (Number(v.casa) || 0), 0)
+                    : (Number(baseFt.estoqueGalpao) || 0) + (Number(baseFt.estoqueCasa) || 0);
+                  const realBadgeLabel = activeChannel === 'shopee'
+                    ? '🛍️ Shopee Real (média)'
+                    : activeChannel === 'ml'
+                      ? '📦 ML Real (média)'
+                      : '💰 Real (média)';
+                  const realSubLabel = activeChannel === 'shopee'
+                    ? '(s/ Shopee real)'
+                    : activeChannel === 'ml'
+                      ? '(s/ ML real)'
+                      : '(s/ preço real)';
+                  const channelDisplayName = activeChannel === 'shopee'
+                    ? 'Shopee'
+                    : activeChannel === 'ml'
+                      ? 'Mercado Livre'
+                      : (CHANNELS.find(c => c.id === activeChannel)?.label || 'Canal');
+                  const leadingColsCount = 1
+                    + (visibleColumns.noAr !== false ? 1 : 0)
+                    + (visibleColumns.statusAtivo !== false ? 1 : 0)
+                    + (visibleColumns.regras !== false ? 1 : 0)
+                    + (visibleColumns.id !== false ? 1 : 0);
+                  const middleColsCount = (activeChannel === 'site' && visibleColumns.categorias !== false ? 1 : 0)
+                    + (visibleColumns.peso !== false ? 1 : 0)
+                    + (visibleColumns.prod !== false ? 1 : 0)
+                    + (visibleColumns.venda !== false ? 1 : 0)
+                    + (visibleColumns.custoFinal !== false ? 1 : 0)
+                    + (visibleColumns.preco !== false ? 1 : 0)
+                    + (visibleColumns.margem !== false ? 1 : 0)
+                    + (visibleColumns.lucro !== false ? 1 : 0);
                   return (
-                    <tr key={baseFt.indiceFt} className={selectedFts.includes(baseFt.indiceFt) ? 'row-selected' : ''} style={isCadastrado ? {background: 'rgba(16, 185, 129, 0.04)'} : {}}>
+                    <Fragment key={baseFt.indiceFt}>
+                    <tr className={selectedFts.includes(baseFt.indiceFt) ? 'row-selected' : ''} style={isCadastrado ? {background: 'rgba(16, 185, 129, 0.04)'} : {}}>
                       <td style={{textAlign: 'center'}}><input type="checkbox" checked={selectedFts.includes(baseFt.indiceFt)} onChange={() => toggleSelect(baseFt.indiceFt)} /></td>
                       {visibleColumns.noAr !== false && (
                         <td style={{textAlign: 'center'}}>
@@ -1925,6 +2118,43 @@ export default function Vendas() {
                                 🏷️ SKU: {channelFt.sku || baseFt.sku}
                               </span>
                             )}
+                            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '5px', marginTop: '2px' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  background: totalStockFt <= 0 ? 'rgba(239, 68, 68, 0.12)' : totalStockFt <= 3 ? 'rgba(245, 158, 11, 0.14)' : 'rgba(16, 185, 129, 0.12)',
+                                  color: totalStockFt <= 0 ? '#DC2626' : totalStockFt <= 3 ? '#B45309' : '#047857',
+                                  fontWeight: 700
+                                }}
+                                title="Estoque total atual desta FT (Galpão + Casa)"
+                              >
+                                📦 Est: {totalStockFt} un
+                              </span>
+                              {hasVars && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleFtVars(baseFt.indiceFt)}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '1px 7px',
+                                    borderRadius: '999px',
+                                    border: varsExpanded ? '1px solid #2563EB' : '1px solid rgba(37, 99, 235, 0.35)',
+                                    background: varsExpanded ? '#2563EB' : 'rgba(37, 99, 235, 0.1)',
+                                    color: varsExpanded ? '#fff' : '#1D4ED8',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px'
+                                  }}
+                                  title={varsExpanded ? 'Ocultar variações e estoque por cor/modelo' : 'Ver variações e controlar estoque/vendas por cor/modelo'}
+                                >
+                                  🎨 {variacoes.length} var. {varsExpanded ? '▴' : '▾'}
+                                </button>
+                              )}
+                            </div>
                             {activeChannel === 'site' && (
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
                                 {channelFt.destaqueLoja && (
@@ -2033,9 +2263,9 @@ export default function Vendas() {
                                    fontWeight: 700,
                                    cursor: 'help'
                                  }}
-                                 title={`Vendido no Mercado Livre por R$ ${String(Number(precoRealVenda).toFixed(2)).replace('.', ',')}. Despesas, % Margem e Lucro estão calculados sobre este valor real!`}
+                                 title={`Preço médio real vendido na ${channelDisplayName} neste mês: R$ ${String(Number(precoRealVenda).toFixed(2)).replace('.', ',')}. Despesas, % Margem, Lucro e o Fechamento de Mês são calculados sobre este valor real!`}
                                >
-                                 📦 ML Real: R$ {String(Number(precoRealVenda).toFixed(2)).replace('.', ',')}
+                                 {realBadgeLabel}: R$ {String(Number(precoRealVenda).toFixed(2)).replace('.', ',')}
                                </div>
                              )}
                            </div>
@@ -2048,8 +2278,8 @@ export default function Vendas() {
                               {res.margemContribuicaoPerc.toFixed(1)}%
                             </strong>
                             {precoRealVenda && (
-                              <span style={{ fontSize: '0.62rem', color: '#059669', fontWeight: 600 }} title="Calculado sobre o valor real vendido no Mercado Livre">
-                                (s/ ML real)
+                              <span style={{ fontSize: '0.62rem', color: '#059669', fontWeight: 600 }} title={`Calculado sobre a média real vendida na ${channelDisplayName}`}>
+                                {realSubLabel}
                               </span>
                             )}
                           </div>
@@ -2062,8 +2292,8 @@ export default function Vendas() {
                               R$ {res.lucroLiquido.toFixed(2)}
                             </strong>
                             {precoRealVenda && (
-                              <span style={{ fontSize: '0.62rem', color: '#059669', fontWeight: 600 }} title="Calculado sobre o valor real vendido no Mercado Livre">
-                                (s/ ML real)
+                              <span style={{ fontSize: '0.62rem', color: '#059669', fontWeight: 600 }} title={`Calculado sobre a média real vendida na ${channelDisplayName}`}>
+                                {realSubLabel}
                               </span>
                             )}
                           </div>
@@ -2081,6 +2311,77 @@ export default function Vendas() {
                         <td style={{textAlign: 'right'}}><div style={{display: 'flex', gap: '8px', justifyContent: 'flex-end'}}><button className="btn-icon sync-btn" title="Sincronizar esta FT" onClick={() => handleSync(baseFt.indiceFt)}><RefreshCw size={14} /></button><button className="btn-icon adjust-btn" onClick={() => handleOpenOverride(baseFt)} title="Config. do Canal"><Settings size={16} /></button></div></td>
                       )}
                     </tr>
+                    {varsExpanded && variacoes.map((v, vIdx) => {
+                      const varId = v.id || `var_${vIdx}`;
+                      const varKey = `${baseFt.indiceFt}__var__${varId}`;
+                      const varQty = getChannelQty(varKey);
+                      const galpao = Number(v.galpao) || 0;
+                      const casa = Number(v.casa) || 0;
+                      const estTotal = galpao + casa;
+                      return (
+                        <tr
+                          key={varKey}
+                          style={{
+                            background: 'rgba(37, 99, 235, 0.045)',
+                            borderLeft: '3px solid #2563EB',
+                            fontSize: '0.84rem'
+                          }}
+                        >
+                          <td colSpan={leadingColsCount} style={{ textAlign: 'right', color: '#2563EB', fontWeight: 700, paddingRight: '10px' }}>
+                            ↳
+                          </td>
+                          {visibleColumns.produto !== false && (
+                            <td style={{ whiteSpace: 'nowrap', paddingLeft: '12px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                                  🎨 {v.nome || `Variação ${vIdx + 1}`}
+                                </span>
+                                {v.sku && (
+                                  <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                                    SKU: {v.sku}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                          {middleColsCount > 0 && (
+                            <td colSpan={middleColsCount} style={{ whiteSpace: 'nowrap' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                <span
+                                  style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    background: estTotal <= 0 ? 'rgba(239, 68, 68, 0.14)' : estTotal <= 3 ? 'rgba(245, 158, 11, 0.16)' : 'rgba(16, 185, 129, 0.14)',
+                                    color: estTotal <= 0 ? '#DC2626' : estTotal <= 3 ? '#B45309' : '#047857'
+                                  }}
+                                >
+                                  📦 Estoque: {estTotal} un
+                                </span>
+                                <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+                                  Galpão: <strong>{galpao}</strong> • Casa: <strong>{casa}</strong>
+                                </span>
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.qty !== false && (
+                            <td style={{ textAlign: 'center' }}>
+                              <QtyInput
+                                initialValue={varQty === 0 ? '' : varQty}
+                                onSave={(val) => handleVarQtyChange(baseFt.indiceFt, varId, val)}
+                              />
+                            </td>
+                          )}
+                          {visibleColumns.acoes !== false && (
+                            <td style={{ textAlign: 'right', fontSize: '0.72rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                              Abate da cor
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -3052,11 +3353,12 @@ function MonthlyReportOverlay({ month, vendasMensal, savedFts, overrides, channe
       if (!baseFt) return;
       const merged = getFtWithOverridesForReport(baseFt, channelId);
       const realPrice = merged?.precoRealVendaMes?.[month] || merged?.precoRealVenda;
-      const effectiveMerged = parseNumber(realPrice) > 0 ? { ...merged, precoVendaManual: String(realPrice) } : merged;
+      const usedRealPrice = parseNumber(realPrice) > 0;
+      const effectiveMerged = usedRealPrice ? { ...merged, precoVendaManual: String(realPrice) } : merged;
       const res = getResultados(effectiveMerged);
       const itemRevenue = res.precoPraticado * qty;
       const itemProfit = res.lucroLiquido * qty;
-      channelItems.push({ id: ftId, nome: baseFt.nomePeca, qty, precoUnit: res.precoPraticado, lucroUnit: res.lucroLiquido, subtotal: itemRevenue, lucroTotal: itemProfit });
+      channelItems.push({ id: ftId, nome: baseFt.nomePeca, qty, precoUnit: res.precoPraticado, usedRealPrice, lucroUnit: res.lucroLiquido, subtotal: itemRevenue, lucroTotal: itemProfit });
       channelRevenue += itemRevenue;
       channelProfit += itemProfit;
       grandTotalItems += qty;
@@ -3071,7 +3373,7 @@ function MonthlyReportOverlay({ month, vendasMensal, savedFts, overrides, channe
     <div className="report-overlay">
       <div className="report-container">
         <header className="report-header no-print"><div style={{display: 'flex', alignItems: 'center', gap: '15px'}}><CheckCircle2 size={32} color="var(--success)" /><div><h2 style={{margin: 0}}>Fechamento de Mês</h2><p style={{margin: 0, opacity: 0.8}}>{monthName} de {year}</p></div></div><div style={{display: 'flex', gap: '10px'}}><button className="btn-secondary" onClick={() => window.print()} style={{display: 'flex', alignItems: 'center', gap: '8px'}}><Printer size={18} /> Imprimir / PDF</button><button className="btn-icon" onClick={onClose} style={{background: 'rgba(255,255,255,0.1)', color: 'white', borderRadius: '50%'}}><X size={24}/></button></div></header>
-        <main className="report-main"><div className="print-only-header"><h1 style={{textAlign: 'center', marginBottom: '0.5rem'}}>Relatório de Fechamento Mensal</h1><p style={{textAlign: 'center', marginBottom: '2rem'}}>Período: {monthName} / {year} | AM3D Soluções</p></div><div className="report-summary-cards"><div className="card r-stat"><span>Faturamento Total</span><h2>{formatCurrency(grandTotalRevenue)}</h2></div><div className="card r-stat highlight"><span>Lucro Líquido Estimado</span><h2 style={{color: 'var(--success)'}}>{formatCurrency(grandTotalProfit)}</h2></div><div className="card r-stat"><span>Total de Itens Vendidos</span><h2>{grandTotalItems} <small>un</small></h2></div></div><div className="report-details-sections">{reportData.length === 0 ? (<div style={{textAlign: 'center', padding: '4rem'}}>Nenhuma venda registrada neste mês.</div>) : (reportData.map(group => (<div key={group.channelId} className="report-channel-block"><div className="r-channel-header"><h3>{group.channelLabel}</h3><div className="r-channel-totals"><span>Faturamento: <strong>{formatCurrency(group.revenue)}</strong></span><span style={{marginLeft: '20px'}}>Lucro: <strong style={{color: 'var(--success)'}}>{formatCurrency(group.profit)}</strong></span></div></div><table className="report-table"><thead><tr><th>Cód</th><th>Produto / Peça</th><th style={{textAlign: 'center'}}>Qtd</th><th style={{textAlign: 'right'}}>Preço Unit.</th><th style={{textAlign: 'right'}}>Preço Total</th><th style={{textAlign: 'right'}}>Lucro Total</th></tr></thead><tbody>{group.items.map(item => (<tr key={item.id}><td style={{width: '60px'}}><span className="badge">{item.id}</span></td><td style={{fontWeight: '500'}}>{item.nome}</td><td style={{textAlign: 'center'}}>{item.qty}</td><td style={{textAlign: 'right'}}>{formatCurrency(item.precoUnit)}</td><td style={{textAlign: 'right', fontWeight: 'bold'}}>{formatCurrency(item.subtotal)}</td><td style={{textAlign: 'right', color: 'var(--success)'}}>{formatCurrency(item.lucroTotal)}</td></tr>))}</tbody></table></div>)))}</div></main>
+        <main className="report-main"><div className="print-only-header"><h1 style={{textAlign: 'center', marginBottom: '0.5rem'}}>Relatório de Fechamento Mensal</h1><p style={{textAlign: 'center', marginBottom: '2rem'}}>Período: {monthName} / {year} | AM3D Soluções</p></div><div className="report-summary-cards"><div className="card r-stat"><span>Faturamento Total</span><h2>{formatCurrency(grandTotalRevenue)}</h2></div><div className="card r-stat highlight"><span>Lucro Líquido Estimado</span><h2 style={{color: 'var(--success)'}}>{formatCurrency(grandTotalProfit)}</h2></div><div className="card r-stat"><span>Total de Itens Vendidos</span><h2>{grandTotalItems} <small>un</small></h2></div></div><div className="report-details-sections">{reportData.length === 0 ? (<div style={{textAlign: 'center', padding: '4rem'}}>Nenhuma venda registrada neste mês.</div>) : (reportData.map(group => (<div key={group.channelId} className="report-channel-block"><div className="r-channel-header"><h3>{group.channelLabel}</h3><div className="r-channel-totals"><span>Faturamento: <strong>{formatCurrency(group.revenue)}</strong></span><span style={{marginLeft: '20px'}}>Lucro: <strong style={{color: 'var(--success)'}}>{formatCurrency(group.profit)}</strong></span></div></div><table className="report-table"><thead><tr><th>Cód</th><th>Produto / Peça</th><th style={{textAlign: 'center'}}>Qtd</th><th style={{textAlign: 'right'}}>Preço Unit.</th><th style={{textAlign: 'right'}}>Preço Total</th><th style={{textAlign: 'right'}}>Lucro Total</th></tr></thead><tbody>{group.items.map(item => (<tr key={item.id}><td style={{width: '60px'}}><span className="badge">{item.id}</span></td><td style={{fontWeight: '500'}}>{item.nome}</td><td style={{textAlign: 'center'}}>{item.qty}</td><td style={{textAlign: 'right'}}>{formatCurrency(item.precoUnit)}{item.usedRealPrice && <div style={{fontSize: '0.68rem', color: '#059669', fontWeight: 700}}>(Média Real)</div>}</td><td style={{textAlign: 'right', fontWeight: 'bold'}}>{formatCurrency(item.subtotal)}</td><td style={{textAlign: 'right', color: 'var(--success)'}}>{formatCurrency(item.lucroTotal)}</td></tr>))}</tbody></table></div>)))}</div></main>
         <footer className="report-footer no-print"><p>Relatório gerado em {new Date().toLocaleString('pt-BR')}</p></footer>
       </div>
     </div>
