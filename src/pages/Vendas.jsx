@@ -210,6 +210,87 @@ export default function Vendas() {
   const toggleFtVars = (ftId) => setExpandedVars(prev => ({ ...prev, [ftId]: !prev[ftId] }));
   const isFtVarsExpanded = (ftId) => expandAllVars || Boolean(expandedVars[ftId]);
 
+  // Status da sincronização automática de 1h em 1h (ML + Shopee)
+  const [lastAutoSync, setLastAutoSync] = useState(null);
+  const [runningAutoSync, setRunningAutoSync] = useState(false);
+
+  const fetchLastAutoSync = async () => {
+    try {
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const r = await fetch(`${SUPA_URL}/rest/v1/marketplace_sync_logs?order=created_at.desc&limit=1`, {
+        headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
+      });
+      if (r.ok) {
+        const rows = await r.json();
+        if (Array.isArray(rows) && rows.length > 0) setLastAutoSync(rows[0]);
+      }
+    } catch {
+      // ignora silenciosamente
+    }
+  };
+
+  useEffect(() => {
+    fetchLastAutoSync();
+  }, []);
+
+  const handleTriggerAutoSync = async () => {
+    if (runningAutoSync) return;
+    setRunningAutoSync(true);
+    try {
+      const resp = await fetch(`/api/sync-sales?source=manual&month=${encodeURIComponent(currentMonth)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await resp.json();
+      if (!resp.ok || data?.ok === false) {
+        throw new Error(data?.error || `HTTP ${resp.status}`);
+      }
+      await fetchLastAutoSync();
+      // Recarrega FTs, vendas e overrides atualizados
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const h = { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` };
+      const [ftsR, ovR, salesR] = await Promise.all([
+        fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=*&order=id.asc`, { headers: h }),
+        fetch(`${SUPA_URL}/rest/v1/ecommerce_overrides?select=*`, { headers: h }),
+        fetch(`${SUPA_URL}/rest/v1/ecommerce_monthly_sales?select=*`, { headers: h })
+      ]);
+      if (ftsR.ok) {
+        const ftsData = await ftsR.json();
+        setSavedFts((ftsData || []).map(r => r.data));
+      }
+      if (ovR.ok) {
+        const ovData = await ovR.json();
+        const ovMap = {};
+        (ovData || []).forEach(r => {
+          if (!ovMap[r.channel_id]) ovMap[r.channel_id] = {};
+          ovMap[r.channel_id][r.ft_id] = r.settings || {};
+        });
+        setOverrides(ovMap);
+      }
+      if (salesR.ok) {
+        const salesData = await salesR.json();
+        const salesMap = {};
+        (salesData || []).forEach(r => {
+          if (!salesMap[r.month]) salesMap[r.month] = {};
+          if (!salesMap[r.month][r.channel_id]) salesMap[r.month][r.channel_id] = {};
+          salesMap[r.month][r.channel_id][r.ft_id] = r.quantity;
+        });
+        setVendasMensal(salesMap);
+      }
+      const mlNew = data?.ml?.newOrdersCount || 0;
+      const shNew = data?.shopee?.newOrdersCount || 0;
+      const ded = data?.stockDeductedUnits || 0;
+      const rest = data?.stockRestoredUnits || 0;
+      alert(`✅ Sincronização concluída!\n\n• Novos pedidos ML: ${mlNew}\n• Novos pedidos Shopee: ${shNew}\n• Estoque abatido: ${ded} un.\n• Estoque devolvido (cancelados): ${rest} un.`);
+    } catch (err) {
+      alert(`❌ Erro na sincronização automática: ${err?.message || err}`);
+    } finally {
+      setRunningAutoSync(false);
+    }
+  };
+
   // Estados de integração de vendas do Mercado Livre
   const [pullingMlSales, setPullingMlSales] = useState(false);
   const [mlSalesModal, setMlSalesModal] = useState(null);
@@ -1638,6 +1719,45 @@ export default function Vendas() {
         <div>
           <h1 className="page-title">Vendas Multi-Canal</h1>
           <p className="page-description">Controle suas vendas e customize configurações (taxas, fretes e envios) por Marketplace.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+            <span
+              style={{
+                fontSize: '0.74rem',
+                fontWeight: 700,
+                padding: '3px 9px',
+                borderRadius: '999px',
+                background: lastAutoSync?.status === 'error' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                color: lastAutoSync?.status === 'error' ? '#DC2626' : '#047857',
+                border: `1px solid ${lastAutoSync?.status === 'error' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.35)'}`
+              }}
+              title="Robô automático roda de 1 em 1 hora (ML + Shopee), abatendo novos pedidos e devolvendo cancelamentos sem duplicar"
+            >
+              {lastAutoSync
+                ? `🟢 Sinc. 1h/1h ativa • Última: ${new Date(lastAutoSync.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (${lastAutoSync.stock_deducted_units > 0 ? `-${lastAutoSync.stock_deducted_units} un.` : 'sem novos pedidos'})`
+                : '🟢 Sinc. automática 1h/1h configurada (ML + Shopee)'}
+            </span>
+            <button
+              type="button"
+              onClick={handleTriggerAutoSync}
+              disabled={runningAutoSync}
+              style={{
+                fontSize: '0.73rem',
+                fontWeight: 700,
+                padding: '3px 9px',
+                borderRadius: '999px',
+                background: 'var(--bg-surface)',
+                color: '#2563EB',
+                border: '1px solid rgba(37, 99, 235, 0.35)',
+                cursor: runningAutoSync ? 'wait' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+              title="Forçar sincronização imediata de vendas e estoque (ML + Shopee)"
+            >
+              {runningAutoSync ? '⏳ Sincronizando...' : '🔄 Sincronizar ML + Shopee Agora'}
+            </button>
+          </div>
         </div>
         <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
           <button className="btn-secondary" onClick={() => handleSync()} disabled={isSyncing} style={{background: 'var(--bg-surface)', border: '1px solid var(--border-color)', color: 'var(--accent-primary)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px'}}>
