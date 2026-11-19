@@ -368,22 +368,12 @@ export default function AdsIa() {
               ? Number(matchedMl.sold_quantity || 0)
               : null;
 
-          const dynamicMargin = activeChannel === 'shopee'
-            ? {
-                targetPerc: 30,
-                phase: 'fixed',
-                badge: '🔒 30% Fixo',
-                reason: 'Margem fixa de 30% definida para todos os produtos da Shopee.',
-              }
-            : resolveDynamicTargetMargin(
-                {
-                  vendasMes: vendasMesFt,
-                  soldQuantityTotal,
-                  daysSinceLastSale,
-                  rampStartDate: rampState[rowKey],
-                },
-                rules
-              );
+          const dynamicMargin = {
+            targetPerc: 30,
+            phase: 'fixed',
+            badge: '🔒 30% Fixo',
+            reason: 'Margem fixa de 30% definida para proteção total de lucro.',
+          };
           const rowRules = { ...rules, margemMinimaPerc: dynamicMargin.targetPerc };
 
           const metrics = calculateAdShieldMetrics(effFtVar, rowRules, metricsBase);
@@ -608,22 +598,12 @@ export default function AdsIa() {
         ? Math.max(0, Math.floor((Date.now() - new Date(lastSaleIso).getTime()) / (1000 * 60 * 60 * 24)))
         : null;
       const soldQtySimple = promoInfo?.soldQuantity !== undefined ? Number(promoInfo.soldQuantity) : null;
-      const dynamicMargin = activeChannel === 'shopee'
-        ? {
-            targetPerc: 30,
-            phase: 'fixed',
-            badge: '🔒 30% Fixo',
-            reason: 'Margem fixa de 30% definida para todos os produtos da Shopee.',
-          }
-        : resolveDynamicTargetMargin(
-            {
-              vendasMes: vendasMesFt,
-              soldQuantityTotal: soldQtySimple,
-              daysSinceLastSale,
-              rampStartDate: rampState[rowKey],
-            },
-            rules
-          );
+      const dynamicMargin = {
+        targetPerc: 30,
+        phase: 'fixed',
+        badge: '🔒 30% Fixo',
+        reason: 'Margem fixa de 30% definida para proteção total de lucro.',
+      };
       const rowRules = { ...rules, margemMinimaPerc: dynamicMargin.targetPerc };
 
       const metrics = calculateAdShieldMetrics(effFtSimple, rowRules, {
