@@ -11,7 +11,8 @@ const STORAGE_ADS_METRICS_KEY = 'am3d_ads_manual_metrics_v1';
 const STORAGE_RAMP_STATE_KEY = 'am3d_ads_ramp_state_v1';
 
 export const DEFAULT_ADS_IA_RULES = {
-  margemMinimaPerc: 25,
+  margemMinimaPerc: 30,
+  margemSaudavelPerc: 30,
   margemReaquecimentoPerc: 20,
   margemRankeamentoPerc: 15,
   rampaDiaPerc: 1,
@@ -22,7 +23,7 @@ export const DEFAULT_ADS_IA_RULES = {
   estoqueAltoGiroMin: 12,
   estoqueBaixoProtecaoMax: 3,
   regrasPersonalizadas:
-    'Margem saudável alvo 25%. Itens sem vendas ou 30+ dias parados vão para 15% (rankeamento). Após destravar venda, subir +1% ao dia até 25%. 15+ dias sem venda vai para 20%.',
+    'Margem mínima protegida pelo Escudo. Nenhuma promoção pode furar a Margem Mínima; itens entre a Mínima e a Saudável ficam em amarelo.',
   geminiApiKey: '',
 };
 
@@ -204,6 +205,7 @@ export function calculateAdShieldMetrics(effectiveFt, rules, itemAdsMetrics = {}
       : parseNumber(itemAdsMetrics.acosPerc || 0);
 
   const margemMinima = Math.max(0, parseNumber(rules.margemMinimaPerc));
+  const margemSaudavel = Math.max(margemMinima, parseNumber(rules.margemSaudavelPerc ?? margemMinima));
   // Se há vendas no mês e gasto em R$, embutimos o custo fixo de Ads por unidade no numerador
   // (assim o Preço Piso fica 100% ESTÁVEL e nunca muda quando alteramos o preço de venda!)
   const custoFixoComAds = custoFixoUnit + gastoAdsUnit;
@@ -216,6 +218,10 @@ export function calculateAdShieldMetrics(effectiveFt, rules, itemAdsMetrics = {}
   // Denominador para Preço Piso (garantindo margemMinima% líquida após todos os custos + Ads)
   const denomPiso = 1 - (aliquotaCanalPerc + acosParaPiso + margemMinima) / 100;
   const precoPiso = denomPiso > 0.05 ? custoFixoComAds / denomPiso : precoQueima * 1.25;
+
+  // Denominador para Preço Saudável (garantindo margemSaudavel% líquida após todos os custos + Ads)
+  const denomSaudavel = 1 - (aliquotaCanalPerc + acosParaPiso + margemSaudavel) / 100;
+  const precoSaudavel = denomSaudavel > 0.05 ? custoFixoComAds / denomSaudavel : precoPiso * 1.15;
 
   // Lucro e margem reais considerando o preço praticado hoje e o gasto de Ads
   const custoVariavelHoje =
@@ -252,6 +258,8 @@ export function calculateAdShieldMetrics(effectiveFt, rules, itemAdsMetrics = {}
     precoPraticado,
     precoQueima,
     precoPiso,
+    precoSaudavel,
+    margemSaudavelPerc: margemSaudavel,
     gastoAdsMes,
     acosRealPerc,
     lucroLiquidoSemAds: res.lucroLiquido,
@@ -287,6 +295,8 @@ export function evaluateAiRecommendation(item, rules) {
   } = metrics;
 
   const minMargin = parseNumber(rules.margemMinimaPerc);
+  const healthyMargin = Math.max(minMargin, parseNumber(rules.margemSaudavelPerc ?? minMargin));
+  const precoSaudavel = metrics.precoSaudavel || precoPiso;
   const acosLimit = parseNumber(rules.acosAlvoPerc || 10);
 
   // Identifica se há convite de promoção/campanha do ML vantajoso (que respeita o Preço Piso)
@@ -336,7 +346,19 @@ export function evaluateAiRecommendation(item, rules) {
     };
   }
 
-  // 3.5. Anúncio rodando no Preço de Cadastro cheio no ML (Sem promoção de 30% OFF ativa!)
+  // 3.5. Entre a Margem Mínima e a Margem Saudável (Fica em Amarelo — Atenção)
+  if (healthyMargin > minMargin && (precoPraticado < precoSaudavel - 0.05 || margemPosAdsPerc < healthyMargin - 0.2)) {
+    return {
+      severity: 'atencao',
+      badge: '🟡 Abaixo da Saudável',
+      title: `Dentro do Piso (${minMargin}%), mas abaixo da Saudável (${healthyMargin}%)`,
+      explanation: `Margem atual de ${margemPosAdsPerc.toFixed(1)}% (entre a Mínima de ${minMargin}% e a Saudável de ${healthyMargin}%). Para atingir a margem saudável, ajuste para R$ ${precoSaudavel.toFixed(2)}.`,
+      suggestedPrice: Number(precoSaudavel.toFixed(2)),
+      actionLabel: `Subir p/ Saudável R$ ${precoSaudavel.toFixed(2)}`,
+    };
+  }
+
+  // 3.6. Anúncio rodando no Preço de Cadastro cheio no ML (Sem promoção de 30% OFF ativa!)
   if (
     promoInfo &&
     activePromos.length === 0 &&
@@ -2088,6 +2110,8 @@ export function evaluateAdsChoice({
   rules,
 }) {
   const minMargin = parseNumber(rules.margemMinimaPerc);
+  const healthyMargin = Math.max(minMargin, parseNumber(rules.margemSaudavelPerc ?? minMargin));
+  const precoSaudavel = metrics.precoSaudavel || precoPiso;
   const acosLimit = parseNumber(rules.acosAlvoPerc || 10);
   const isActive = adStatus === 'active';
   const currentCamp = campaigns.find((c) => String(c.id) === String(campaignId));

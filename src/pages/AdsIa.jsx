@@ -85,6 +85,7 @@ export default function AdsIa() {
   const [loadingAiReport, setLoadingAiReport] = useState(false);
   const [applyingFtId, setApplyingFtId] = useState(null);
   const [customTargetPrices, setCustomTargetPrices] = useState({});
+  const [minMarginAlert, setMinMarginAlert] = useState({ open: false, targetMin: 30, belowRows: [], fixingAll: false });
 
   // Promoções (% OFF) e Gastos de Ads (7d / 15d / 30d)
   const [adsPeriod, setAdsPeriod] = useState(30);
@@ -213,9 +214,86 @@ export default function AdsIa() {
   const handleRuleChange = (key, val) => {
     setRules((prev) => {
       const next = { ...prev, [key]: val };
+      if (key === 'margemMinimaPerc') {
+        const minN = parseNumber(val);
+        const healthyN = parseNumber(prev.margemSaudavelPerc ?? val);
+        if (healthyN < minN) next.margemSaudavelPerc = val;
+      }
       saveAdsIaRules(next);
       return next;
     });
+  };
+
+  const handleCheckMinMarginAlert = (valOverride = null) => {
+    const targetMin = Math.max(0, parseNumber(valOverride ?? rules.margemMinimaPerc));
+    const belowRows = analyzedRows.filter((r) => {
+      if (r.metrics.precoPraticado <= 0) return false;
+      return r.metrics.margemPosAdsPerc < targetMin - 0.15 || r.metrics.precoPraticado < r.metrics.precoPiso - 0.05;
+    });
+    if (belowRows.length > 0) {
+      setMinMarginAlert({ open: true, targetMin, belowRows, fixingAll: false });
+    }
+  };
+
+  const handleFixAllBelowMinMargin = async () => {
+    if (minMarginAlert.belowRows.length === 0) return;
+    setMinMarginAlert((p) => ({ ...p, fixingAll: true }));
+    let ok = 0;
+    let err = 0;
+    try {
+      for (const row of minMarginAlert.belowRows) {
+        const newPrice = Number(row.metrics.precoPiso.toFixed(2));
+        try {
+          const curOv = overrides[activeChannel]?.[row.ftId] || {};
+          const nextSettings = {
+            ...curOv,
+            cadastrado: true,
+            precoVendaManual: String(newPrice.toFixed(2)),
+          };
+          if (nextSettings.precoRealVenda) nextSettings.precoRealVenda = String(newPrice.toFixed(2));
+          if (nextSettings.precoRealVendaMes?.[currentMonth]) {
+            nextSettings.precoRealVendaMes = { ...nextSettings.precoRealVendaMes, [currentMonth]: newPrice };
+          }
+          await fetch(`${SUPA_URL}/rest/v1/ecommerce_overrides?on_conflict=channel_id,ft_id`, {
+            method: 'POST',
+            headers: { ...getHeaders(), Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify({ channel_id: activeChannel, ft_id: row.ftId, settings: nextSettings }),
+          });
+          setOverrides((prev) => ({
+            ...prev,
+            [activeChannel]: { ...(prev[activeChannel] || {}), [row.ftId]: nextSettings },
+          }));
+
+          if (activeChannel === 'shopee' && row.primaryMl?.ml_item_id) {
+            const matchedVar = Array.isArray(row.primaryMl?.variations)
+              ? row.primaryMl.variations.find((v) => String(v.ft_id || '').split('__var__')[0] === row.ftId)
+              : null;
+            const cadastroRef = row.promoInfo?.originalPrice || row.metrics.precoCadastro || Number((newPrice / 0.7).toFixed(2));
+            await applyShopeeCustomPromoPrice({
+              itemId: row.primaryMl.ml_item_id,
+              modelId: matchedVar?.model_id || matchedVar?.id || null,
+              targetPrice: newPrice,
+              cadastroPrice: cadastroRef > newPrice ? cadastroRef : Number((newPrice / 0.7).toFixed(2)),
+              empresaId: profile?.empresa_id,
+            });
+          } else if (activeChannel === 'ml' && row.primaryMl?.ml_item_id) {
+            await applyMlSellerPromotion({
+              mlItemId: row.primaryMl.ml_item_id,
+              targetPrice: newPrice,
+              empresaId: profile?.empresa_id,
+            });
+          }
+          ok++;
+        } catch {
+          err++;
+        }
+      }
+      await handleSyncPromosAndAds();
+      setMinMarginAlert({ open: false, targetMin: minMarginAlert.targetMin, belowRows: [], fixingAll: false });
+      alert(`✅ Ajuste de Piso concluído!\n\n• Atualizados para o Piso (${minMarginAlert.targetMin}%): ${ok}\n• Falhas/Manual: ${err}`);
+    } finally {
+      setMinMarginAlert((p) => ({ ...p, fixingAll: false }));
+    }
   };
 
   const handleAdsSpendChange = (channel, ftId, gastoVal) => {
@@ -417,20 +495,21 @@ export default function AdsIa() {
               ? Number(matchedMl.sold_quantity || 0)
               : null;
 
+          const minTargetVal = Math.max(0, parseNumber(rules.margemMinimaPerc ?? 30));
           const dynamicMargin = {
-            targetPerc: 30,
+            targetPerc: minTargetVal,
             phase: 'fixed',
             badge: daysSinceLastSale !== null && daysSinceLastSale >= 30
               ? '⏳ 30+ dias s/ venda'
               : daysSinceLastSale !== null && daysSinceLastSale >= 15
               ? '⏳ 15+ dias s/ venda'
-              : '🔒 30% Fixo',
+              : `🛡️ Mín: ${minTargetVal}%`,
             color: daysSinceLastSale !== null && daysSinceLastSale >= 30
               ? '#7C3AED'
               : daysSinceLastSale !== null && daysSinceLastSale >= 15
               ? '#D97706'
               : '#059669',
-            reason: 'Margem fixa de 30% definida para proteção total de lucro.',
+            reason: `Escudo ativo com Margem Mínima de ${minTargetVal}% e Saudável de ${Math.max(minTargetVal, parseNumber(rules.margemSaudavelPerc ?? minTargetVal))}%.`,
           };
           const rowRules = { ...rules, margemMinimaPerc: dynamicMargin.targetPerc };
 
@@ -656,20 +735,21 @@ export default function AdsIa() {
         ? Math.max(0, Math.floor((Date.now() - new Date(lastSaleIso).getTime()) / (1000 * 60 * 60 * 24)))
         : null;
       const soldQtySimple = promoInfo?.soldQuantity !== undefined ? Number(promoInfo.soldQuantity) : null;
+      const minTargetVal = Math.max(0, parseNumber(rules.margemMinimaPerc ?? 30));
       const dynamicMargin = {
-        targetPerc: 30,
+        targetPerc: minTargetVal,
         phase: 'fixed',
         badge: daysSinceLastSale !== null && daysSinceLastSale >= 30
           ? '⏳ 30+ dias s/ venda'
           : daysSinceLastSale !== null && daysSinceLastSale >= 15
           ? '⏳ 15+ dias s/ venda'
-          : '🔒 30% Fixo',
+          : `🛡️ Mín: ${minTargetVal}%`,
         color: daysSinceLastSale !== null && daysSinceLastSale >= 30
           ? '#7C3AED'
           : daysSinceLastSale !== null && daysSinceLastSale >= 15
           ? '#D97706'
           : '#059669',
-        reason: 'Margem fixa de 30% definida para proteção total de lucro.',
+        reason: `Escudo ativo com Margem Mínima de ${minTargetVal}% e Saudável de ${Math.max(minTargetVal, parseNumber(rules.margemSaudavelPerc ?? minTargetVal))}%.`,
       };
       const rowRules = { ...rules, margemMinimaPerc: dynamicMargin.targetPerc };
 
@@ -756,12 +836,14 @@ export default function AdsIa() {
   const summaryStats = useMemo(() => {
     const baseList = analyzedRows;
     const criticos = baseList.filter((r) => r.aiRec.severity === 'critico').length;
+    const atencao = baseList.filter((r) => r.aiRec.severity === 'atencao').length;
     const oportunidades = baseList.filter((r) => r.aiRec.severity === 'oportunidade').length;
     const saudaveis = baseList.filter((r) => r.aiRec.severity === 'saudavel').length;
     const totalAdsGasto = baseList.reduce((acc, r) => acc + r.metrics.gastoAdsMes, 0);
     return {
       total: baseList.length,
       criticos,
+      atencao,
       oportunidades,
       saudaveis,
       totalAdsGasto,
@@ -1546,17 +1628,56 @@ export default function AdsIa() {
             }}
           >
             <div>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#DC2626', display: 'block', marginBottom: '4px' }}>
+                🛡️ Margem Mínima (%)
+              </label>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <input
+                  type="number"
+                  min="0"
+                  max="60"
+                  step="0.5"
+                  value={rules.margemMinimaPerc}
+                  onChange={(e) => handleRuleChange('margemMinimaPerc', e.target.value)}
+                  onBlur={(e) => handleCheckMinMarginAlert(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCheckMinMarginAlert(e.currentTarget.value); }}
+                  style={ruleInputStyle}
+                  title="Trava rígida: nenhum produto ou promoção pode ficar abaixo desta margem"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleCheckMinMarginAlert(rules.margemMinimaPerc)}
+                  style={{
+                    padding: '0 8px',
+                    borderRadius: '8px',
+                    border: '1px solid #FCA5A5',
+                    background: '#FEF2F2',
+                    color: '#DC2626',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title="Verificar imediatamente quais anúncios estão abaixo desta Margem Mínima"
+                >
+                  Verificar
+                </button>
+              </div>
+            </div>
+
+            <div>
               <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', display: 'block', marginBottom: '4px' }}>
-                🔒 Margem Mínima Fixa (%)
+                🟢 Margem Saudável (%)
               </label>
               <input
                 type="number"
                 min="0"
-                max="60"
+                max="70"
                 step="0.5"
-                value={rules.margemMinimaPerc}
-                onChange={(e) => handleRuleChange('margemMinimaPerc', e.target.value)}
+                value={rules.margemSaudavelPerc ?? rules.margemMinimaPerc}
+                onChange={(e) => handleRuleChange('margemSaudavelPerc', e.target.value)}
                 style={ruleInputStyle}
+                title="Meta verde: itens entre a Mínima e a Saudável ficam em amarelo (atenção)"
               />
             </div>
 
@@ -1729,6 +1850,19 @@ export default function AdsIa() {
 
         <div
           className="card"
+          onClick={() => setStatusFilter('atencao')}
+          style={{ padding: '1rem', cursor: 'pointer', border: statusFilter === 'atencao' ? '2px solid #D97706' : undefined }}
+        >
+          <span style={{ fontSize: '0.76rem', color: '#D97706', fontWeight: 700 }}>
+            🟡 ABAIXO DA SAUDÁVEL
+          </span>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#D97706', marginTop: '4px' }}>
+            {summaryStats.atencao}
+          </div>
+        </div>
+
+        <div
+          className="card"
           onClick={() => setStatusFilter('oportunidade')}
           style={{ padding: '1rem', cursor: 'pointer', border: statusFilter === 'oportunidade' ? '2px solid #2563EB' : undefined }}
         >
@@ -1867,6 +2001,7 @@ export default function AdsIa() {
                 {analyzedRows.map((row) => {
                   const { metrics, aiRec, competitor } = row;
                   const isCritico = aiRec.severity === 'critico';
+                  const isAtencao = aiRec.severity === 'atencao';
                   const isOportunidade = aiRec.severity === 'oportunidade';
 
                   return (
@@ -1874,10 +2009,12 @@ export default function AdsIa() {
                       key={row.rowKey || row.ftId}
                       style={
                         isCritico
-                          ? { background: 'rgba(239, 68, 68, 0.05)' }
+                          ? { background: 'rgba(239, 68, 68, 0.06)' }
+                          : isAtencao
+                          ? { background: 'rgba(245, 158, 11, 0.08)' }
                           : isOportunidade
                           ? { background: 'rgba(37, 99, 235, 0.04)' }
-                          : undefined
+                          : { background: 'rgba(16, 185, 129, 0.03)' }
                       }
                     >
                       {/* Produto */}
@@ -1936,11 +2073,16 @@ export default function AdsIa() {
                             fontWeight: 800,
                             fontSize: '0.86rem',
                           }}
-                          title={`Alvo atual: ${row.dynamicMargin?.targetPerc}% (${row.dynamicMargin?.badge}). Abaixo de ${formatBRL(metrics.precoPiso)} sua margem cai abaixo da meta da fase atual.`}
+                          title={`Mínima travada: ${row.dynamicMargin?.targetPerc}% (${formatBRL(metrics.precoPiso)}) | Saudável: ${metrics.margemSaudavelPerc}% (${formatBRL(metrics.precoSaudavel)})`}
                         >
-                          {formatBRL(metrics.precoPiso)} ({row.dynamicMargin?.targetPerc}%)
+                          {formatBRL(metrics.precoPiso)} (Mín {row.dynamicMargin?.targetPerc}%)
                         </div>
-                        <div style={{ fontSize: '0.67rem', fontWeight: 700, color: row.dynamicMargin?.color || 'var(--text-secondary)', marginTop: '3px' }}>
+                        {metrics.margemSaudavelPerc > row.dynamicMargin?.targetPerc && (
+                          <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#059669', marginTop: '2px' }}>
+                            🟢 Saudável: {formatBRL(metrics.precoSaudavel)} ({metrics.margemSaudavelPerc}%)
+                          </div>
+                        )}
+                        <div style={{ fontSize: '0.67rem', fontWeight: 700, color: row.dynamicMargin?.color || 'var(--text-secondary)', marginTop: '2px' }}>
                           {row.dynamicMargin?.badge}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '2px' }}>
@@ -2118,9 +2260,11 @@ export default function AdsIa() {
                             fontWeight: 800,
                             fontSize: '0.9rem',
                             color:
-                              metrics.margemPosAdsPerc >= parseNumber(row.rowRules?.margemMinimaPerc ?? rules.margemMinimaPerc)
-                                ? 'var(--success)'
-                                : 'var(--danger)',
+                              metrics.margemPosAdsPerc >= parseNumber(rules.margemSaudavelPerc ?? rules.margemMinimaPerc) - 0.2
+                                ? '#059669'
+                                : metrics.margemPosAdsPerc >= parseNumber(rules.margemMinimaPerc) - 0.2
+                                ? '#D97706'
+                                : '#DC2626',
                           }}
                         >
                           {metrics.precoPraticado > 0
@@ -3474,6 +3618,121 @@ export default function AdsIa() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal de Aviso quando há itens abaixo da nova Margem Mínima */}
+      {minMarginAlert.open && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            zIndex: 120,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={(e) => e.target === e.currentTarget && !minMarginAlert.fixingAll && setMinMarginAlert((p) => ({ ...p, open: false }))}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: '760px',
+              width: '100%',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              padding: '1.25rem',
+              border: '2px solid #EF4444',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#DC2626', fontSize: '1.05rem' }}>
+                  🛡️ {minMarginAlert.belowRows.length} produto(s) abaixo da Margem Mínima de {minMarginAlert.targetMin}%
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                  O Escudo de {minMarginAlert.targetMin}% já está ativo (nenhuma nova promoção poderá furar esse piso). O que deseja fazer com os itens abaixo?
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={minMarginAlert.fixingAll}
+                onClick={() => setMinMarginAlert((p) => ({ ...p, open: false }))}
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '1.2rem' }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="table-responsive" style={{ maxHeight: '46vh', overflowY: 'auto', marginBottom: '14px' }}>
+              <table className="fts-table" style={{ fontSize: '0.8rem' }}>
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th style={{ textAlign: 'right' }}>Atual</th>
+                    <th style={{ textAlign: 'center' }}>Margem Atual</th>
+                    <th style={{ textAlign: 'right' }}>Piso ({minMarginAlert.targetMin}%)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {minMarginAlert.belowRows.map((r) => (
+                    <tr key={r.rowKey || r.ftId}>
+                      <td>
+                        <span className="badge" style={{ marginRight: '6px' }}>{r.ftId}</span>
+                        <strong>{r.nomePeca}</strong>
+                        {r.variacaoNome ? ` (${r.variacaoNome})` : ''}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{formatBRL(r.metrics.precoPraticado)}</td>
+                      <td style={{ textAlign: 'center', color: '#DC2626', fontWeight: 800 }}>
+                        {r.metrics.margemPosAdsPerc.toFixed(1)}%
+                      </td>
+                      <td style={{ textAlign: 'right', color: '#059669', fontWeight: 800 }}>
+                        {formatBRL(r.metrics.precoPiso)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                disabled={minMarginAlert.fixingAll}
+                onClick={() => setMinMarginAlert((p) => ({ ...p, open: false }))}
+                style={{
+                  padding: '0.55rem 1rem',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                ✋ Manter Assim por Enquanto
+              </button>
+              <button
+                type="button"
+                disabled={minMarginAlert.fixingAll}
+                onClick={handleFixAllBelowMinMargin}
+                style={{
+                  padding: '0.55rem 1.15rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#DC2626',
+                  color: '#fff',
+                  fontWeight: 800,
+                  cursor: minMarginAlert.fixingAll ? 'wait' : 'pointer',
+                }}
+              >
+                {minMarginAlert.fixingAll
+                  ? '⏳ Ajustando nos Marketplaces...'
+                  : `🚀 Ajustar Todos p/ Piso (${minMarginAlert.targetMin}%)`}
+              </button>
             </div>
           </div>
         </div>
