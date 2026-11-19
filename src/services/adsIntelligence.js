@@ -1902,6 +1902,178 @@ export async function syncShopeeBaseCadastroAndPromo({
 }
 
 /**
+ * Aplica um preço promocional customizado na Shopee para um item inteiro ou para uma
+ * variação específica (modelId), preservando os preços das demais variações.
+ * Se o preço desejado for >= original_price atual, ajusta o original_price antes.
+ */
+export async function applyShopeeCustomPromoPrice({
+  itemId,
+  modelId = null,
+  targetPrice,
+  cadastroPrice = null,
+  empresaId,
+}) {
+  if (!itemId) throw new Error('ID do item Shopee não informado.');
+  const tokenObj = await getValidShopeeToken(empresaId);
+  const token = tokenObj.access_token;
+  const shopId = tokenObj.ml_user_id;
+
+  const cleanTarget = Number(Number(targetPrice).toFixed(2));
+  if (!cleanTarget || cleanTarget <= 0) throw new Error('Preço desejado inválido.');
+
+  // 1. Descobre se o item já está em alguma campanha de desconto ativa/agendada
+  let existingDiscountId = null;
+  let existingItemEntry = null;
+  let fallbackDiscountId = null;
+
+  for (const st of ['ongoing', 'upcoming']) {
+    const dl = await shopeeProxyFetch('/api/v2/discount/get_discount_list', {
+      method: 'GET',
+      token,
+      shopId,
+      query: { discount_status: st, page_no: 1, page_size: 100 },
+    });
+    const list = dl?.response?.discount_list || [];
+    for (const d of list) {
+      if (!fallbackDiscountId && st === 'ongoing') fallbackDiscountId = d.discount_id;
+      const dd = await shopeeProxyFetch('/api/v2/discount/get_discount', {
+        method: 'GET',
+        token,
+        shopId,
+        query: { discount_id: d.discount_id, page_no: 1, page_size: 100 },
+      });
+      const found = (dd?.response?.item_list || []).find((it) => String(it.item_id) === String(itemId));
+      if (found) {
+        existingDiscountId = d.discount_id;
+        existingItemEntry = found;
+        break;
+      }
+    }
+    if (existingDiscountId) break;
+  }
+
+  // 2. Busca informações atuais do produto/variações na Shopee
+  const bi = await shopeeProxyFetch('/api/v2/product/get_item_base_info', {
+    method: 'GET',
+    token,
+    shopId,
+    query: { item_id_list: String(itemId) },
+  });
+  const baseItem = bi?.response?.item_list?.[0];
+  const hasModel = Boolean(baseItem?.has_model);
+  let models = [];
+  if (hasModel) {
+    const ml = await shopeeProxyFetch('/api/v2/product/get_model_list', {
+      method: 'GET',
+      token,
+      shopId,
+      query: { item_id: String(itemId) },
+    });
+    models = ml?.response?.model || [];
+  }
+
+  const targetModelId = modelId ? Number(modelId) : 0;
+  const currentOrig = hasModel && targetModelId
+    ? Number(models.find((m) => Number(m.model_id) === targetModelId)?.price_info?.[0]?.original_price || 0)
+    : Number(baseItem?.price_info?.[0]?.original_price || 0);
+
+  let effectiveCadastro = currentOrig;
+  const needsCadastroUpdate = cadastroPrice && Number(cadastroPrice) > cleanTarget && Math.abs(Number(cadastroPrice) - currentOrig) >= 0.05;
+  const mustRaiseCadastro = currentOrig <= cleanTarget;
+
+  if (needsCadastroUpdate || mustRaiseCadastro) {
+    effectiveCadastro = Number(
+      Math.max(Number(cadastroPrice || 0), Number((cleanTarget / 0.7).toFixed(2))).toFixed(2)
+    );
+    if (existingDiscountId) {
+      try {
+        await shopeeProxyFetch('/api/v2/discount/delete_discount_item', {
+          method: 'POST',
+          token,
+          shopId,
+          body: { discount_id: Number(existingDiscountId), item_id: Number(itemId) },
+        });
+      } catch {
+        // ignore
+      }
+    }
+    const priceList = hasModel && targetModelId
+      ? [{ model_id: targetModelId, original_price: effectiveCadastro }]
+      : hasModel && models.length > 0
+      ? models.map((m) => ({ model_id: Number(m.model_id), original_price: effectiveCadastro }))
+      : [{ model_id: 0, original_price: effectiveCadastro }];
+
+    await shopeeProxyFetch('/api/v2/product/update_price', {
+      method: 'POST',
+      token,
+      shopId,
+      body: { item_id: Number(itemId), price_list: priceList },
+    });
+  }
+
+  // 3. Monta payload preservando as outras variações caso o item tenha sido removido/re-adicionado
+  let targetDiscountId = existingDiscountId || fallbackDiscountId;
+  if (!targetDiscountId) {
+    const nowSec = Math.floor(Date.now() / 1000) + 120;
+    const endSec = nowSec + 60 * 24 * 60 * 60;
+    const discResp = await shopeeProxyFetch('/api/v2/discount/add_discount', {
+      method: 'POST',
+      token,
+      shopId,
+      body: { discount_name: `Oferta AM3D ${new Date().toISOString().slice(0, 10)}`, start_time: nowSec, end_time: endSec },
+    });
+    targetDiscountId = discResp?.response?.discount_id;
+  }
+
+  let itemPayload;
+  if (hasModel && models.length > 0) {
+    const prevModelMap = new Map();
+    (existingItemEntry?.model_list || []).forEach((em) => {
+      prevModelMap.set(String(em.model_id), Number(em.model_promotion_price || 0));
+    });
+    const modelList = models.map((m) => {
+      const mId = Number(m.model_id);
+      if (!targetModelId || mId === targetModelId) {
+        return { model_id: mId, model_promotion_price: cleanTarget };
+      }
+      const prevPromo = prevModelMap.get(String(mId)) || Number(m.price_info?.[0]?.current_price || 0);
+      const origM = Number(m.price_info?.[0]?.original_price || 0);
+      const safeOther = prevPromo > 0 && prevPromo < origM ? prevPromo : Number((origM * 0.99).toFixed(2));
+      return { model_id: mId, model_promotion_price: safeOther };
+    });
+    itemPayload = { item_id: Number(itemId), purchase_limit: 0, model_list: modelList };
+  } else {
+    itemPayload = { item_id: Number(itemId), purchase_limit: 0, item_promotion_price: cleanTarget };
+  }
+
+  if (existingDiscountId && !needsCadastroUpdate && !mustRaiseCadastro) {
+    await shopeeProxyFetch('/api/v2/discount/update_discount_item', {
+      method: 'POST',
+      token,
+      shopId,
+      body: { discount_id: Number(targetDiscountId), item_list: [itemPayload] },
+    });
+  } else {
+    await shopeeProxyFetch('/api/v2/discount/add_discount_item', {
+      method: 'POST',
+      token,
+      shopId,
+      body: { discount_id: Number(targetDiscountId), item_list: [itemPayload] },
+    });
+  }
+
+  const pctOff = effectiveCadastro > cleanTarget ? Math.round(((effectiveCadastro - cleanTarget) / effectiveCadastro) * 100) : 0;
+  return {
+    itemId,
+    modelId: targetModelId || null,
+    cadastroPrice: effectiveCadastro,
+    promoPrice: cleanTarget,
+    pctOff,
+    discountId: targetDiscountId,
+  };
+}
+
+/**
  * Avalia qual é a melhor escolha de Ads para o anúncio (Ativar / Pausar / Mover Campanha)
  * cruzando Estoque, Margem Pós-Ads, Gasto em 30d/15d/7d e Vendas.
  */

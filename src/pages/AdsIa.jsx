@@ -12,7 +12,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { parseNumber } from '../utils/financeCalculators';
+import { getResultados, parseNumber } from '../utils/financeCalculators';
 import {
   fetchStoredMlListings,
   syncListingsFromML,
@@ -36,6 +36,7 @@ import {
   updateMlAdCampaign,
   applyMlSellerPromotion,
   removeMlSellerPromotion,
+  applyShopeeCustomPromoPrice,
   syncMlBaseCadastroAndPromo,
   syncShopeeBaseCadastroAndPromo,
   loadPromosAdsCache,
@@ -83,6 +84,7 @@ export default function AdsIa() {
   const [aiReportText, setAiReportText] = useState('');
   const [loadingAiReport, setLoadingAiReport] = useState(false);
   const [applyingFtId, setApplyingFtId] = useState(null);
+  const [customTargetPrices, setCustomTargetPrices] = useState({});
 
   // Promoções (% OFF) e Gastos de Ads (7d / 15d / 30d)
   const [adsPeriod, setAdsPeriod] = useState(30);
@@ -366,15 +368,22 @@ export default function AdsIa() {
               ? Number(matchedMl.sold_quantity || 0)
               : null;
 
-          const dynamicMargin = resolveDynamicTargetMargin(
-            {
-              vendasMes: vendasMesFt,
-              soldQuantityTotal,
-              daysSinceLastSale,
-              rampStartDate: rampState[rowKey],
-            },
-            rules
-          );
+          const dynamicMargin = activeChannel === 'shopee'
+            ? {
+                targetPerc: 30,
+                phase: 'fixed',
+                badge: '🔒 30% Fixo',
+                reason: 'Margem fixa de 30% definida para todos os produtos da Shopee.',
+              }
+            : resolveDynamicTargetMargin(
+                {
+                  vendasMes: vendasMesFt,
+                  soldQuantityTotal,
+                  daysSinceLastSale,
+                  rampStartDate: rampState[rowKey],
+                },
+                rules
+              );
           const rowRules = { ...rules, margemMinimaPerc: dynamicMargin.targetPerc };
 
           const metrics = calculateAdShieldMetrics(effFtVar, rowRules, metricsBase);
@@ -599,15 +608,22 @@ export default function AdsIa() {
         ? Math.max(0, Math.floor((Date.now() - new Date(lastSaleIso).getTime()) / (1000 * 60 * 60 * 24)))
         : null;
       const soldQtySimple = promoInfo?.soldQuantity !== undefined ? Number(promoInfo.soldQuantity) : null;
-      const dynamicMargin = resolveDynamicTargetMargin(
-        {
-          vendasMes: vendasMesFt,
-          soldQuantityTotal: soldQtySimple,
-          daysSinceLastSale,
-          rampStartDate: rampState[rowKey],
-        },
-        rules
-      );
+      const dynamicMargin = activeChannel === 'shopee'
+        ? {
+            targetPerc: 30,
+            phase: 'fixed',
+            badge: '🔒 30% Fixo',
+            reason: 'Margem fixa de 30% definida para todos os produtos da Shopee.',
+          }
+        : resolveDynamicTargetMargin(
+            {
+              vendasMes: vendasMesFt,
+              soldQuantityTotal: soldQtySimple,
+              daysSinceLastSale,
+              rampStartDate: rampState[rowKey],
+            },
+            rules
+          );
       const rowRules = { ...rules, margemMinimaPerc: dynamicMargin.targetPerc };
 
       const metrics = calculateAdShieldMetrics(effFtSimple, rowRules, {
@@ -800,8 +816,27 @@ export default function AdsIa() {
         },
       }));
 
-      // Se for Mercado Livre e tiver anúncio vinculado, aplica como PROMOÇÃO mantendo o Preço de Cadastro intacto!
-      if (activeChannel === 'ml' && row.primaryMl?.ml_item_id) {
+      // Se for Shopee e tiver anúncio vinculado, aplica a promoção direto na Shopee (por variação ou item inteiro)
+      if (activeChannel === 'shopee' && row.primaryMl?.ml_item_id) {
+        const matchedVar = Array.isArray(row.primaryMl?.variations)
+          ? row.primaryMl.variations.find((v) => String(v.ft_id || '').split('__var__')[0] === row.ftId)
+          : null;
+        const cadastroRef =
+          row.promoInfo?.originalPrice ||
+          row.metrics.precoCadastro ||
+          Number((safePrice / 0.7).toFixed(2));
+        const resShp = await applyShopeeCustomPromoPrice({
+          itemId: row.primaryMl.ml_item_id,
+          modelId: matchedVar?.model_id || matchedVar?.id || null,
+          targetPrice: safePrice,
+          cadastroPrice: cadastroRef > safePrice ? cadastroRef : Number((safePrice / 0.7).toFixed(2)),
+          empresaId: profile?.empresa_id,
+        });
+        alert(
+          `🚀 Promoção aplicada na Shopee (${row.primaryMl.ml_item_id})!\n\n• Preço de Cadastro: R$ ${resShp.cadastroPrice.toFixed(2)}\n• Preço Promocional: R$ ${resShp.promoPrice.toFixed(2)} (-${resShp.pctOff}% OFF)`
+        );
+        await handleSyncPromosAndAds();
+      } else if (activeChannel === 'ml' && row.primaryMl?.ml_item_id) {
         const cadastroRef =
           row.promoInfo?.originalPrice ||
           row.metrics.precoCadastro ||
@@ -2430,6 +2465,130 @@ export default function AdsIa() {
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
                             {aiRec.explanation}
                           </span>
+
+                          {/* Campo de Preço Desejado -> IA calcula % OFF da Promo + Margem/Lucro e aplica */}
+                          {(() => {
+                            const rowIdKey = row.rowKey || row.ftId;
+                            const rawTyped = customTargetPrices[rowIdKey] ?? '';
+                            const desiredVal = parseNumber(String(rawTyped).replace(',', '.'));
+                            const cadRef =
+                              row.promoInfo?.originalPrice ||
+                              metrics.precoCadastro ||
+                              (desiredVal > 0 ? Number((desiredVal / 0.7).toFixed(2)) : 0);
+                            const previewRes =
+                              desiredVal > 0
+                                ? getResultados({
+                                    ...getEffectiveFt(row.ft, activeChannel),
+                                    precoVendaManual: String(desiredVal),
+                                  })
+                                : null;
+                            const needRaiseCad = desiredVal > 0 && cadRef <= desiredVal;
+                            const effectiveCad = needRaiseCad
+                              ? Number((desiredVal / 0.7).toFixed(2))
+                              : cadRef;
+                            const pctOffCalc =
+                              desiredVal > 0 && effectiveCad > desiredVal
+                                ? (((effectiveCad - desiredVal) / effectiveCad) * 100).toFixed(1)
+                                : '0.0';
+                            const isBelowZero = previewRes && previewRes.margemContribuicaoPerc < 0;
+                            const isBelowFloor = desiredVal > 0 && desiredVal < metrics.precoPiso - 0.02;
+
+                            return (
+                              <div
+                                style={{
+                                  marginTop: '4px',
+                                  padding: '5px 7px',
+                                  borderRadius: '7px',
+                                  background: 'rgba(15, 23, 42, 0.04)',
+                                  border: '1px solid var(--border-color)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '4px',
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '0.67rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                                    🎯 Valor desejado:
+                                  </span>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder={metrics.precoPraticado.toFixed(2).replace('.', ',')}
+                                    value={rawTyped}
+                                    onChange={(e) =>
+                                      setCustomTargetPrices((prev) => ({
+                                        ...prev,
+                                        [rowIdKey]: e.target.value,
+                                      }))
+                                    }
+                                    style={{
+                                      width: '72px',
+                                      padding: '2px 6px',
+                                      borderRadius: '5px',
+                                      border: '1px solid var(--border-color)',
+                                      background: 'var(--bg-surface)',
+                                      color: 'var(--text-primary)',
+                                      fontSize: '0.74rem',
+                                      fontWeight: 700,
+                                      textAlign: 'right',
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      !desiredVal ||
+                                      desiredVal <= 0 ||
+                                      isBelowFloor ||
+                                      applyingFtId === rowIdKey
+                                    }
+                                    onClick={() => handleApplyRecommendedPrice(row, desiredVal)}
+                                    style={{
+                                      padding: '2px 8px',
+                                      borderRadius: '5px',
+                                      border: 'none',
+                                      background:
+                                        !desiredVal || isBelowFloor
+                                          ? '#CBD5E1'
+                                          : activeChannel === 'shopee'
+                                          ? '#EE4D2D'
+                                          : '#059669',
+                                      color: '#fff',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 800,
+                                      cursor: !desiredVal || isBelowFloor ? 'not-allowed' : 'pointer',
+                                    }}
+                                    title={
+                                      isBelowFloor
+                                        ? `Valor abaixo do Piso (${formatBRL(metrics.precoPiso)})`
+                                        : `Aplicar R$ ${desiredVal.toFixed(2)} como Promoção (-${pctOffCalc}% OFF)`
+                                    }
+                                  >
+                                    {applyingFtId === rowIdKey ? 'Aplicando...' : 'Aplicar Promo'}
+                                  </button>
+                                </div>
+                                {previewRes && (
+                                  <div
+                                    style={{
+                                      fontSize: '0.67rem',
+                                      fontWeight: 600,
+                                      color: isBelowZero
+                                        ? '#DC2626'
+                                        : isBelowFloor
+                                        ? '#D97706'
+                                        : '#047857',
+                                    }}
+                                  >
+                                    Promo calculada: <strong>-{pctOffCalc}% OFF</strong> s/ Cad. ({formatBRL(effectiveCad)})
+                                    {needRaiseCad ? ' (sobe Cad.)' : ''} • Margem:{' '}
+                                    <strong>{previewRes.margemContribuicaoPerc.toFixed(1)}%</strong> (
+                                    {formatBRL(previewRes.lucroLiquido)})
+                                    {isBelowFloor ? ` • ⚠️ Abaixo do Piso ${formatBRL(metrics.precoPiso)}` : ''}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+
                           {/* Alerta Extra da IA quando houver Promoção Interessante no ML (e não for a ação principal já exibida) */}
                           {(() => {
                             const candidates = row.promoInfo?.candidatePromos || [];
