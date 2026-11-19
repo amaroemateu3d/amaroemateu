@@ -137,6 +137,7 @@ export default function Estoque() {
   useEffect(() => {
     fetchEstoque();
     loadMlInitialState();
+    loadShopeeInitialState();
 
     const channel = supabase
       .channel('realtime-estoque')
@@ -159,12 +160,17 @@ export default function Estoque() {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const oauthCode = params.get('code');
+    const oauthShopId = params.get('shop_id');
     if (oauthCode) {
-      // Limpa o ?code= da barra de endereço imediatamente para não reutilizar
       const cleanUrl = window.location.pathname;
       window.history.replaceState({}, document.title, cleanUrl);
-      setActiveViewTab('ml');
-      handleCompleteMlOAuth(oauthCode);
+      if (oauthShopId) {
+        setActiveViewTab('shopee');
+        handleCompleteShopeeOAuth({ code: oauthCode, shopId: oauthShopId });
+      } else {
+        setActiveViewTab('ml');
+        handleCompleteMlOAuth(oauthCode);
+      }
     }
   }, []);
 
@@ -186,6 +192,19 @@ export default function Estoque() {
       setExpandedMlItems(exp);
     } catch (e) {
       console.warn('Erro ao inicializar dados ML no estoque:', e);
+    }
+  };
+
+  const loadShopeeInitialState = async () => {
+    try {
+      const [storedTok, storedList] = await Promise.all([
+        fetchStoredShopeeToken(empresaId),
+        fetchStoredShopeeListings(empresaId)
+      ]);
+      if (storedTok) setShopeeToken(storedTok);
+      if (Array.isArray(storedList)) setShopeeListings(storedList);
+    } catch (e) {
+      console.warn('Erro ao inicializar dados Shopee no estoque:', e);
     }
   };
 
@@ -295,6 +314,48 @@ export default function Estoque() {
     return map;
   }, [mlListings]);
 
+  const shopeeLinksByRowKey = useMemo(() => {
+    const map = {};
+    (shopeeListings || []).forEach((listing) => {
+      if (Array.isArray(listing.variations) && listing.variations.length > 0) {
+        listing.variations.forEach((v) => {
+          const targetKey = v.ft_id || listing.ft_id;
+          if (!targetKey || targetKey === '__IGNORED__') return;
+          if (!map[targetKey]) map[targetKey] = [];
+          map[targetKey].push({
+            listing,
+            variationId: v.id,
+            variationName: v.name || '',
+            ml_item_id: listing.ml_item_id,
+            stock_shopee: Number(v.stock ?? 0),
+            status: listing.status,
+            sku: v.sku || listing.sku || ''
+          });
+        });
+      } else if (listing.ft_id && listing.ft_id !== '__IGNORED__') {
+        if (!map[listing.ft_id]) map[listing.ft_id] = [];
+        map[listing.ft_id].push({
+          listing,
+          variationId: 0,
+          variationName: null,
+          ml_item_id: listing.ml_item_id,
+          stock_shopee: Number(listing.stock_ml ?? 0),
+          status: listing.status,
+          sku: listing.sku || ''
+        });
+      }
+    });
+    return map;
+  }, [shopeeListings]);
+
+  const shopeeUnmappedCount = useMemo(() => {
+    return (shopeeListings || []).filter((l) => {
+      const hasVars = Array.isArray(l.variations) && l.variations.length > 0;
+      if (hasVars) return l.variations.some((v) => !v.ft_id && !l.ft_id);
+      return !l.ft_id;
+    }).length;
+  }, [shopeeListings]);
+
   // Expande cada FT em linhas (se tiver variações, gera 1 linha por variação)
   const allRows = fts.flatMap(ft => {
     const activeChannels = getActiveChannelsForFt(ft.id);
@@ -323,6 +384,7 @@ export default function Estoque() {
           activeChannels,
           isAnunciado,
           mlLinkedItems: mlLinksByRowKey[rKey] || mlLinksByRowKey[ft.id] || [],
+          shopeeLinkedItems: shopeeLinksByRowKey[rKey] || shopeeLinksByRowKey[ft.id] || [],
           parentFt: ft
         };
       });
@@ -345,9 +407,126 @@ export default function Estoque() {
       activeChannels,
       isAnunciado,
       mlLinkedItems: mlLinksByRowKey[ft.id] || [],
+      shopeeLinkedItems: shopeeLinksByRowKey[ft.id] || [],
       parentFt: ft
     }];
   });
+
+  // ============================================================================
+  // FUNÇÕES DA INTEGRAÇÃO COM A API DA SHOPEE
+  // ============================================================================
+
+  const handleStartShopeeConnect = async () => {
+    try {
+      const authUrl = await getShopeeAuthUrl();
+      window.location.href = authUrl;
+    } catch (e) {
+      alert(e.message || 'Erro ao iniciar conexão com a Shopee.');
+    }
+  };
+
+  const handleCompleteShopeeOAuth = async (rawInputOrObj) => {
+    setShopeeSyncing(true);
+    try {
+      let code, shopId;
+      if (typeof rawInputOrObj === 'string') {
+        const parsed = extractShopeeCodeAndShopId(rawInputOrObj);
+        code = parsed.code;
+        shopId = parsed.shopId;
+      } else {
+        code = rawInputOrObj?.code;
+        shopId = rawInputOrObj?.shopId;
+      }
+      if (!code || !shopId) {
+        throw new Error('Código (code) e Shop ID (shop_id) são obrigatórios.');
+      }
+      const savedTok = await exchangeShopeeCodeForToken({ code, shopId }, empresaId);
+      setShopeeToken(savedTok);
+      setShopeePasteModalOpen(false);
+      await handleSyncShopeeListings();
+    } catch (e) {
+      alert('Erro ao conectar Shopee: ' + (e?.message || String(e)));
+    } finally {
+      setShopeeSyncing(false);
+    }
+  };
+
+  const handleDisconnectShopee = async () => {
+    if (!window.confirm('Deseja desconectar sua conta da Shopee?')) return;
+    try {
+      await disconnectShopeeAccount(empresaId);
+      setShopeeToken(null);
+      setShopeeListings([]);
+    } catch (e) {
+      alert('Erro ao desconectar Shopee: ' + (e?.message || String(e)));
+    }
+  };
+
+  const handleSyncShopeeListings = async () => {
+    setShopeeSyncing(true);
+    try {
+      const res = await syncListingsFromShopee(empresaId);
+      const list = Array.isArray(res?.listings) ? res.listings : await fetchStoredShopeeListings(empresaId);
+      setShopeeListings(list || []);
+    } catch (e) {
+      alert('Erro ao sincronizar anúncios da Shopee: ' + (e?.message || String(e)));
+    } finally {
+      setShopeeSyncing(false);
+    }
+  };
+
+  const handleUpdateShopeeStock = async ({ itemId, modelId = 0, availableQuantity }) => {
+    const key = `shopee_${itemId}_${modelId}`;
+    setMlUpdatingKey(key);
+    try {
+      await updateShopeeStock({ itemId, modelId, availableQuantity: Number(availableQuantity) }, empresaId);
+      setShopeeListings((prev) =>
+        prev.map((l) => {
+          if (String(l.ml_item_id) !== String(itemId)) return l;
+          if (modelId && Number(modelId) !== 0 && Array.isArray(l.variations) && l.variations.length > 0) {
+            const nextVars = l.variations.map((v) =>
+              String(v.id) === String(modelId) ? { ...v, stock: Number(availableQuantity) } : v
+            );
+            const sumStock = nextVars.reduce((acc, v) => acc + Number(v.stock || 0), 0);
+            return { ...l, variations: nextVars, stock_ml: sumStock };
+          }
+          return { ...l, stock_ml: Number(availableQuantity) };
+        })
+      );
+    } catch (e) {
+      alert('Erro ao atualizar estoque na Shopee: ' + (e?.message || String(e)));
+      throw e;
+    } finally {
+      setMlUpdatingKey(null);
+    }
+  };
+
+  const handleUpdateShopeeStatus = async (listing, nextStatus) => {
+    try {
+      await updateShopeeListingStatus({ itemId: listing.ml_item_id, status: nextStatus }, empresaId);
+      setShopeeListings((prev) =>
+        prev.map((l) => (String(l.ml_item_id) === String(listing.ml_item_id) ? { ...l, status: nextStatus } : l))
+      );
+    } catch (e) {
+      alert('Erro ao alterar status na Shopee: ' + (e?.message || String(e)));
+    }
+  };
+
+  const handleDirectShopeeRowFtSelect = async (listing, variationId, selectedFtKey) => {
+    try {
+      const mappingKey = variationId ? `${listing.ml_item_id}__mlvar__${variationId}` : String(listing.ml_item_id);
+      const updated = await saveShopeeFtMappingsAndPropagateSku({
+        mappingsMap: { [mappingKey]: selectedFtKey || null },
+        listings: shopeeListings,
+        ftsList: fts,
+        empresaId
+      });
+      if (Array.isArray(updated)) setShopeeListings(updated);
+      await fetchEstoque();
+    } catch (e) {
+      alert('Erro ao vincular FT na Shopee: ' + (e?.message || String(e)));
+    }
+  };
 
   // ============================================================================
   // FUNÇÕES DA INTEGRAÇÃO COM A API DO MERCADO LIVRE
@@ -1134,10 +1313,10 @@ export default function Estoque() {
       <div className="estoque-header">
         <div>
           <h1 className="page-title"><Package size={28} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '10px' }} />Controle de Estoque</h1>
-          <p className="page-description">Gerencie seu <strong>estoque físico unificado</strong> e sincronize em tempo real com a <strong>API Oficial do Mercado Livre</strong>.</p>
+          <p className="page-description">Gerencie seu <strong>estoque físico unificado</strong> e sincronize em tempo real com <strong>Mercado Livre</strong> e <strong>Shopee</strong>.</p>
         </div>
 
-        {/* Seletor de Abas: Estoque Físico vs. API Mercado Livre */}
+        {/* Seletor de Abas: Estoque Físico vs. Mercado Livre vs. Shopee */}
         <div className="estoque-tabs-bar" style={{ marginBottom: 0 }}>
           <button
             type="button"
@@ -1164,6 +1343,28 @@ export default function Estoque() {
                 }}
               >
                 {unmappedCount} sem FT
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            className={`estoque-tab-btn ${activeViewTab === 'shopee' ? 'active' : ''}`}
+            style={activeViewTab === 'shopee' ? { background: '#EE4D2D', color: '#FFFFFF', borderColor: '#EE4D2D' } : {}}
+            onClick={() => setActiveViewTab('shopee')}
+          >
+            🛍️ Anúncios Shopee ({shopeeListings.length})
+            {shopeeUnmappedCount > 0 && (
+              <span
+                style={{
+                  background: '#DC2626',
+                  color: '#FFFFFF',
+                  borderRadius: '10px',
+                  padding: '1px 7px',
+                  fontSize: '0.72rem',
+                  fontWeight: 800
+                }}
+              >
+                {shopeeUnmappedCount} sem FT
               </span>
             )}
           </button>
@@ -1217,6 +1418,30 @@ export default function Estoque() {
                 >
                   <RefreshCw size={15} className={mlSyncing ? 'spin' : ''} />
                   {mlSyncing ? 'Sincronizando ML...' : 'Atualizar Saldos ML'}
+                </button>
+              )}
+
+              {shopeeToken && (
+                <button
+                  type="button"
+                  onClick={handleSyncShopeeListings}
+                  disabled={shopeeSyncing}
+                  style={{
+                    background: '#FFF7ED',
+                    color: '#C2410C',
+                    border: '1px solid #FDBA74',
+                    borderRadius: '10px',
+                    padding: '0.55rem 1rem',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <RefreshCw size={15} className={shopeeSyncing ? 'spin' : ''} />
+                  {shopeeSyncing ? 'Sincronizando Shopee...' : 'Atualizar Saldos Shopee'}
                 </button>
               )}
             </div>
@@ -1298,7 +1523,7 @@ export default function Estoque() {
                         onClick={() => handleSort('anunciados')}
                         title="Canais onde o produto está marcado como No Ar e saldo no Mercado Livre"
                       >
-                        Anunciado / Saldo ML {renderSortIcon('anunciados')}
+                        Anunciado / Saldos Mkt {renderSortIcon('anunciados')}
                       </th>
                       <th style={{ width: '190px', textAlign: 'center' }}>
                         <div className="th-stock-filters" style={{ justifyContent: 'center' }}>
@@ -1413,6 +1638,58 @@ export default function Estoque() {
                                   })}
                                 </div>
                               )}
+
+                              {item.shopeeLinkedItems && item.shopeeLinkedItems.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'center' }}>
+                                  {item.shopeeLinkedItems.map((shRef) => {
+                                    const diffFromPhysical = shRef.stock_shopee !== totalItem;
+                                    return (
+                                      <div
+                                        key={`sh_${shRef.ml_item_id}_${shRef.variationId || '0'}`}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          background: '#FFF7ED',
+                                          border: '1px solid #FDBA74',
+                                          color: '#9A3412',
+                                          borderRadius: '6px',
+                                          padding: '2px 6px',
+                                          fontSize: '0.71rem',
+                                          fontWeight: 700
+                                        }}
+                                        title={`Shopee ${shRef.ml_item_id}${shRef.variationName ? ` (${shRef.variationName})` : ''} — Estoque na Shopee: ${shRef.stock_shopee} un`}
+                                      >
+                                        <span>🛍️ SHP: {shRef.stock_shopee} un</span>
+                                        {diffFromPhysical && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleUpdateShopeeStock({
+                                              itemId: shRef.ml_item_id,
+                                              modelId: shRef.variationId || 0,
+                                              availableQuantity: totalItem
+                                            })}
+                                            disabled={mlUpdatingKey !== null}
+                                            style={{
+                                              background: '#EE4D2D',
+                                              color: '#FFFFFF',
+                                              border: 'none',
+                                              borderRadius: '4px',
+                                              padding: '1px 5px',
+                                              fontSize: '0.67rem',
+                                              fontWeight: 800,
+                                              cursor: 'pointer'
+                                            }}
+                                            title={`Enviar saldo físico (${totalItem} un) para o anúncio ${shRef.ml_item_id} na Shopee`}
+                                          >
+                                            Igualar ({totalItem})
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           </td>
                           <td style={{ textAlign: 'center' }}>
@@ -1441,6 +1718,25 @@ export default function Estoque() {
             )}
           </div>
         </>
+      ) : activeViewTab === 'shopee' ? (
+        <ShopeeEstoquePanel
+          token={shopeeToken}
+          listings={shopeeListings}
+          syncing={shopeeSyncing}
+          ftsList={fts}
+          onStartConnect={handleStartShopeeConnect}
+          onOpenPasteModal={() => setShopeePasteModalOpen(true)}
+          onOpenConfigModal={() => setShopeeAppConfigModalOpen(true)}
+          onDisconnect={handleDisconnectShopee}
+          onSyncListings={handleSyncShopeeListings}
+          onOpenMappingModal={() => {
+            const unmapped = collectUnmappedTargetsFromShopeeListings(shopeeListings);
+            setShopeeMappingModal({ isOpen: true, items: unmapped });
+          }}
+          onUpdateStock={handleUpdateShopeeStock}
+          onUpdateStatus={handleUpdateShopeeStatus}
+          onDirectRowFtSelect={handleDirectShopeeRowFtSelect}
+        />
       ) : (
         /* ======================================================================
            ABA 2: PAINEL DE INTEGRAÇÃO MERCADO LIVRE (API OFICIAL)
@@ -2654,6 +2950,37 @@ export default function Estoque() {
         onSaved={async (updatedListings) => {
           setMappingModal({ isOpen: false, items: [] });
           setMlListings(updatedListings || []);
+          await fetchEstoque();
+        }}
+      />
+
+      <ShopeePasteUrlModal
+        isOpen={shopeePasteModalOpen}
+        onClose={() => setShopeePasteModalOpen(false)}
+        onConfirm={(val) => handleCompleteShopeeOAuth(val)}
+        loading={shopeeSyncing}
+      />
+
+      <ShopeeAppConfigModal
+        isOpen={shopeeAppConfigModalOpen}
+        onClose={() => setShopeeAppConfigModalOpen(false)}
+      />
+
+      <MlFtMappingModal
+        isOpen={shopeeMappingModal.isOpen}
+        itemsToMap={shopeeMappingModal.items}
+        ftsList={fts}
+        empresaId={empresaId}
+        onClose={() => setShopeeMappingModal({ isOpen: false, items: [] })}
+        onSaveCustom={async (mappingsMap) => {
+          const updated = await saveShopeeFtMappingsAndPropagateSku({
+            mappingsMap,
+            listings: shopeeListings,
+            ftsList: fts,
+            empresaId
+          });
+          setShopeeMappingModal({ isOpen: false, items: [] });
+          if (Array.isArray(updated)) setShopeeListings(updated);
           await fetchEstoque();
         }}
       />
