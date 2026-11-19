@@ -355,6 +355,7 @@ export default function AdsIa() {
               soldQuantityTotal,
               competitor,
               promoInfo,
+              dynamicMargin,
             },
             rowRules
           );
@@ -449,6 +450,7 @@ export default function AdsIa() {
               soldQuantityTotal: soldQtyMl,
               competitor,
               promoInfo,
+              dynamicMargin,
             },
             rowRules
           );
@@ -545,6 +547,7 @@ export default function AdsIa() {
           soldQuantityTotal: soldQtySimple,
           competitor,
           promoInfo,
+          dynamicMargin,
         },
         rowRules
       );

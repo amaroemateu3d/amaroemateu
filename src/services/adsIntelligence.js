@@ -267,6 +267,7 @@ export function evaluateAiRecommendation(item, rules) {
     soldQuantityTotal,
     competitor,
     promoInfo,
+    dynamicMargin,
   } = item;
 
   const {
@@ -411,6 +412,43 @@ export function evaluateAiRecommendation(item, rules) {
       explanation: `Restam só ${estoqueTotal} unidade(s) prontas. Não queime margem em promoção ou Ads neste item agora; venda as últimas unidades com margem cheia enquanto produz mais.`,
       suggestedPrice: precoCheio > precoPraticado + 0.5 ? precoCheio : null,
       actionLabel: precoCheio > precoPraticado + 0.5 ? `Subir p/ R$ ${precoCheio.toFixed(2)}` : null,
+    };
+  }
+
+  // 5.5. Item em Fase de Re-rankeamento (30+ dias sem venda) ou Rankeamento Inicial (0 vendas) -> Trabalhar na Margem de 15%
+  if (
+    (dynamicMargin?.phase === 'rerank_30d' || dynamicMargin?.phase === 'rank_new') &&
+    estoqueTotal >= 2 &&
+    precoPraticado > precoPiso + 0.35
+  ) {
+    const precoRank15 = Number(precoPiso.toFixed(2));
+    return {
+      severity: 'oportunidade',
+      badge: dynamicMargin.phase === 'rerank_30d' ? '🔄 Re-rankear (15% Margem)' : '🚀 Rankear (15% Margem)',
+      title:
+        dynamicMargin.phase === 'rerank_30d'
+          ? `Mais de 30 dias sem venda — Ativar Preço de Rankeamento (15% Margem: R$ ${precoRank15.toFixed(2)})`
+          : `Sem vendas — Ativar Preço de Rankeamento (15% Margem: R$ ${precoRank15.toFixed(2)})`,
+      explanation: `Como este item está na fase "${dynamicMargin.badge}", sua trava de margem desceu para ${minMargin}% (Preço Piso R$ ${precoRank15.toFixed(2)}). Clique para ativar a promoção a R$ ${precoRank15.toFixed(2)} até destravar vendas e depois ligue a escada +1%/dia!`,
+      suggestedPrice: precoRank15,
+      actionLabel: `Rankear 15% (R$ ${precoRank15.toFixed(2)})`,
+    };
+  }
+
+  // 5.6. Item em Fase de Reaquecimento (15 a 29 dias sem venda) -> Trabalhar na Margem de 20%
+  if (
+    dynamicMargin?.phase === 'reheat_15d' &&
+    estoqueTotal >= 2 &&
+    precoPraticado > precoPiso + 0.35
+  ) {
+    const precoReheat20 = Number(precoPiso.toFixed(2));
+    return {
+      severity: 'oportunidade',
+      badge: '⏳ Reaquecer (20% Margem)',
+      title: `15+ dias sem venda — Baixar promo para Margem de 20% (R$ ${precoReheat20.toFixed(2)})`,
+      explanation: `Este item está há mais de 15 dias sem venda. Reduzir temporariamente a promoção para R$ ${precoReheat20.toFixed(2)} (garantindo ${minMargin}% de margem líquida) ajuda a retomar o giro antes de cair nos 30 dias.`,
+      suggestedPrice: precoReheat20,
+      actionLabel: `Reaquecer 20% (R$ ${precoReheat20.toFixed(2)})`,
     };
   }
 
@@ -1276,10 +1314,50 @@ export async function applyMlSellerPromotion({
   }
 
   try {
+    // Caso 1: Se for PRICE_DISCOUNT e já estiver "started", o ML exige DELETE primeiro, aguardar ~1.5s para virar "candidate" e então POST
+    if (eligible.type === 'PRICE_DISCOUNT' && eligible.status === 'started') {
+      await removeMlSellerPromotion({
+        mlItemId,
+        promotionId: eligible.id,
+        promotionType: 'PRICE_DISCOUNT',
+        empresaId,
+      });
+      await new Promise((r) => setTimeout(r, 1600));
+      // Se também houver uma DEAL ativa (ex: Black Friday) que aceita esse preço, atualiza ela via PUT também
+      const activeDeal = promoList.find(
+        (p) => (p.type === 'DEAL' || p.type === 'SELLER_CAMPAIGN') && p.status === 'started'
+      );
+      if (activeDeal && activeDeal.id) {
+        try {
+          await mlProxyFetch(
+            `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+            {
+              method: 'PUT',
+              headers,
+              body: JSON.stringify({
+                promotion_id: activeDeal.id,
+                promotion_type: activeDeal.type,
+                deal_price: cleanTarget,
+              }),
+            }
+          );
+        } catch {
+          // se o novo preço não for aceito na DEAL, segue com o PRICE_DISCOUNT
+        }
+      }
+    }
+
+    // Caso 2: Se a promoção escolhida for DEAL ou SELLER_CAMPAIGN e já estiver "started", o método da API do ML é PUT (e não POST!)
+    const httpMethod =
+      (eligible.type === 'DEAL' || eligible.type === 'SELLER_CAMPAIGN') &&
+      eligible.status === 'started'
+        ? 'PUT'
+        : 'POST';
+
     const res = await mlProxyFetch(
       `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
       {
-        method: 'POST',
+        method: httpMethod,
         headers,
         body: JSON.stringify(payload),
       }
@@ -1292,6 +1370,34 @@ export async function applyMlSellerPromotion({
       result: res,
     };
   } catch (postErr) {
+    // Fallback: se o POST de PRICE_DISCOUNT deu "No candidates found", mas há uma DEAL ativa (ex: Black Friday), atualiza a DEAL com PUT!
+    const fallbackDeal = promoList.find(
+      (p) => (p.type === 'DEAL' || p.type === 'SELLER_CAMPAIGN') && p.status === 'started'
+    );
+    if (fallbackDeal && fallbackDeal.id) {
+      try {
+        const putDealRes = await mlProxyFetch(
+          `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+          {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({
+              promotion_id: fallbackDeal.id,
+              promotion_type: fallbackDeal.type,
+              deal_price: cleanTarget,
+            }),
+          }
+        );
+        return {
+          appliedAs: 'promotion',
+          promotion: fallbackDeal,
+          removedBlocking,
+          result: putDealRes,
+        };
+      } catch {
+        // continua para o próximo fallback
+      }
+    }
     // Se a promoção escolhida rejeitou o preço (ex: DEAL com teto oculto) e ela estava ativa, sai dela e tenta PRICE_DISCOUNT
     if (eligible.status === 'started' && eligible.type !== 'PRICE_DISCOUNT') {
       try {
