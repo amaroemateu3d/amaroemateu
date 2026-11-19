@@ -1023,14 +1023,20 @@ export async function fetchShopeePaidOrdersForMonth({ empresaId = DEFAULT_EMPRES
   }
 
   const startOfMonth = new Date(targetYear, targetMonth, 1, 0, 0, 0);
-  const midOfMonth = new Date(targetYear, targetMonth, 15, 23, 59, 59);
-  const day16 = new Date(targetYear, targetMonth, 16, 0, 0, 0);
-  const endOfMonth = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59);
+  const endOfMonthRaw = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59);
+  const nowDate = new Date();
+  const effectiveEnd = endOfMonthRaw > nowDate ? nowDate : endOfMonthRaw;
 
-  const ranges = [
-    { from: Math.floor(startOfMonth.getTime() / 1000), to: Math.floor(midOfMonth.getTime() / 1000) },
-    { from: Math.floor(day16.getTime() / 1000), to: Math.floor(endOfMonth.getTime() / 1000) }
-  ];
+  // Divide em janelas de no máximo 14 dias (limite da API v2 da Shopee é 15 dias)
+  const ranges = [];
+  const MAX_CHUNK_SEC = 14 * 24 * 60 * 60;
+  let curFrom = Math.floor(startOfMonth.getTime() / 1000);
+  const maxTo = Math.floor(effectiveEnd.getTime() / 1000);
+  while (curFrom < maxTo) {
+    const curTo = Math.min(curFrom + MAX_CHUNK_SEC, maxTo);
+    ranges.push({ from: curFrom, to: curTo });
+    curFrom = curTo + 1;
+  }
 
   const allOrderSns = [];
 
@@ -1042,7 +1048,7 @@ export async function fetchShopeePaidOrdersForMonth({ empresaId = DEFAULT_EMPRES
         token,
         shopId,
         query: {
-          time_range_field: 'pay_time',
+          time_range_field: 'create_time',
           time_from: range.from,
           time_to: range.to,
           page_size: 50,

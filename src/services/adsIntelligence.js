@@ -1707,9 +1707,9 @@ export async function fetchShopeePromosAndAdsStats({ empresaId }) {
     const nowSec = Math.floor(Date.now() / 1000);
     const daySec = 24 * 60 * 60;
     const chunks15 = [
-      { from: nowSec - 15 * daySec, to: nowSec },
-      { from: nowSec - 30 * daySec, to: nowSec - 15 * daySec },
-      { from: nowSec - 45 * daySec, to: nowSec - 30 * daySec },
+      { from: nowSec - 14 * daySec, to: nowSec },
+      { from: nowSec - 28 * daySec, to: nowSec - 14 * daySec - 1 },
+      { from: nowSec - 42 * daySec, to: nowSec - 28 * daySec - 1 },
     ];
     const orderSns = [];
     for (const rng of chunks15) {
@@ -1718,7 +1718,7 @@ export async function fetchShopeePromosAndAdsStats({ empresaId }) {
         token,
         shopId,
         query: {
-          time_range_field: 'pay_time',
+          time_range_field: 'create_time',
           time_from: rng.from,
           time_to: rng.to,
           page_size: 50,
