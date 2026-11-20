@@ -900,50 +900,52 @@ export default function AdsIa() {
 
     const chosenPromo = promoTarget || row.aiRec?.recommendedPromo || null;
     const key = row.rowKey || row.ftId;
+    const isVariationRow = Boolean(row.variacaoNome && Array.isArray(row.ft?.variacoesEstoque) && row.ft.variacoesEstoque.length > 0);
     setApplyingFtId(key);
     try {
-      const curOv = overrides[activeChannel]?.[row.ftId] || {};
-      const nextSettings = {
-        ...curOv,
-        cadastrado: true,
-        precoVendaManual: String(safePrice.toFixed(2)),
-      };
-
-      // Atualiza também o preço real ativo se existia para refletir imediatamente na margem
-      if (nextSettings.precoRealVenda) {
-        nextSettings.precoRealVenda = String(safePrice.toFixed(2));
-      }
-      if (nextSettings.precoRealVendaMes?.[currentMonth]) {
-        nextSettings.precoRealVendaMes = {
-          ...nextSettings.precoRealVendaMes,
-          [currentMonth]: safePrice,
+      // Só salva preço único na FT pai quando o produto NÃO tem variações independentes de cor/modelo
+      if (!isVariationRow) {
+        const curOv = overrides[activeChannel]?.[row.ftId] || {};
+        const nextSettings = {
+          ...curOv,
+          cadastrado: true,
+          precoVendaManual: String(safePrice.toFixed(2)),
         };
-      }
-
-      const headers = {
-        ...getHeaders(),
-        Prefer: 'resolution=merge-duplicates,return=minimal',
-      };
-      await fetch(
-        `${SUPA_URL}/rest/v1/ecommerce_overrides?on_conflict=channel_id,ft_id`,
-        {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            channel_id: activeChannel,
-            ft_id: row.ftId,
-            settings: nextSettings,
-          }),
+        if (nextSettings.precoRealVenda) {
+          nextSettings.precoRealVenda = String(safePrice.toFixed(2));
         }
-      );
+        if (nextSettings.precoRealVendaMes?.[currentMonth]) {
+          nextSettings.precoRealVendaMes = {
+            ...nextSettings.precoRealVendaMes,
+            [currentMonth]: safePrice,
+          };
+        }
 
-      setOverrides((prev) => ({
-        ...prev,
-        [activeChannel]: {
-          ...(prev[activeChannel] || {}),
-          [row.ftId]: nextSettings,
-        },
-      }));
+        const headers = {
+          ...getHeaders(),
+          Prefer: 'resolution=merge-duplicates,return=minimal',
+        };
+        await fetch(
+          `${SUPA_URL}/rest/v1/ecommerce_overrides?on_conflict=channel_id,ft_id`,
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              channel_id: activeChannel,
+              ft_id: row.ftId,
+              settings: nextSettings,
+            }),
+          }
+        );
+
+        setOverrides((prev) => ({
+          ...prev,
+          [activeChannel]: {
+            ...(prev[activeChannel] || {}),
+            [row.ftId]: nextSettings,
+          },
+        }));
+      }
 
       // Se for Shopee e tiver anúncio vinculado, aplica a promoção direto na Shopee (por variação ou item inteiro)
       if (activeChannel === 'shopee' && row.primaryMl?.ml_item_id) {

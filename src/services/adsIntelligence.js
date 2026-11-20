@@ -2069,11 +2069,15 @@ export async function applyShopeeCustomPromoPrice({
   }
 
   if (existingDiscountId && !needsCadastroUpdate && !mustRaiseCadastro) {
+    // Atualiza SOMENTE a variação alvo para nunca mexer nas demais variações
+    const singlePayload = hasModel && targetModelId
+      ? { item_id: Number(itemId), purchase_limit: 0, model_list: [{ model_id: targetModelId, model_promotion_price: cleanTarget }] }
+      : itemPayload;
     await shopeeProxyFetch('/api/v2/discount/update_discount_item', {
       method: 'POST',
       token,
       shopId,
-      body: { discount_id: Number(targetDiscountId), item_list: [itemPayload] },
+      body: { discount_id: Number(targetDiscountId), item_list: [singlePayload] },
     });
   } else {
     await shopeeProxyFetch('/api/v2/discount/add_discount_item', {
