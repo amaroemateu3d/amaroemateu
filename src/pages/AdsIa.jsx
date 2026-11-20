@@ -947,9 +947,17 @@ export default function AdsIa() {
 
       // Se for Shopee e tiver anúncio vinculado, aplica a promoção direto na Shopee (por variação ou item inteiro)
       if (activeChannel === 'shopee' && row.primaryMl?.ml_item_id) {
-        const matchedVar = Array.isArray(row.primaryMl?.variations)
-          ? row.primaryMl.variations.find((v) => String(v.ft_id || '').split('__var__')[0] === row.ftId)
-          : null;
+        const vars = Array.isArray(row.primaryMl?.variations) ? row.primaryMl.variations : [];
+        const normVar = normalizeStr(row.variacaoNome || '');
+        const matchedVar =
+          (normVar
+            ? vars.find((v) => {
+                const vName = normalizeStr(v.name || v.label || '');
+                return vName === normVar || (vName && (vName.includes(normVar) || normVar.includes(vName)));
+              })
+            : null) ||
+          vars.find((v) => String(v.ft_id || '').split('__var__')[0] === row.ftId) ||
+          null;
         const cadastroRef =
           row.promoInfo?.originalPrice ||
           row.metrics.precoCadastro ||
@@ -961,8 +969,31 @@ export default function AdsIa() {
           cadastroPrice: cadastroRef > safePrice ? cadastroRef : Number((safePrice / 0.7).toFixed(2)),
           empresaId: profile?.empresa_id,
         });
+        setShopeeListings((prev) =>
+          prev.map((l) => {
+            if (String(l.ml_item_id) !== String(row.primaryMl.ml_item_id)) return l;
+            const nextVars = Array.isArray(l.variations)
+              ? l.variations.map((v) =>
+                  !resShp.modelId || String(v.model_id || v.id) === String(resShp.modelId)
+                    ? { ...v, price: resShp.cadastroPrice, price_promo: resShp.promoPrice, original_price: resShp.cadastroPrice }
+                    : v
+                )
+              : l.variations;
+            return {
+              ...l,
+              price: !resShp.modelId ? resShp.cadastroPrice : l.price,
+              price_promo: !resShp.modelId ? resShp.promoPrice : l.price_promo,
+              variations: nextVars,
+            };
+          })
+        );
+        setCustomTargetPrices((prev) => {
+          const next = { ...prev };
+          delete next[`${activeChannel}__${key}`];
+          return next;
+        });
         alert(
-          `🚀 Promoção aplicada na Shopee (${row.primaryMl.ml_item_id})!\n\n• Preço de Cadastro: R$ ${resShp.cadastroPrice.toFixed(2)}\n• Preço Promocional: R$ ${resShp.promoPrice.toFixed(2)} (-${resShp.pctOff}% OFF)`
+          `🚀 Promoção aplicada na Shopee (${row.primaryMl.ml_item_id}${matchedVar ? ` • ${matchedVar.name || matchedVar.label}` : ''})!\n\n• Preço de Cadastro: R$ ${resShp.cadastroPrice.toFixed(2)}\n• Preço Promocional: R$ ${resShp.promoPrice.toFixed(2)} (-${resShp.pctOff}% OFF)`
         );
         await handleSyncPromosAndAds();
       } else if (activeChannel === 'ml' && row.primaryMl?.ml_item_id) {
@@ -2594,7 +2625,8 @@ export default function AdsIa() {
                           {/* Campo de Preço Desejado -> IA calcula % OFF da Promo + Margem/Lucro e aplica */}
                           {(() => {
                             const rowIdKey = row.rowKey || row.ftId;
-                            const rawTyped = customTargetPrices[rowIdKey] ?? '';
+                            const priceInputKey = `${activeChannel}__${rowIdKey}`;
+                            const rawTyped = customTargetPrices[priceInputKey] ?? '';
                             const desiredVal = parseNumber(String(rawTyped).replace(',', '.'));
                             const cadRef =
                               row.promoInfo?.originalPrice ||
@@ -2643,7 +2675,7 @@ export default function AdsIa() {
                                     onChange={(e) =>
                                       setCustomTargetPrices((prev) => ({
                                         ...prev,
-                                        [rowIdKey]: e.target.value,
+                                        [priceInputKey]: e.target.value,
                                       }))
                                     }
                                     style={{
