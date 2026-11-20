@@ -50,6 +50,13 @@ import {
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+const normalizeStr = (s) =>
+  String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
 export default function AdsIa() {
   const { session, profile } = useAuth();
   const [activeChannel, setActiveChannel] = useState('ml'); // 'ml' | 'shopee'
@@ -353,13 +360,6 @@ export default function AdsIa() {
 
   // Monta a lista completa analisada pelo motor de IA (expandindo variações e anúncios múltiplos)
   const analyzedRows = useMemo(() => {
-    const normalizeStr = (s) =>
-      String(s || '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .trim();
-
     const expanded = [];
     const channelListings = activeChannel === 'shopee' ? shopeeListings : mlListings;
 
