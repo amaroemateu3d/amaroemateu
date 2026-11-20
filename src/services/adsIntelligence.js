@@ -138,7 +138,6 @@ export function loadAdsIaRules() {
       }
       return merged;
     }
-    }
   } catch {
     // ignore
   }
