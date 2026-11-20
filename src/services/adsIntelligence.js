@@ -127,7 +127,17 @@ export function loadAdsIaRules() {
   try {
     const raw = localStorage.getItem(STORAGE_RULES_KEY);
     if (raw) {
-      return { ...DEFAULT_ADS_IA_RULES, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw) || {};
+      const merged = { ...DEFAULT_ADS_IA_RULES, ...parsed };
+      if (
+        typeof merged.regrasPersonalizadas === 'string' &&
+        (merged.regrasPersonalizadas.includes('15% (rankeamento)') ||
+          merged.regrasPersonalizadas.includes('+1% ao dia'))
+      ) {
+        merged.regrasPersonalizadas = DEFAULT_ADS_IA_RULES.regrasPersonalizadas;
+      }
+      return merged;
+    }
     }
   } catch {
     // ignore
