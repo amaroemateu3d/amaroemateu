@@ -93,6 +93,25 @@ export default function AdsIa() {
   const [applyingFtId, setApplyingFtId] = useState(null);
   const [customTargetPrices, setCustomTargetPrices] = useState({});
   const [minMarginAlert, setMinMarginAlert] = useState({ open: false, targetMin: 30, belowRows: [], fixingAll: false });
+  const [shopeeAdsGroupMap, setShopeeAdsGroupMap] = useState(() => {
+    try {
+      const raw = localStorage.getItem('am3d_shopee_ads_group_v1');
+      return raw ? JSON.parse(raw) || {} : {};
+    } catch {
+      return {};
+    }
+  });
+  const handleShopeeAdsGroupChange = (rowIdKey, groupVal) => {
+    setShopeeAdsGroupMap((prev) => {
+      const next = { ...prev, [rowIdKey]: groupVal };
+      try {
+        localStorage.setItem('am3d_shopee_ads_group_v1', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
 
   // Promoções (% OFF) e Gastos de Ads (7d / 15d / 30d)
   const [adsPeriod, setAdsPeriod] = useState(30);
@@ -531,6 +550,10 @@ export default function AdsIa() {
             rowRules
           );
 
+          const varKey = `${ft.indiceFt}__var__${fv.id}`;
+          const vendasMesVarRaw = vendasMensal[currentMonth]?.[activeChannel]?.[varKey];
+          const vendasMesVar = vendasMesVarRaw !== undefined ? Number(vendasMesVarRaw || 0) : 0;
+
           expanded.push({
             rowKey,
             ft,
@@ -540,7 +563,8 @@ export default function AdsIa() {
             sku: matchedMl?.sku || fv.sku || effFtBase.sku || ft.sku || '',
             isCadastrado,
             estoqueTotal: varStock,
-            vendasMes: vendasMesFt,
+            vendasMes: vendasMesVar,
+            vendasMesFtTotal: vendasMesFt,
             soldQuantityTotal,
             daysSinceLastSale,
             dynamicMargin,
@@ -2092,6 +2116,11 @@ export default function AdsIa() {
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
                           🛒 {row.vendasMes} no mês
                         </div>
+                        {row.variacaoNome && row.vendasMesFtTotal !== undefined && row.vendasMesFtTotal !== row.vendasMes && (
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', opacity: 0.8 }}>
+                            (Total FT: {row.vendasMesFtTotal})
+                          </div>
+                        )}
                       </td>
 
                       {/* Preço Piso Dinâmico (por fase) */}
@@ -2280,6 +2309,32 @@ export default function AdsIa() {
                                 }}
                               >
                                 ACOS: {metrics.acosRealPerc.toFixed(1)}%
+                              </div>
+                            )}
+                            {activeChannel === 'shopee' && (
+                              <div style={{ marginTop: '4px' }}>
+                                <select
+                                  value={shopeeAdsGroupMap[row.rowKey || row.ftId] ?? shopeeAdsGroupMap[row.ftId] ?? ''}
+                                  onChange={(e) => handleShopeeAdsGroupChange(row.rowKey || row.ftId, e.target.value)}
+                                  style={{
+                                    maxWidth: '140px',
+                                    padding: '2px 4px',
+                                    borderRadius: '5px',
+                                    border: '1px solid var(--border-color)',
+                                    background: 'var(--bg-secondary)',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '0.67rem',
+                                    fontWeight: 700,
+                                  }}
+                                  title="Marque em qual dos 4 grupos ROAS do Shopee Ads este item está rodando"
+                                >
+                                  <option value="">Grupo Shopee Ads...</option>
+                                  <option value="campeoes">🏆 Campeões (ROAS 12,5)</option>
+                                  <option value="giro">📦 Giro (ROAS 8,3)</option>
+                                  <option value="lancamentos">🚀 Lançamentos (ROAS 6,7)</option>
+                                  <option value="defesa">🛡️ Defesa (ROAS 16,5)</option>
+                                  <option value="pausado">⏸️ Pausado / Sem Ads</option>
+                                </select>
                               </div>
                             )}
                           </>
