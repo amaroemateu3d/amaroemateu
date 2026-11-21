@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { getResultados } from '../utils/financeCalculators';
 import {
   Calculator, ShoppingCart, BarChart3, Package,
   ArrowRight, Calendar, Sparkles, RefreshCw,
@@ -95,13 +96,17 @@ export default function Home() {
       ordersResp,
       consignadosResp,
       ftsResp,
-      listingsResp
+      listingsResp,
+      defResp,
+      overResp
     ] = await Promise.allSettled([
       fetch(`${SUPA_URL}/rest/v1/marketplace_orders_synced?select=*&order=order_date.desc&limit=1000`, { headers }),
       fetch(`${SUPA_URL}/rest/v1/orders?select=*&client_data=not.is.null&order=created_at.desc`, { headers }),
       fetch(`${SUPA_URL}/rest/v1/consignados?select=*&order=id.asc`, { headers }),
       fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=id,estoque,data&order=id.asc`, { headers }),
-      fetch(`${SUPA_URL}/rest/v1/marketplace_listings?select=platform,ml_item_id,title,ft_id,price,stock_ml,status`, { headers })
+      fetch(`${SUPA_URL}/rest/v1/marketplace_listings?select=platform,ml_item_id,title,ft_id,price,stock_ml,status`, { headers }),
+      fetch(`${SUPA_URL}/rest/v1/ecommerce_channel_defaults?select=*`, { headers }),
+      fetch(`${SUPA_URL}/rest/v1/ecommerce_overrides?select=*`, { headers })
     ]);
 
     const mktOrders = mktOrdersResp.status === 'fulfilled' && mktOrdersResp.value.ok ? await mktOrdersResp.value.json() : [];
@@ -109,6 +114,16 @@ export default function Home() {
     const consignados = consignadosResp.status === 'fulfilled' && consignadosResp.value.ok ? await consignadosResp.value.json() : [];
     const ftsRows = ftsResp.status === 'fulfilled' && ftsResp.value.ok ? await ftsResp.value.json() : [];
     const listings = listingsResp.status === 'fulfilled' && listingsResp.value.ok ? await listingsResp.value.json() : [];
+    const defRows = defResp.status === 'fulfilled' && defResp.value.ok ? await defResp.value.json() : [];
+    const overRows = overResp.status === 'fulfilled' && overResp.value.ok ? await overResp.value.json() : [];
+
+    const chDefaults = {};
+    defRows.forEach(d => { chDefaults[d.channel_id] = d.settings || {}; });
+    const chOverrides = {};
+    overRows.forEach(o => {
+      if (!chOverrides[o.channel_id]) chOverrides[o.channel_id] = {};
+      chOverrides[o.channel_id][o.ft_id] = o.settings || {};
+    });
 
     // Map de nomes das FTs
     const ftMap = {};
@@ -120,14 +135,42 @@ export default function Home() {
         id,
         nome: d.nomePeca || id,
         estoqueTotal: parseN(r.estoque ?? d.estoque ?? 0),
-        variacoes: Array.isArray(d.variacoes) ? d.variacoes : []
+        variacoes: Array.isArray(d.variacoes) ? d.variacoes : [],
+        rawFt: d
       };
     });
+
+    const calcRowProfit = (r) => {
+      const q = parseN(r.quantity || 1);
+      const p = parseN(r.unit_price || 0);
+      if (q <= 0 || p <= 0) return 0;
+      const chId = r.platform === 'shopee' ? 'shopee' : 'ml';
+      const ftEntry = ftMap[r.ft_id];
+      if (!ftEntry?.rawFt) return q * p * 0.3;
+      const def = chDefaults[chId] || {
+        custoEmbalagem: 1.5,
+        custoExtra: 0,
+        custoEnvio: 0,
+        custoEnvioPerc: 0,
+        taxaFixaVenda: chId === 'shopee' ? 4 : 6,
+        impostosNF: 0,
+        taxaMLPerc: chId === 'shopee' ? 20 : 16.5
+      };
+      const ov = chOverrides[chId]?.[r.ft_id] || {};
+      const res = getResultados({
+        ...ftEntry.rawFt,
+        ...def,
+        ...ov,
+        precoVendaManual: String(p)
+      });
+      return q * Number(res.lucroLiquido || 0);
+    };
 
     // 1. Vendas dos Marketplaces (Ontem, Hoje e Mês)
     const summarizeSales = (rows) => {
       let units = 0;
       let revenue = 0;
+      let profit = 0;
       let mlUnits = 0;
       let mlRevenue = 0;
       let shopeeUnits = 0;
@@ -137,8 +180,10 @@ export default function Home() {
       rows.forEach(r => {
         const q = parseN(r.quantity || 1);
         const rev = q * parseN(r.unit_price || 0);
+        const rowProf = calcRowProfit(r);
         units += q;
         revenue += rev;
+        profit += rowProf;
         if (r.platform === 'ml') {
           mlUnits += q;
           mlRevenue += rev;
@@ -152,15 +197,17 @@ export default function Home() {
             ft_id: ftKey,
             nome: ftMap[ftKey]?.nome || ftKey,
             units: 0,
-            revenue: 0
+            revenue: 0,
+            profit: 0
           };
         }
         byFt[ftKey].units += q;
         byFt[ftKey].revenue += rev;
+        byFt[ftKey].profit += rowProf;
       });
 
       const topProducts = Object.values(byFt).sort((a, b) => b.units - a.units || b.revenue - a.revenue).slice(0, 3);
-      return { units, revenue, mlUnits, mlRevenue, shopeeUnits, shopeeRevenue, topProducts };
+      return { units, revenue, profit, mlUnits, mlRevenue, shopeeUnits, shopeeRevenue, topProducts };
     };
 
     const yesterdayOrders = mktOrders.filter(o => String(o.order_date || '').slice(0, 10) === yesterdayStr);
@@ -702,12 +749,15 @@ export default function Home() {
                   <span className="home-kpi-badge">{b.sales?.yesterday?.units || 0} un.</span>
                 </div>
                 <div className="home-kpi-channels">
+                  <span style={{ color: '#059669', fontWeight: 800 }}>
+                    💰 Lucro Ontem: R$ {fmtBRL(b.sales?.yesterday?.profit ?? (b.sales?.yesterday?.revenue || 0) * 0.3)}
+                  </span>
                   <span>📦 ML: <strong>{b.sales?.yesterday?.mlUnits || 0} un.</strong> (R$ {fmtBRL(b.sales?.yesterday?.mlRevenue)})</span>
                   <span>🛍️ Shopee: <strong>{b.sales?.yesterday?.shopeeUnits || 0} un.</strong> (R$ {fmtBRL(b.sales?.yesterday?.shopeeRevenue)})</span>
                 </div>
                 <div className="home-kpi-footer">
-                  <span>Hoje parcial: <strong>{b.sales?.today?.units || 0} un.</strong> (R$ {fmtBRL(b.sales?.today?.revenue)})</span>
-                  <span>Mês: <strong>R$ {fmtBRL(b.sales?.month?.revenue)}</strong></span>
+                  <span>Hoje: <strong>{b.sales?.today?.units || 0} un.</strong> (Lucro R$ {fmtBRL(b.sales?.today?.profit ?? (b.sales?.today?.revenue || 0) * 0.3)})</span>
+                  <span>Mês: <strong>R$ {fmtBRL(b.sales?.month?.revenue)}</strong> (Lucro R$ {fmtBRL(b.sales?.month?.profit ?? (b.sales?.month?.revenue || 0) * 0.3)})</span>
                 </div>
               </Link>
 

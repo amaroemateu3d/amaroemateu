@@ -1585,7 +1585,40 @@ export default function AdsIa() {
     const sevenDaysAgoKey = new Date(nowBr.getTime() - 6 * 86400 * 1000).toISOString().slice(0, 10);
 
     const ftNameMap = new Map();
-    savedFts.forEach((f) => ftNameMap.set(f.indiceFt, f.nomePeca));
+    const ftMap = new Map();
+    savedFts.forEach((f) => {
+      ftNameMap.set(f.indiceFt, f.nomePeca);
+      ftMap.set(f.indiceFt, f);
+    });
+
+    const calcOrderBreakdown = (r) => {
+      const q = Number(r.quantity || 0);
+      const p = Number(r.unit_price || 0);
+      const rev = q * p;
+      if (q <= 0 || p <= 0) {
+        return { profit: 0, prodCost: 0, packShipCost: 0, mktFeeCost: 0, taxCost: 0 };
+      }
+      const chId = r.platform === 'shopee' ? 'shopee' : 'ml';
+      const baseFt = ftMap.get(r.ft_id);
+      if (!baseFt) {
+        const mktFee = rev * (chId === 'shopee' ? 0.20 : 0.165) + q * (chId === 'shopee' ? 4 : 6);
+        const prod = rev * 0.25;
+        const pack = q * 1.5;
+        const profit = Math.max(0, rev - mktFee - prod - pack);
+        return { profit, prodCost: prod, packShipCost: pack, mktFeeCost: mktFee, taxCost: 0 };
+      }
+      const effFt = getEffectiveFt(baseFt, chId);
+      const res = getResultados({
+        ...effFt,
+        precoVendaManual: String(p),
+      });
+      const prodCost = q * Number(res.custoFisicoUnit || 0);
+      const packShipCost = q * Number(res.custoExtrasUnit || 0);
+      const mktFeeCost = q * Number(res.aliquotaMarketplaceTotal || 0);
+      const taxCost = q * Number(res.aliquotaImpostos || 0);
+      const profit = q * Number(res.lucroLiquido || 0);
+      return { profit, prodCost, packShipCost, mktFeeCost, taxCost };
+    };
 
     const filtered = (dailySalesOrders || []).filter((o) => {
       if (salesChannelFilter !== 'all' && o.platform !== salesChannelFilter) return false;
@@ -1593,24 +1626,37 @@ export default function AdsIa() {
     });
 
     const calcBucket = (rows) => {
-      let units = 0, rev = 0, mlUnits = 0, shpUnits = 0;
+      let units = 0, rev = 0, profit = 0, mlUnits = 0, shpUnits = 0;
+      let prodCost = 0, packShipCost = 0, mktFeeCost = 0, taxCost = 0;
       rows.forEach((r) => {
         const q = Number(r.quantity || 0);
         const p = Number(r.unit_price || 0);
+        const bd = r.orderBreakdown || calcOrderBreakdown(r);
         units += q;
         rev += q * p;
+        profit += bd.profit;
+        prodCost += bd.prodCost;
+        packShipCost += bd.packShipCost;
+        mktFeeCost += bd.mktFeeCost;
+        taxCost += bd.taxCost;
         if (r.platform === 'ml') mlUnits += q;
         if (r.platform === 'shopee') shpUnits += q;
       });
-      return { units, rev, mlUnits, shpUnits };
+      const marginPerc = rev > 0 ? (profit / rev) * 100 : 0;
+      return { units, rev, profit, marginPerc, mlUnits, shpUnits, prodCost, packShipCost, mktFeeCost, taxCost };
     };
 
-    const withDate = filtered.map((o) => ({
-      ...o,
-      dateKey: toBrDateKey(o.order_date || o.synced_at),
-      timeStr: toBrTimeStr(o.order_date || o.synced_at),
-      ftNome: ftNameMap.get(o.ft_id) || o.title || o.ft_id || 'Item',
-    }));
+    const withDate = filtered.map((o) => {
+      const bd = calcOrderBreakdown(o);
+      return {
+        ...o,
+        dateKey: toBrDateKey(o.order_date || o.synced_at),
+        timeStr: toBrTimeStr(o.order_date || o.synced_at),
+        ftNome: ftNameMap.get(o.ft_id) || o.title || o.ft_id || 'Item',
+        orderProfit: bd.profit,
+        orderBreakdown: bd,
+      };
+    });
 
     const todayStats = calcBucket(withDate.filter((o) => o.dateKey === todayKey));
     const yesterdayStats = calcBucket(withDate.filter((o) => o.dateKey === yesterdayKey));
@@ -1635,10 +1681,11 @@ export default function AdsIa() {
       .filter((o) => (o.month || o.dateKey.slice(0, 7)) === currentMonth)
       .forEach((o) => {
         const k = o.ft_id || o.title || 'SEM_FT';
-        const prev = byProd.get(k) || { ftId: o.ft_id || '—', nome: o.ftNome, units: 0, mlUnits: 0, shpUnits: 0, rev: 0 };
+        const prev = byProd.get(k) || { ftId: o.ft_id || '—', nome: o.ftNome, units: 0, mlUnits: 0, shpUnits: 0, rev: 0, profit: 0 };
         const q = Number(o.quantity || 0);
         prev.units += q;
         prev.rev += q * Number(o.unit_price || 0);
+        prev.profit += Number(o.orderProfit || 0);
         if (o.platform === 'ml') prev.mlUnits += q;
         if (o.platform === 'shopee') prev.shpUnits += q;
         byProd.set(k, prev);
@@ -1676,7 +1723,7 @@ export default function AdsIa() {
       topProducts,
       dailyGroups,
     };
-  }, [dailySalesOrders, salesChannelFilter, currentMonth, savedFts]);
+  }, [dailySalesOrders, salesChannelFilter, currentMonth, savedFts, channelDefaults, overrides]);
 
   return (
     <div className="page-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
@@ -1912,52 +1959,261 @@ export default function AdsIa() {
                 <div style={{ fontSize: '1.2rem', fontWeight: 800, marginTop: '3px' }}>
                   {card.stats.units} un • {formatBRL(card.stats.rev)}
                 </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#059669', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span>💰 Lucro: {formatBRL(card.stats.profit)}</span>
+                  <span
+                    style={{
+                      fontSize: '0.66rem',
+                      padding: '1px 6px',
+                      borderRadius: '999px',
+                      background: 'rgba(16, 185, 129, 0.14)',
+                      color: '#047857',
+                    }}
+                  >
+                    {card.stats.marginPerc.toFixed(1)}%
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
                   📦 ML: <strong>{card.stats.mlUnits}</strong> un • 🛍️ Shopee: <strong>{card.stats.shpUnits}</strong> un
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Gráfico Diário (14 dias) + Top Produtos Vendidos */}
+          {/* Gráfico Diário Moderno (14 dias) + Gráfico Pizza % Gastos E-commerce + Top Produtos Vendidos */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))', gap: '14px', marginBottom: '14px' }}>
-            {/* Gráfico de Barras Diárias */}
-            <div style={{ padding: '0.85rem', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <strong style={{ fontSize: '0.8rem' }}>📊 Evolução Diária (Últimos 14 Dias)</strong>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
-                  <span style={{ color: '#D97706', fontWeight: 700 }}>■ ML</span> •{' '}
-                  <span style={{ color: '#EE4D2D', fontWeight: 700 }}>■ Shopee</span>
-                </span>
+            {/* 1. Gráfico Moderno de Evolução Diária (Padrão Roxo + Azul + Verde) */}
+            <div style={{ padding: '1rem 1.1rem', borderRadius: '12px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '6px' }}>
+                <div>
+                  <strong style={{ fontSize: '0.84rem', display: 'block' }}>📊 Evolução Diária (Últimos 14 Dias)</strong>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Unidades vendidas por canal e dia</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.72rem', fontWeight: 700 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#6366F1' }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'linear-gradient(135deg, #60A5FA, #6366F1)', display: 'inline-block' }} />
+                    Mercado Livre
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#7C3AED' }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'linear-gradient(135deg, #A78BFA, #7C3AED)', display: 'inline-block' }} />
+                    Shopee
+                  </span>
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '6px', height: '120px', paddingTop: '14px' }}>
-                {dailySalesIntel.chartDays.map((d) => {
-                  const totalH = Math.round((d.units / dailySalesIntel.maxChartUnits) * 84);
-                  const mlH = d.units > 0 ? Math.round((d.mlUnits / d.units) * totalH) : 0;
-                  const shpH = Math.max(0, totalH - mlH);
-                  return (
-                    <div
-                      key={d.dateKey}
-                      style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}
-                      title={`${d.label}: ${d.units} un (${formatBRL(d.rev)}) — ML: ${d.mlUnits} | Shopee: ${d.shpUnits}`}
-                    >
-                      <span style={{ fontSize: '0.64rem', fontWeight: 800, color: d.units > 0 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-                        {d.units > 0 ? d.units : ''}
-                      </span>
-                      <div style={{ width: '100%', maxWidth: '24px', height: '84px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', borderRadius: '4px', overflow: 'hidden', background: 'rgba(148,163,184,0.12)' }}>
-                        {shpH > 0 && <div style={{ height: `${shpH}px`, background: '#EE4D2D' }} />}
-                        {mlH > 0 && <div style={{ height: `${mlH}px`, background: '#EAB308' }} />}
+
+              <div style={{ position: 'relative', height: '148px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', paddingTop: '18px' }}>
+                {/* Linhas guias horizontais */}
+                {[0.25, 0.5, 0.75, 1].map((lvl) => (
+                  <div
+                    key={lvl}
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      right: 0,
+                      bottom: `${Math.round(lvl * 96) + 22}px`,
+                      borderTop: '1px dashed rgba(139, 92, 246, 0.14)',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                ))}
+
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '7px', height: '120px', position: 'relative', zIndex: 1 }}>
+                  {dailySalesIntel.chartDays.map((d) => {
+                    const totalH = Math.round((d.units / dailySalesIntel.maxChartUnits) * 92);
+                    const mlH = d.units > 0 ? Math.round((d.mlUnits / d.units) * totalH) : 0;
+                    const shpH = Math.max(0, totalH - mlH);
+                    return (
+                      <div
+                        key={d.dateKey}
+                        style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}
+                        title={`${d.label}: ${d.units} un (${formatBRL(d.rev)} | Lucro: ${formatBRL(d.profit)}) — ML: ${d.mlUnits} | Shopee: ${d.shpUnits}`}
+                      >
+                        <span
+                          style={{
+                            fontSize: '0.66rem',
+                            fontWeight: 800,
+                            padding: d.units > 0 ? '1px 5px' : '0',
+                            borderRadius: '999px',
+                            background: d.units > 0 ? 'rgba(139, 92, 246, 0.12)' : 'transparent',
+                            color: d.units > 0 ? '#6D28D9' : 'transparent',
+                            minHeight: '16px',
+                          }}
+                        >
+                          {d.units > 0 ? d.units : '·'}
+                        </span>
+                        <div
+                          style={{
+                            width: '100%',
+                            maxWidth: '22px',
+                            height: '92px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'flex-end',
+                            borderRadius: '999px',
+                            overflow: 'hidden',
+                            background: 'linear-gradient(180deg, rgba(139, 92, 246, 0.05) 0%, rgba(96, 165, 250, 0.10) 100%)',
+                            border: '1px solid rgba(139, 92, 246, 0.12)',
+                            padding: '2px',
+                            gap: '2px',
+                          }}
+                        >
+                          {shpH > 0 && (
+                            <div
+                              style={{
+                                height: `${Math.max(6, shpH)}px`,
+                                borderRadius: '999px',
+                                background: 'linear-gradient(180deg, #A78BFA 0%, #7C3AED 100%)',
+                                boxShadow: '0 2px 6px rgba(124, 58, 237, 0.25)',
+                                transition: 'height 0.3s ease',
+                              }}
+                            />
+                          )}
+                          {mlH > 0 && (
+                            <div
+                              style={{
+                                height: `${Math.max(6, mlH)}px`,
+                                borderRadius: '999px',
+                                background: 'linear-gradient(180deg, #60A5FA 0%, #3B82F6 100%)',
+                                boxShadow: '0 2px 6px rgba(59, 130, 246, 0.25)',
+                                transition: 'height 0.3s ease',
+                              }}
+                            />
+                          )}
+                        </div>
+                        <span style={{ fontSize: '0.64rem', fontWeight: 700, color: d.units > 0 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                          {d.label}
+                        </span>
                       </div>
-                      <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>{d.label}</span>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            {/* Top Produtos Mais Vendidos no Mês */}
-            <div style={{ padding: '0.85rem', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
-              <strong style={{ fontSize: '0.8rem', display: 'block', marginBottom: '8px' }}>
+            {/* 2. Gráfico Pizza (Donut) — % de Gastos & Lucro do E-commerce no Mês */}
+            {(() => {
+              const ms = dailySalesIntel.monthStats;
+              const rev = Math.max(0, Number(ms.rev || 0));
+              const mktFee = Math.max(0, Number(ms.mktFeeCost || 0));
+              const prod = Math.max(0, Number(ms.prodCost || 0));
+              const pack = Math.max(0, Number(ms.packShipCost || 0) + Number(ms.taxCost || 0));
+              const profit = Math.max(0, Number(ms.profit || 0));
+              const totalBase = Math.max(0.01, mktFee + prod + pack + profit);
+
+              const pctMkt = (mktFee / totalBase) * 100;
+              const pctProd = (prod / totalBase) * 100;
+              const pctPack = (pack / totalBase) * 100;
+              const pctProfit = Math.max(0, 100 - pctMkt - pctProd - pctPack);
+              const totalGastosPct = rev > 0 ? ((mktFee + prod + pack) / rev) * 100 : 0;
+
+              const c1 = pctMkt;
+              const c2 = c1 + pctProd;
+              const c3 = c2 + pctPack;
+
+              const slices = [
+                { label: 'Taxas & Comissões (ML/Shopee)', val: mktFee, pct: pctMkt, color: '#8B5CF6' },
+                { label: 'Custo Produção 3D (Filamento/Luz)', val: prod, pct: pctProd, color: '#3B82F6' },
+                { label: 'Embalagem, Envio & Extras', val: pack, pct: pctPack, color: '#38BDF8' },
+                { label: 'Lucro Líquido Real', val: profit, pct: pctProfit, color: '#10B981' },
+              ];
+
+              return (
+                <div style={{ padding: '1rem 1.1rem', borderRadius: '12px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <div>
+                      <strong style={{ fontSize: '0.84rem', display: 'block' }}>🍩 % de Gastos &amp; Lucro E-commerce ({currentMonth})</strong>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Para onde vai cada R$ vendido nos marketplaces</span>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 800,
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        background: 'rgba(139, 92, 246, 0.12)',
+                        color: '#7C3AED',
+                      }}
+                    >
+                      Gastos: {totalGastosPct.toFixed(1)}%
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', margin: 'auto 0' }}>
+                    {/* Donut Chart com conic-gradient */}
+                    <div
+                      style={{
+                        width: '122px',
+                        height: '122px',
+                        borderRadius: '50%',
+                        background:
+                          rev > 0
+                            ? `conic-gradient(#8B5CF6 0% ${c1.toFixed(1)}%, #3B82F6 ${c1.toFixed(1)}% ${c2.toFixed(1)}%, #38BDF8 ${c2.toFixed(1)}% ${c3.toFixed(1)}%, #10B981 ${c3.toFixed(1)}% 100%)`
+                            : 'rgba(148,163,184,0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        boxShadow: '0 4px 12px rgba(139, 92, 246, 0.15)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '78px',
+                          height: '78px',
+                          borderRadius: '50%',
+                          background: 'var(--bg-surface)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          textAlign: 'center',
+                          padding: '4px',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-secondary)', lineHeight: 1.1 }}>Lucro</span>
+                        <span style={{ fontSize: '0.92rem', fontWeight: 900, color: '#059669', lineHeight: 1.2 }}>
+                          {pctProfit.toFixed(1)}%
+                        </span>
+                        <span style={{ fontSize: '0.58rem', color: 'var(--text-secondary)' }}>Gastos {totalGastosPct.toFixed(0)}%</span>
+                      </div>
+                    </div>
+
+                    {/* Legenda Detalhada */}
+                    <div style={{ flex: 1, minWidth: '170px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {slices.map((s) => (
+                        <div
+                          key={s.label}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            fontSize: '0.73rem',
+                            gap: '6px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                            <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                            <span style={{ color: 'var(--text-primary)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {s.label}
+                            </span>
+                          </div>
+                          <div style={{ whiteSpace: 'nowrap', fontWeight: 800 }}>
+                            <span style={{ color: s.color }}>{s.pct.toFixed(1)}%</span>{' '}
+                            <span style={{ color: 'var(--text-secondary)', fontWeight: 600, fontSize: '0.69rem' }}>
+                              ({formatBRL(s.val)})
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 3. Top Produtos Mais Vendidos no Mês */}
+            <div style={{ padding: '1rem 1.1rem', borderRadius: '12px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
+              <strong style={{ fontSize: '0.84rem', display: 'block', marginBottom: '8px' }}>
                 🏆 Top Produtos Vendidos ({currentMonth})
               </strong>
               {dailySalesIntel.topProducts.length === 0 ? (
@@ -1973,7 +2229,7 @@ export default function AdsIa() {
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
-                        fontSize: '0.78rem',
+                        fontSize: '0.76rem',
                         padding: '6px 10px',
                         borderRadius: '8px',
                         background: 'var(--bg-secondary)',
@@ -1981,13 +2237,14 @@ export default function AdsIa() {
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
                         <span className="badge" style={{ fontSize: '0.68rem' }}>{tp.ftId}</span>
-                        <span style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>
+                        <span style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px' }}>
                           {tp.nome}
                         </span>
                       </div>
                       <div style={{ whiteSpace: 'nowrap', fontWeight: 700 }}>
                         {tp.units} un <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>({tp.mlUnits} ML / {tp.shpUnits} SHP)</span> •{' '}
-                        <span style={{ color: '#059669' }}>{formatBRL(tp.rev)}</span>
+                        <span style={{ color: 'var(--text-primary)' }}>{formatBRL(tp.rev)}</span> •{' '}
+                        <span style={{ color: '#059669' }}>Lucro: {formatBRL(tp.profit)}</span>
                       </div>
                     </div>
                   ))}
@@ -1996,81 +2253,109 @@ export default function AdsIa() {
             </div>
           </div>
 
-          {/* Histórico Diário Detalhado (Dia a Dia) */}
-          <div style={{ padding: '1rem', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
-            <strong style={{ fontSize: '0.88rem', display: 'block', marginBottom: '12px' }}>
-              🗓️ Histórico de Vendas Dia a Dia (Últimos 15 dias com vendas)
+          {/* Histórico Diário Detalhado em Linhas (Tabela Dia + Cada Linha um Produto Vendido) */}
+          <div style={{ padding: '1rem 1.15rem', borderRadius: '12px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
+            <strong style={{ fontSize: '0.9rem', display: 'block', marginBottom: '12px' }}>
+              🗓️ Histórico de Vendas Dia a Dia (Cada linha = 1 produto vendido)
             </strong>
             {dailySalesIntel.dailyGroups.length === 0 ? (
               <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Nenhuma venda sincronizada ainda.</div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '12px' }}>
-                {dailySalesIntel.dailyGroups.map((dg) => (
-                  <div key={dg.dateKey} style={{ border: '1px solid var(--border-color)', borderRadius: '10px', overflow: 'hidden', background: 'var(--bg-surface)' }}>
-                    <div
-                      style={{
-                        padding: '8px 12px',
-                        background: 'var(--bg-secondary)',
-                        borderBottom: '1px solid var(--border-color)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        fontSize: '0.8rem',
-                        fontWeight: 800,
-                      }}
-                    >
-                      <span>📅 {dg.dateLabel}</span>
-                      <span>
-                        {dg.units} un • <span style={{ color: '#059669' }}>{formatBRL(dg.rev)}</span>{' '}
-                        <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
-                          (📦 {dg.mlUnits} ML | 🛍️ {dg.shpUnits} Shopee)
-                        </span>
-                      </span>
-                    </div>
-                    <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {dg.items.map((it) => (
-                        <div
-                          key={`${it.platform}_${it.order_id}_${it.order_item_key}`}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            fontSize: '0.77rem',
-                            gap: '8px',
-                            flexWrap: 'wrap',
-                            paddingBottom: '4px',
-                            borderBottom: '1px dashed rgba(148,163,184,0.2)',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{it.timeStr}</span>
-                            <span
-                              style={{
-                                padding: '2px 7px',
-                                borderRadius: '4px',
-                                fontSize: '0.68rem',
-                                fontWeight: 800,
-                                background: it.platform === 'shopee' ? 'rgba(238,77,45,0.14)' : 'rgba(234,179,8,0.2)',
-                                color: it.platform === 'shopee' ? '#C2410C' : '#854D0E',
-                              }}
-                            >
-                              {it.platform === 'shopee' ? '🛍️ Shopee' : '📦 ML'}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg-secondary)', textAlign: 'left', borderBottom: '2px solid var(--border-color)' }}>
+                      <th style={{ padding: '9px 12px', fontWeight: 800 }}>Data / Hora</th>
+                      <th style={{ padding: '9px 12px', fontWeight: 800 }}>Canal</th>
+                      <th style={{ padding: '9px 12px', fontWeight: 800 }}>FT</th>
+                      <th style={{ padding: '9px 12px', fontWeight: 800 }}>Produto Vendido</th>
+                      <th style={{ padding: '9px 12px', fontWeight: 800 }}>Variação</th>
+                      <th style={{ padding: '9px 12px', fontWeight: 800, textAlign: 'center' }}>Qtd</th>
+                      <th style={{ padding: '9px 12px', fontWeight: 800, textAlign: 'right' }}>Preço Unit.</th>
+                      <th style={{ padding: '9px 12px', fontWeight: 800, textAlign: 'right' }}>Total Venda</th>
+                      <th style={{ padding: '9px 12px', fontWeight: 800, textAlign: 'right' }}>Lucro Líquido</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dailySalesIntel.dailyGroups.flatMap((dg) => [
+                      <tr
+                        key={`hdr_${dg.dateKey}`}
+                        style={{
+                          background: 'rgba(139, 92, 246, 0.07)',
+                          borderTop: '1px solid var(--border-color)',
+                          borderBottom: '1px solid var(--border-color)',
+                        }}
+                      >
+                        <td colSpan={9} style={{ padding: '7px 12px', fontWeight: 800, fontSize: '0.8rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <span style={{ color: '#6D28D9' }}>📅 {dg.dateLabel}</span>
+                            <span>
+                              Total do Dia: <strong>{dg.units} un.</strong> • Faturamento: <strong>{formatBRL(dg.rev)}</strong> •{' '}
+                              <span style={{ color: '#059669' }}>
+                                💰 Lucro do Dia: <strong>{formatBRL(dg.profit)}</strong> ({dg.marginPerc.toFixed(1)}%)
+                              </span>{' '}
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                (📦 {dg.mlUnits} ML | 🛍️ {dg.shpUnits} Shopee)
+                              </span>
                             </span>
-                            {it.ft_id && <span className="badge" style={{ fontSize: '0.68rem' }}>{it.ft_id}</span>}
-                            <strong>{it.ftNome}</strong>
-                            {it.variation_name && (
-                              <span style={{ color: '#7C3AED', fontWeight: 700 }}>({it.variation_name})</span>
-                            )}
                           </div>
-                          <div style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
-                            {it.quantity}x {formatBRL(it.unit_price)} ={' '}
-                            <span style={{ color: '#059669' }}>{formatBRL(Number(it.quantity || 0) * Number(it.unit_price || 0))}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                        </td>
+                      </tr>,
+                      ...dg.items.map((it) => {
+                        const rowRev = Number(it.quantity || 0) * Number(it.unit_price || 0);
+                        const rowMargin = rowRev > 0 ? (Number(it.orderProfit || 0) / rowRev) * 100 : 0;
+                        return (
+                          <tr
+                            key={`${it.platform}_${it.order_id}_${it.order_item_key}`}
+                            style={{ borderBottom: '1px solid var(--border-color)' }}
+                          >
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: 'var(--text-secondary)', fontFamily: 'monospace', fontWeight: 600 }}>
+                              {dg.dateKey.split('-').reverse().join('/')} • {it.timeStr}
+                            </td>
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                              <span
+                                style={{
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 800,
+                                  background: it.platform === 'shopee' ? 'rgba(139, 92, 246, 0.14)' : 'rgba(59, 130, 246, 0.14)',
+                                  color: it.platform === 'shopee' ? '#6D28D9' : '#1D4ED8',
+                                }}
+                              >
+                                {it.platform === 'shopee' ? '🛍️ Shopee' : '📦 Mercado Livre'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                              {it.ft_id ? <span className="badge" style={{ fontSize: '0.72rem' }}>{it.ft_id}</span> : '—'}
+                            </td>
+                            <td style={{ padding: '8px 12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                              {it.ftNome}
+                            </td>
+                            <td style={{ padding: '8px 12px', color: '#7C3AED', fontWeight: 700 }}>
+                              {it.variation_name || '—'}
+                            </td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 800 }}>
+                              {it.quantity}
+                            </td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                              {formatBRL(it.unit_price)}
+                            </td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 800 }}>
+                              {formatBRL(rowRev)}
+                            </td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 800, color: '#059669' }}>
+                              {formatBRL(it.orderProfit)}{' '}
+                              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#047857' }}>
+                                ({rowMargin.toFixed(1)}%)
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      }),
+                    ])}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
