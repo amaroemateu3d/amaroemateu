@@ -101,7 +101,7 @@ export default function Home() {
       fetch(`${SUPA_URL}/rest/v1/orders?select=*&client_data=not.is.null&order=created_at.desc`, { headers }),
       fetch(`${SUPA_URL}/rest/v1/consignados?select=*&order=id.asc`, { headers }),
       fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=id,estoque,data&order=id.asc`, { headers }),
-      fetch(`${SUPA_URL}/rest/v1/marketplace_listings?select=platform,external_id,title,ft_id,variation_name,price,stock,status`, { headers })
+      fetch(`${SUPA_URL}/rest/v1/marketplace_listings?select=platform,ml_item_id,title,ft_id,price,stock_ml,status`, { headers })
     ]);
 
     const mktOrders = mktOrdersResp.status === 'fulfilled' && mktOrdersResp.value.ok ? await mktOrdersResp.value.json() : [];
