@@ -1708,120 +1708,119 @@ export default function AdsIa() {
           />
           <button
             type="button"
-            className="btn-secondary"
             onClick={() => setShowDailySalesPanel((p) => !p)}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontWeight: 700,
-              background: showDailySalesPanel ? 'rgba(16, 185, 129, 0.12)' : undefined,
-              color: showDailySalesPanel ? '#047857' : undefined,
-              borderColor: showDailySalesPanel ? '#10B981' : undefined,
-            }}
-          >
-            <TrendingUp size={16} />
-            {showDailySalesPanel ? 'Ocultar Vendas Diárias' : '📈 Resumo Vendas Diárias'}
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => setShowRulesPanel((p) => !p)}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
-          >
-            <Sliders size={16} />
-            {showRulesPanel ? 'Ocultar Travas de Margem' : '🛡️ Configurar Travas de Margem'}
-          </button>
-          <button
-            type="button"
-            onClick={handleSyncPromosAndAds}
-            disabled={syncingPromosAds}
-            style={{
-              padding: '0.52rem 0.95rem',
-              borderRadius: '8px',
-              border: activeChannel === 'shopee' ? '1px solid #EA580C' : '1px solid #EAB308',
-              background: activeChannel === 'shopee' ? '#EE4D2D' : '#FFE600',
-              color: activeChannel === 'shopee' ? '#fff' : '#1F2937',
-              fontWeight: 800,
-              fontSize: '0.84rem',
-              cursor: syncingPromosAds ? 'wait' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-            title={
-              activeChannel === 'shopee'
-                ? 'Sincroniza anúncios, promoções e histórico de vendas da Shopee'
-                : 'Puxa a % de promoção ativa e os gastos de Product Ads (7, 15 e 30 dias) direto do Mercado Livre'
-            }
-          >
-            <RefreshCw size={15} className={syncingPromosAds ? 'spin' : ''} />
-            {syncingPromosAds
-              ? `Puxando ${activeChannel === 'shopee' ? 'Shopee' : 'ML'}...`
-              : activeChannel === 'shopee'
-              ? '📡 Puxar Promoções & Ads Shopee'
-              : '📡 Puxar Promoções & Ads (7/15/30d)'}
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => setShowCampaignsModal(true)}
-            style={{ fontWeight: 700 }}
-            title="Ver os 4 grupos estratégicos de Ads e quais produtos colocar em cada um"
-          >
-            {activeChannel === 'shopee'
-              ? '📊 Estratégia Shopee Ads (4 Grupos ROAS)'
-              : `📊 Campanhas Ads (${promosAdsCache?.campaigns?.length || 0})`}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowStandardizeModal(true)}
-            style={{
-              padding: '0.52rem 0.95rem',
+              padding: '0.52rem 1rem',
               borderRadius: '8px',
               border: 'none',
-              background: 'linear-gradient(135deg, #7C3AED, #2563EB)',
+              background: showDailySalesPanel
+                ? 'linear-gradient(135deg, #2563EB, #7C3AED)'
+                : 'linear-gradient(135deg, #059669, #10B981)',
               color: '#fff',
-              fontWeight: 800,
-              fontSize: '0.84rem',
-              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '7px',
+              fontWeight: 800,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
             }}
-            title="Recalcula todos os Preços de Cadastro (Venda / 0,70) e Preços de Venda (com 30% OFF garantindo 30% a 40% de margem líquida)"
           >
-            🎯 Padronizar Preços (Cadastro + 30% OFF)
+            {showDailySalesPanel ? (
+              <>
+                <Sliders size={16} />
+                🤖 Abrir Controles de Preços &amp; Ads (ML / Shopee) →
+              </>
+            ) : (
+              <>
+                <TrendingUp size={16} />
+                ← 📈 Voltar ao Resumo de Vendas Diárias
+              </>
+            )}
           </button>
+          {!showDailySalesPanel && (
+            <>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowRulesPanel((p) => !p)}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+              >
+                <Sliders size={16} />
+                {showRulesPanel ? 'Ocultar Travas de Margem' : '🛡️ Configurar Travas de Margem'}
+              </button>
+              <button
+                type="button"
+                onClick={handleSyncPromosAndAds}
+                disabled={syncingPromosAds}
+                style={{
+                  padding: '0.52rem 0.95rem',
+                  borderRadius: '8px',
+                  border: activeChannel === 'shopee' ? '1px solid #EA580C' : '1px solid #EAB308',
+                  background: activeChannel === 'shopee' ? '#EE4D2D' : '#FFE600',
+                  color: activeChannel === 'shopee' ? '#fff' : '#1F2937',
+                  fontWeight: 800,
+                  fontSize: '0.84rem',
+                  cursor: syncingPromosAds ? 'wait' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+                title={
+                  activeChannel === 'shopee'
+                    ? 'Sincroniza anúncios, promoções e histórico de vendas da Shopee'
+                    : 'Puxa a % de promoção ativa e os gastos de Product Ads (7, 15 e 30 dias) direto do Mercado Livre'
+                }
+              >
+                <RefreshCw size={15} className={syncingPromosAds ? 'spin' : ''} />
+                {syncingPromosAds
+                  ? `Puxando ${activeChannel === 'shopee' ? 'Shopee' : 'ML'}...`
+                  : activeChannel === 'shopee'
+                  ? '📡 Puxar Promoções & Ads Shopee'
+                  : '📡 Puxar Promoções & Ads (7/15/30d)'}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowCampaignsModal(true)}
+                style={{ fontWeight: 700 }}
+                title="Ver os 4 grupos estratégicos de Ads e quais produtos colocar em cada um"
+              >
+                {activeChannel === 'shopee'
+                  ? '📊 Estratégia Shopee Ads (4 Grupos ROAS)'
+                  : `📊 Campanhas Ads (${promosAdsCache?.campaigns?.length || 0})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowStandardizeModal(true)}
+                style={{
+                  padding: '0.52rem 0.95rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #7C3AED, #2563EB)',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+                title="Recalcula todos os Preços de Cadastro (Venda / 0,70) e Preços de Venda (com 30% OFF garantindo 30% a 40% de margem líquida)"
+              >
+                🎯 Padronizar Preços (Cadastro + 30% OFF)
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Abas de Canal (Mercado Livre / Shopee) */}
-      <div className="channels-tabs" style={{ marginBottom: 0 }}>
-        <button
-          type="button"
-          className={`channel-tab ${activeChannel === 'ml' ? 'active' : ''}`}
-          onClick={() => setActiveChannel('ml')}
-        >
-          <span className="icon">📦</span>
-          <span className="label">Mercado Livre (Promoções &amp; Product Ads)</span>
-        </button>
-        <button
-          type="button"
-          className={`channel-tab ${activeChannel === 'shopee' ? 'active' : ''}`}
-          onClick={() => setActiveChannel('shopee')}
-        >
-          <span className="icon">🛍️</span>
-          <span className="label">Shopee (Ofertas &amp; Shopee Ads)</span>
-        </button>
-      </div>
-
-      {/* Painel de Resumo & Histórico de Vendas Diárias (Atualização 1h/1h) */}
-      {showDailySalesPanel && (
+      {/* VISÃO 1 (Padrão ao abrir): Painel Completo de Resumo & Histórico de Vendas Diárias */}
+      {showDailySalesPanel ? (
         <div
           className="card"
           style={{
-            padding: '1.1rem 1.25rem',
+            padding: '1.35rem 1.5rem',
             border: '1px solid rgba(16, 185, 129, 0.35)',
             background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.04), rgba(37, 99, 235, 0.03))',
           }}
@@ -1966,7 +1965,7 @@ export default function AdsIa() {
                   Nenhuma venda registrada neste filtro/mês.
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '130px', overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {dailySalesIntel.topProducts.map((tp, idx) => (
                     <div
                       key={tp.ftId + idx}
@@ -1974,9 +1973,9 @@ export default function AdsIa() {
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
-                        fontSize: '0.75rem',
-                        padding: '3px 6px',
-                        borderRadius: '6px',
+                        fontSize: '0.78rem',
+                        padding: '6px 10px',
+                        borderRadius: '8px',
                         background: 'var(--bg-secondary)',
                       }}
                     >
@@ -1998,24 +1997,25 @@ export default function AdsIa() {
           </div>
 
           {/* Histórico Diário Detalhado (Dia a Dia) */}
-          <div style={{ padding: '0.85rem', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
-            <strong style={{ fontSize: '0.8rem', display: 'block', marginBottom: '8px' }}>
+          <div style={{ padding: '1rem', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
+            <strong style={{ fontSize: '0.88rem', display: 'block', marginBottom: '12px' }}>
               🗓️ Histórico de Vendas Dia a Dia (Últimos 15 dias com vendas)
             </strong>
             {dailySalesIntel.dailyGroups.length === 0 ? (
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Nenhuma venda sincronizada ainda.</div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Nenhuma venda sincronizada ainda.</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '230px', overflowY: 'auto' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '12px' }}>
                 {dailySalesIntel.dailyGroups.map((dg) => (
-                  <div key={dg.dateKey} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                  <div key={dg.dateKey} style={{ border: '1px solid var(--border-color)', borderRadius: '10px', overflow: 'hidden', background: 'var(--bg-surface)' }}>
                     <div
                       style={{
-                        padding: '5px 10px',
+                        padding: '8px 12px',
                         background: 'var(--bg-secondary)',
+                        borderBottom: '1px solid var(--border-color)',
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
-                        fontSize: '0.76rem',
+                        fontSize: '0.8rem',
                         fontWeight: 800,
                       }}
                     >
@@ -2027,7 +2027,7 @@ export default function AdsIa() {
                         </span>
                       </span>
                     </div>
-                    <div style={{ padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {dg.items.map((it) => (
                         <div
                           key={`${it.platform}_${it.order_id}_${it.order_item_key}`}
@@ -2035,18 +2035,20 @@ export default function AdsIa() {
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
-                            fontSize: '0.73rem',
+                            fontSize: '0.77rem',
                             gap: '8px',
                             flexWrap: 'wrap',
+                            paddingBottom: '4px',
+                            borderBottom: '1px dashed rgba(148,163,184,0.2)',
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                             <span style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{it.timeStr}</span>
                             <span
                               style={{
-                                padding: '1px 6px',
+                                padding: '2px 7px',
                                 borderRadius: '4px',
-                                fontSize: '0.66rem',
+                                fontSize: '0.68rem',
                                 fontWeight: 800,
                                 background: it.platform === 'shopee' ? 'rgba(238,77,45,0.14)' : 'rgba(234,179,8,0.2)',
                                 color: it.platform === 'shopee' ? '#C2410C' : '#854D0E',
@@ -2054,7 +2056,7 @@ export default function AdsIa() {
                             >
                               {it.platform === 'shopee' ? '🛍️ Shopee' : '📦 ML'}
                             </span>
-                            {it.ft_id && <span className="badge" style={{ fontSize: '0.66rem' }}>{it.ft_id}</span>}
+                            {it.ft_id && <span className="badge" style={{ fontSize: '0.68rem' }}>{it.ft_id}</span>}
                             <strong>{it.ftNome}</strong>
                             {it.variation_name && (
                               <span style={{ color: '#7C3AED', fontWeight: 700 }}>({it.variation_name})</span>
@@ -2073,7 +2075,27 @@ export default function AdsIa() {
             )}
           </div>
         </div>
-      )}
+      ) : (
+        <>
+          {/* Abas de Canal (Mercado Livre / Shopee) */}
+          <div className="channels-tabs" style={{ marginBottom: 0 }}>
+            <button
+              type="button"
+              className={`channel-tab ${activeChannel === 'ml' ? 'active' : ''}`}
+              onClick={() => setActiveChannel('ml')}
+            >
+              <span className="icon">📦</span>
+              <span className="label">Mercado Livre (Promoções &amp; Product Ads)</span>
+            </button>
+            <button
+              type="button"
+              className={`channel-tab ${activeChannel === 'shopee' ? 'active' : ''}`}
+              onClick={() => setActiveChannel('shopee')}
+            >
+              <span className="icon">🛍️</span>
+              <span className="label">Shopee (Ofertas &amp; Shopee Ads)</span>
+            </button>
+          </div>
 
       {/* Painel 1: Escudo de Margem (Trava Financeira) */}
       {showRulesPanel && (
@@ -3375,6 +3397,8 @@ export default function AdsIa() {
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* Modal de Detalhes dos Concorrentes da 1ª Página */}
       {selectedCompDetail && (
