@@ -2255,9 +2255,29 @@ export default function AdsIa() {
 
           {/* Histórico Diário Detalhado em Linhas (Tabela Dia + Cada Linha um Produto Vendido) */}
           <div style={{ padding: '1rem 1.15rem', borderRadius: '12px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
-            <strong style={{ fontSize: '0.9rem', display: 'block', marginBottom: '12px' }}>
-              🗓️ Histórico de Vendas Dia a Dia (Cada linha = 1 produto vendido)
-            </strong>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+              <strong style={{ fontSize: '0.9rem' }}>
+                🗓️ Histórico de Vendas Dia a Dia (Cada linha = 1 produto vendido)
+              </strong>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#047857', display: 'inline-block' }} />
+                  &gt; 35% (Excelente)
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#34D399', display: 'inline-block' }} />
+                  25% a 35% (Saudável)
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#FBBF24', display: 'inline-block' }} />
+                  15% a 25% (Atenção)
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#EF4444', display: 'inline-block' }} />
+                  &lt; 15% (Crítica)
+                </span>
+              </div>
+            </div>
             {dailySalesIntel.dailyGroups.length === 0 ? (
               <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Nenhuma venda sincronizada ainda.</div>
             ) : (
@@ -2304,6 +2324,14 @@ export default function AdsIa() {
                       ...dg.items.map((it) => {
                         const rowRev = Number(it.quantity || 0) * Number(it.unit_price || 0);
                         const rowMargin = rowRev > 0 ? (Number(it.orderProfit || 0) / rowRev) * 100 : 0;
+                        const dotInfo =
+                          rowMargin > 35
+                            ? { bg: '#047857', ring: 'rgba(4, 120, 87, 0.25)', text: '#047857', label: 'Margem Excelente (> 35%)' }
+                            : rowMargin >= 25
+                            ? { bg: '#34D399', ring: 'rgba(52, 211, 153, 0.30)', text: '#059669', label: 'Margem Saudável (25% a 35%)' }
+                            : rowMargin >= 15
+                            ? { bg: '#FBBF24', ring: 'rgba(251, 191, 36, 0.32)', text: '#D97706', label: 'Margem de Atenção (15% a 25%)' }
+                            : { bg: '#EF4444', ring: 'rgba(239, 68, 68, 0.28)', text: '#DC2626', label: 'Margem Crítica (< 15%)' };
                         return (
                           <tr
                             key={`${it.platform}_${it.order_id}_${it.order_item_key}`}
@@ -2344,10 +2372,26 @@ export default function AdsIa() {
                             <td style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 800 }}>
                               {formatBRL(rowRev)}
                             </td>
-                            <td style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 800, color: '#059669' }}>
-                              {formatBRL(it.orderProfit)}{' '}
-                              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#047857' }}>
-                                ({rowMargin.toFixed(1)}%)
+                            <td style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 800 }}>
+                              <span
+                                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', color: dotInfo.text }}
+                                title={dotInfo.label}
+                              >
+                                <span
+                                  style={{
+                                    width: '10px',
+                                    height: '10px',
+                                    borderRadius: '50%',
+                                    background: dotInfo.bg,
+                                    boxShadow: `0 0 0 3px ${dotInfo.ring}`,
+                                    display: 'inline-block',
+                                    flexShrink: 0,
+                                  }}
+                                />
+                                <span>{formatBRL(it.orderProfit)}</span>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 700 }}>
+                                  ({rowMargin.toFixed(1)}%)
+                                </span>
                               </span>
                             </td>
                           </tr>
