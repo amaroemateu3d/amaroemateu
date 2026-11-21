@@ -93,6 +93,11 @@ export default function AdsIa() {
   const [applyingFtId, setApplyingFtId] = useState(null);
   const [customTargetPrices, setCustomTargetPrices] = useState({});
   const [minMarginAlert, setMinMarginAlert] = useState({ open: false, targetMin: 30, belowRows: [], fixingAll: false });
+  const [dailySalesOrders, setDailySalesOrders] = useState([]);
+  const [lastHourlySyncLog, setLastHourlySyncLog] = useState(null);
+  const [showDailySalesPanel, setShowDailySalesPanel] = useState(true);
+  const [salesChannelFilter, setSalesChannelFilter] = useState('all'); // 'all' | 'ml' | 'shopee'
+  const [runningOrderSyncNow, setRunningOrderSyncNow] = useState(false);
   const [shopeeAdsGroupMap, setShopeeAdsGroupMap] = useState(() => {
     try {
       const raw = localStorage.getItem('am3d_shopee_ads_group_v1');
@@ -151,19 +156,25 @@ export default function AdsIa() {
     setLoading(true);
     try {
       const headers = getHeaders();
-      const [ftsResp, defResp, overResp, salesResp, mlStored, shopeeStored] = await Promise.all([
+      const [ftsResp, defResp, overResp, salesResp, mlStored, shopeeStored, ordersResp, syncLogResp] = await Promise.all([
         fetch(`${SUPA_URL}/rest/v1/fichas_tecnicas?select=*`, { headers }),
         fetch(`${SUPA_URL}/rest/v1/ecommerce_channel_defaults?select=*`, { headers }),
         fetch(`${SUPA_URL}/rest/v1/ecommerce_overrides?select=*`, { headers }),
         fetch(`${SUPA_URL}/rest/v1/ecommerce_monthly_sales?select=*`, { headers }),
         fetchStoredMlListings(profile?.empresa_id),
         fetchStoredShopeeListings(profile?.empresa_id),
+        fetch(`${SUPA_URL}/rest/v1/marketplace_orders_synced?status=eq.paid&order=order_date.desc&limit=500`, { headers }),
+        fetch(`${SUPA_URL}/rest/v1/marketplace_sync_logs?order=created_at.desc&limit=1`, { headers }),
       ]);
 
       const ftsData = ftsResp.ok ? await ftsResp.json() : [];
       const defData = defResp.ok ? await defResp.json() : [];
       const overData = overResp.ok ? await overResp.json() : [];
       const salesData = salesResp.ok ? await salesResp.json() : [];
+      const ordersData = ordersResp?.ok ? await ordersResp.json() : [];
+      const syncLogData = syncLogResp?.ok ? await syncLogResp.json() : [];
+      setDailySalesOrders(Array.isArray(ordersData) ? ordersData : []);
+      if (Array.isArray(syncLogData) && syncLogData.length > 0) setLastHourlySyncLog(syncLogData[0]);
 
       const cleanFts = ftsData
         .map((r) => ({ ...r.data, estoque: r.estoque }))
@@ -1533,6 +1544,140 @@ export default function AdsIa() {
   const formatBRL = (v) =>
     Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+  const handleRunHourlyOrderSyncNow = async () => {
+    if (runningOrderSyncNow) return;
+    setRunningOrderSyncNow(true);
+    try {
+      const resp = await fetch(`/api/sync-sales?source=manual_ads_ia&month=${encodeURIComponent(currentMonth)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await resp.json();
+      if (!resp.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${resp.status}`);
+      await fetchData();
+    } catch (err) {
+      alert('Erro ao atualizar vendas agora: ' + (err?.message || err));
+    } finally {
+      setRunningOrderSyncNow(false);
+    }
+  };
+
+  // Resumo Diário, Gráfico de 14 dias, Top Produtos e Histórico Dia a Dia
+  const dailySalesIntel = useMemo(() => {
+    const toBrDateKey = (isoStr) => {
+      if (!isoStr) return '';
+      const d = new Date(isoStr);
+      if (Number.isNaN(d.getTime())) return '';
+      const br = new Date(d.getTime() - 3 * 3600 * 1000);
+      return br.toISOString().slice(0, 10);
+    };
+    const toBrTimeStr = (isoStr) => {
+      if (!isoStr) return '--:--';
+      const d = new Date(isoStr);
+      if (Number.isNaN(d.getTime())) return '--:--';
+      return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    };
+
+    const nowBr = new Date(Date.now() - 3 * 3600 * 1000);
+    const todayKey = nowBr.toISOString().slice(0, 10);
+    const yestBr = new Date(nowBr.getTime() - 86400 * 1000);
+    const yesterdayKey = yestBr.toISOString().slice(0, 10);
+    const sevenDaysAgoKey = new Date(nowBr.getTime() - 6 * 86400 * 1000).toISOString().slice(0, 10);
+
+    const ftNameMap = new Map();
+    savedFts.forEach((f) => ftNameMap.set(f.indiceFt, f.nomePeca));
+
+    const filtered = (dailySalesOrders || []).filter((o) => {
+      if (salesChannelFilter !== 'all' && o.platform !== salesChannelFilter) return false;
+      return true;
+    });
+
+    const calcBucket = (rows) => {
+      let units = 0, rev = 0, mlUnits = 0, shpUnits = 0;
+      rows.forEach((r) => {
+        const q = Number(r.quantity || 0);
+        const p = Number(r.unit_price || 0);
+        units += q;
+        rev += q * p;
+        if (r.platform === 'ml') mlUnits += q;
+        if (r.platform === 'shopee') shpUnits += q;
+      });
+      return { units, rev, mlUnits, shpUnits };
+    };
+
+    const withDate = filtered.map((o) => ({
+      ...o,
+      dateKey: toBrDateKey(o.order_date || o.synced_at),
+      timeStr: toBrTimeStr(o.order_date || o.synced_at),
+      ftNome: ftNameMap.get(o.ft_id) || o.title || o.ft_id || 'Item',
+    }));
+
+    const todayStats = calcBucket(withDate.filter((o) => o.dateKey === todayKey));
+    const yesterdayStats = calcBucket(withDate.filter((o) => o.dateKey === yesterdayKey));
+    const last7dStats = calcBucket(withDate.filter((o) => o.dateKey >= sevenDaysAgoKey && o.dateKey <= todayKey));
+    const monthStats = calcBucket(withDate.filter((o) => (o.month || o.dateKey.slice(0, 7)) === currentMonth));
+
+    // Últimos 14 dias para o gráfico de barras
+    const chartDays = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(nowBr.getTime() - i * 86400 * 1000);
+      const dKey = d.toISOString().slice(0, 10);
+      const label = `${dKey.slice(8, 10)}/${dKey.slice(5, 7)}`;
+      const dayRows = withDate.filter((o) => o.dateKey === dKey);
+      const b = calcBucket(dayRows);
+      chartDays.push({ dateKey: dKey, label, ...b });
+    }
+    const maxChartUnits = Math.max(1, ...chartDays.map((c) => c.units));
+
+    // Top Produtos do mês selecionado
+    const byProd = new Map();
+    withDate
+      .filter((o) => (o.month || o.dateKey.slice(0, 7)) === currentMonth)
+      .forEach((o) => {
+        const k = o.ft_id || o.title || 'SEM_FT';
+        const prev = byProd.get(k) || { ftId: o.ft_id || '—', nome: o.ftNome, units: 0, mlUnits: 0, shpUnits: 0, rev: 0 };
+        const q = Number(o.quantity || 0);
+        prev.units += q;
+        prev.rev += q * Number(o.unit_price || 0);
+        if (o.platform === 'ml') prev.mlUnits += q;
+        if (o.platform === 'shopee') prev.shpUnits += q;
+        byProd.set(k, prev);
+      });
+    const topProducts = Array.from(byProd.values()).sort((a, b) => b.units - a.units || b.rev - a.rev).slice(0, 8);
+
+    // Agrupamento Dia a Dia para o histórico detalhado
+    const byDayMap = new Map();
+    withDate.forEach((o) => {
+      if (!o.dateKey) return;
+      if (!byDayMap.has(o.dateKey)) byDayMap.set(o.dateKey, []);
+      byDayMap.get(o.dateKey).push(o);
+    });
+    const dailyGroups = Array.from(byDayMap.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .slice(0, 15)
+      .map(([dKey, items]) => {
+        const [y, m, d] = dKey.split('-');
+        const prefix = dKey === todayKey ? 'Hoje — ' : dKey === yesterdayKey ? 'Ontem — ' : '';
+        return {
+          dateKey: dKey,
+          dateLabel: `${prefix}${d}/${m}/${y}`,
+          ...calcBucket(items),
+          items,
+        };
+      });
+
+    return {
+      todayStats,
+      yesterdayStats,
+      last7dStats,
+      monthStats,
+      chartDays,
+      maxChartUnits,
+      topProducts,
+      dailyGroups,
+    };
+  }, [dailySalesOrders, salesChannelFilter, currentMonth, savedFts]);
+
   return (
     <div className="page-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
       {/* Cabeçalho */}
@@ -1561,6 +1706,23 @@ export default function AdsIa() {
               fontWeight: 700,
             }}
           />
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setShowDailySalesPanel((p) => !p)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 700,
+              background: showDailySalesPanel ? 'rgba(16, 185, 129, 0.12)' : undefined,
+              color: showDailySalesPanel ? '#047857' : undefined,
+              borderColor: showDailySalesPanel ? '#10B981' : undefined,
+            }}
+          >
+            <TrendingUp size={16} />
+            {showDailySalesPanel ? 'Ocultar Vendas Diárias' : '📈 Resumo Vendas Diárias'}
+          </button>
           <button
             type="button"
             className="btn-secondary"
@@ -1653,6 +1815,265 @@ export default function AdsIa() {
           <span className="label">Shopee (Ofertas &amp; Shopee Ads)</span>
         </button>
       </div>
+
+      {/* Painel de Resumo & Histórico de Vendas Diárias (Atualização 1h/1h) */}
+      {showDailySalesPanel && (
+        <div
+          className="card"
+          style={{
+            padding: '1.1rem 1.25rem',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.04), rgba(37, 99, 235, 0.03))',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <strong style={{ fontSize: '0.96rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                📈 Resumo &amp; Histórico de Vendas Diárias
+              </strong>
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  borderRadius: '999px',
+                  background: 'rgba(16, 185, 129, 0.14)',
+                  color: '#047857',
+                }}
+              >
+                🟢 Sinc. 1h/1h ativa
+                {lastHourlySyncLog?.created_at
+                  ? ` • Última: ${new Date(lastHourlySyncLog.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+                  : ''}
+              </span>
+              <button
+                type="button"
+                onClick={handleRunHourlyOrderSyncNow}
+                disabled={runningOrderSyncNow}
+                style={{
+                  padding: '2px 9px',
+                  borderRadius: '999px',
+                  border: '1px solid rgba(37, 99, 235, 0.35)',
+                  background: 'var(--bg-surface)',
+                  color: '#2563EB',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  cursor: runningOrderSyncNow ? 'wait' : 'pointer',
+                }}
+              >
+                {runningOrderSyncNow ? '⏳ Sincronizando...' : '🔄 Atualizar Vendas Agora'}
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {[
+                { id: 'all', label: '🌐 Todos (ML + Shopee)' },
+                { id: 'ml', label: '📦 Só Mercado Livre' },
+                { id: 'shopee', label: '🛍️ Só Shopee' },
+              ].map((ch) => (
+                <button
+                  key={ch.id}
+                  type="button"
+                  onClick={() => setSalesChannelFilter(ch.id)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '999px',
+                    border: '1px solid var(--border-color)',
+                    background: salesChannelFilter === ch.id ? 'var(--accent-primary)' : 'var(--bg-surface)',
+                    color: salesChannelFilter === ch.id ? '#fff' : 'var(--text-primary)',
+                    fontSize: '0.73rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {ch.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 4 KPI Cards de Vendas */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+            {[
+              { title: 'VENDAS HOJE', stats: dailySalesIntel.todayStats, color: '#059669' },
+              { title: 'VENDAS ONTEM', stats: dailySalesIntel.yesterdayStats, color: '#2563EB' },
+              { title: 'ÚLTIMOS 7 DIAS', stats: dailySalesIntel.last7dStats, color: '#7C3AED' },
+              { title: `MÊS (${currentMonth})`, stats: dailySalesIntel.monthStats, color: '#EA580C' },
+            ].map((card) => (
+              <div
+                key={card.title}
+                style={{
+                  padding: '0.75rem 0.9rem',
+                  borderRadius: '10px',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-color)',
+                }}
+              >
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: card.color }}>{card.title}</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 800, marginTop: '3px' }}>
+                  {card.stats.units} un • {formatBRL(card.stats.rev)}
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  📦 ML: <strong>{card.stats.mlUnits}</strong> un • 🛍️ Shopee: <strong>{card.stats.shpUnits}</strong> un
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Gráfico Diário (14 dias) + Top Produtos Vendidos */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))', gap: '14px', marginBottom: '14px' }}>
+            {/* Gráfico de Barras Diárias */}
+            <div style={{ padding: '0.85rem', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <strong style={{ fontSize: '0.8rem' }}>📊 Evolução Diária (Últimos 14 Dias)</strong>
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                  <span style={{ color: '#D97706', fontWeight: 700 }}>■ ML</span> •{' '}
+                  <span style={{ color: '#EE4D2D', fontWeight: 700 }}>■ Shopee</span>
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '6px', height: '120px', paddingTop: '14px' }}>
+                {dailySalesIntel.chartDays.map((d) => {
+                  const totalH = Math.round((d.units / dailySalesIntel.maxChartUnits) * 84);
+                  const mlH = d.units > 0 ? Math.round((d.mlUnits / d.units) * totalH) : 0;
+                  const shpH = Math.max(0, totalH - mlH);
+                  return (
+                    <div
+                      key={d.dateKey}
+                      style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}
+                      title={`${d.label}: ${d.units} un (${formatBRL(d.rev)}) — ML: ${d.mlUnits} | Shopee: ${d.shpUnits}`}
+                    >
+                      <span style={{ fontSize: '0.64rem', fontWeight: 800, color: d.units > 0 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                        {d.units > 0 ? d.units : ''}
+                      </span>
+                      <div style={{ width: '100%', maxWidth: '24px', height: '84px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', borderRadius: '4px', overflow: 'hidden', background: 'rgba(148,163,184,0.12)' }}>
+                        {shpH > 0 && <div style={{ height: `${shpH}px`, background: '#EE4D2D' }} />}
+                        {mlH > 0 && <div style={{ height: `${mlH}px`, background: '#EAB308' }} />}
+                      </div>
+                      <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>{d.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Top Produtos Mais Vendidos no Mês */}
+            <div style={{ padding: '0.85rem', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
+              <strong style={{ fontSize: '0.8rem', display: 'block', marginBottom: '8px' }}>
+                🏆 Top Produtos Vendidos ({currentMonth})
+              </strong>
+              {dailySalesIntel.topProducts.length === 0 ? (
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', padding: '1rem 0' }}>
+                  Nenhuma venda registrada neste filtro/mês.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '130px', overflowY: 'auto' }}>
+                  {dailySalesIntel.topProducts.map((tp, idx) => (
+                    <div
+                      key={tp.ftId + idx}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: '0.75rem',
+                        padding: '3px 6px',
+                        borderRadius: '6px',
+                        background: 'var(--bg-secondary)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                        <span className="badge" style={{ fontSize: '0.68rem' }}>{tp.ftId}</span>
+                        <span style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>
+                          {tp.nome}
+                        </span>
+                      </div>
+                      <div style={{ whiteSpace: 'nowrap', fontWeight: 700 }}>
+                        {tp.units} un <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>({tp.mlUnits} ML / {tp.shpUnits} SHP)</span> •{' '}
+                        <span style={{ color: '#059669' }}>{formatBRL(tp.rev)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Histórico Diário Detalhado (Dia a Dia) */}
+          <div style={{ padding: '0.85rem', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
+            <strong style={{ fontSize: '0.8rem', display: 'block', marginBottom: '8px' }}>
+              🗓️ Histórico de Vendas Dia a Dia (Últimos 15 dias com vendas)
+            </strong>
+            {dailySalesIntel.dailyGroups.length === 0 ? (
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Nenhuma venda sincronizada ainda.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '230px', overflowY: 'auto' }}>
+                {dailySalesIntel.dailyGroups.map((dg) => (
+                  <div key={dg.dateKey} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        padding: '5px 10px',
+                        background: 'var(--bg-secondary)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: '0.76rem',
+                        fontWeight: 800,
+                      }}
+                    >
+                      <span>📅 {dg.dateLabel}</span>
+                      <span>
+                        {dg.units} un • <span style={{ color: '#059669' }}>{formatBRL(dg.rev)}</span>{' '}
+                        <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
+                          (📦 {dg.mlUnits} ML | 🛍️ {dg.shpUnits} Shopee)
+                        </span>
+                      </span>
+                    </div>
+                    <div style={{ padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {dg.items.map((it) => (
+                        <div
+                          key={`${it.platform}_${it.order_id}_${it.order_item_key}`}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            fontSize: '0.73rem',
+                            gap: '8px',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{it.timeStr}</span>
+                            <span
+                              style={{
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                background: it.platform === 'shopee' ? 'rgba(238,77,45,0.14)' : 'rgba(234,179,8,0.2)',
+                                color: it.platform === 'shopee' ? '#C2410C' : '#854D0E',
+                              }}
+                            >
+                              {it.platform === 'shopee' ? '🛍️ Shopee' : '📦 ML'}
+                            </span>
+                            {it.ft_id && <span className="badge" style={{ fontSize: '0.66rem' }}>{it.ft_id}</span>}
+                            <strong>{it.ftNome}</strong>
+                            {it.variation_name && (
+                              <span style={{ color: '#7C3AED', fontWeight: 700 }}>({it.variation_name})</span>
+                            )}
+                          </div>
+                          <div style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            {it.quantity}x {formatBRL(it.unit_price)} ={' '}
+                            <span style={{ color: '#059669' }}>{formatBRL(Number(it.quantity || 0) * Number(it.unit_price || 0))}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Painel 1: Escudo de Margem (Trava Financeira) */}
       {showRulesPanel && (
