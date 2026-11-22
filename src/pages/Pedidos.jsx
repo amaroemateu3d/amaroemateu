@@ -441,49 +441,79 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [editingCft, setEditingCft] = useState(null);
-  const [itens, setItens] = useState(() => {
-    if (!Array.isArray(fts)) return [];
-    
-    const finalItems = [];
 
-    // 1. Inserir todos os itens salvos do pedido (mantendo duplicatas intactas e atribuindo um _uid)
-    if (initialData?.itens) {
+  // Lista apenas com os itens EFETIVAMENTE adicionados ao pedido (não lista todas as FTs)
+  const [itens, setItens] = useState(() => {
+    const finalItems = [];
+    if (initialData?.itens && Array.isArray(initialData.itens)) {
       initialData.itens.forEach(savedItem => {
-        const originalFt = fts.find(f => f.indiceFt === savedItem.indiceFt);
+        if (parseN(savedItem.qtd) <= 0) return;
+        const originalFt = Array.isArray(fts) ? fts.find(f => f.indiceFt === savedItem.indiceFt) : null;
         finalItems.push({
           _uid: Math.random().toString(36).substring(2, 9),
           indiceFt: savedItem.indiceFt,
           nomePeca: savedItem.nomePeca || 'Item Excluído',
-          custoBase: savedItem.custoBase || 0,
+          custoBase: savedItem.custoBase || (originalFt ? originalFt._custoFinal || 0 : 0),
           precoUnit: savedItem.precoUnit || 0,
-          qtd: savedItem.qtd || 0,
-          isOrcamento: savedItem.isOrcamento || true,
+          qtd: savedItem.qtd || 1,
+          isOrcamento: Boolean(savedItem.isOrcamento),
           _rawOrcData: savedItem._rawOrcData || (originalFt ? originalFt._rawOrcData : null),
           _isSaved: true
         });
       });
     }
+    return finalItems;
+  });
 
-    // 2. Inserir as FTs que AINDA NÃO ESTÃO no pedido (para que o usuário possa adicioná-las)
-    fts.forEach(ft => {
-      const alreadyHasThisFt = finalItems.some(it => it.indiceFt === ft.indiceFt);
-      if (!alreadyHasThisFt) {
-        let defaultPreco = ft.isOrcamento ? (ft.precoSugerido ? ft.precoSugerido.toFixed(2) : "0.00") : ((ft._custoFinal || 0) * 3).toFixed(2);
-        finalItems.push({
+  // Resultados do campo de busca para adicionar FTs / Customizados ao pedido
+  const searchResults = useMemo(() => {
+    const term = (searchTerm || '').trim().toLowerCase();
+    if (!term || !Array.isArray(fts)) return [];
+    return fts
+      .filter(ft =>
+        (ft.nomePeca || '').toLowerCase().includes(term) ||
+        String(ft.indiceFt || '').toLowerCase().includes(term)
+      )
+      .slice(0, 20);
+  }, [fts, searchTerm]);
+
+  const handleAddFtFromSearch = (ft) => {
+    const existingIdx = itens.findIndex(it => it.indiceFt === ft.indiceFt);
+    if (existingIdx >= 0) {
+      setItens(prev => {
+        const next = [...prev];
+        next[existingIdx] = {
+          ...next[existingIdx],
+          qtd: parseN(next[existingIdx].qtd) + 1
+        };
+        return next;
+      });
+    } else {
+      const m = parseN(markup) > 0 ? parseN(markup) : 3;
+      const defaultPreco = ft.isOrcamento
+        ? (ft.precoSugerido ? Number(ft.precoSugerido).toFixed(2) : '0.00')
+        : ((parseN(ft._custoFinal) || 0) * m).toFixed(2);
+      setItens(prev => [
+        ...prev,
+        {
           _uid: Math.random().toString(36).substring(2, 9),
           indiceFt: ft.indiceFt,
           nomePeca: ft.nomePeca || 'Sem Nome',
           custoBase: ft._custoFinal || 0,
           precoUnit: defaultPreco,
-          qtd: 0,
-          isOrcamento: ft.isOrcamento,
-          _rawOrcData: ft._rawOrcData
-        });
-      }
-    });
+          qtd: 1,
+          isOrcamento: Boolean(ft.isOrcamento),
+          _rawOrcData: ft._rawOrcData || null
+        }
+      ]);
+    }
+    setSearchTerm('');
+    setIsSearchFocused(false);
+  };
 
-    return finalItems;
-  });
+  const handleRemoveOrderItem = (uid) => {
+    setItens(prev => prev.filter(row => row._uid !== uid));
+  };
 
   const handleDeleteCft = async (it) => {
     if (!window.confirm(`Deseja realmente excluir o customizado "${it.nomePeca}" permanentemente do sistema?`)) return;
@@ -542,16 +572,16 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
           _rawOrcData: customInputs
         } : it));
       } else {
-        setItens(prev => [{
+        setItens(prev => [...prev, {
           _uid: Math.random().toString(36).substring(2, 9),
           indiceFt: customInputs.indiceFt,
           nomePeca: customInputs.nomePeca,
           custoBase: results.custoFisicoUnit,
           precoUnit: precoFinal.toFixed(2),
-          qtd: 1, // Add 1 automatically
+          qtd: 1,
           isOrcamento: true,
           _rawOrcData: customInputs
-        }, ...prev]);
+        }]);
       }
       
       setShowCustomModal(false);
@@ -561,16 +591,26 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
     }
   };
 
-
-
   const applyMarkup = () => {
     const m = parseN(markup);
     if (m <= 0) return;
-    setItens(prev => prev.map(it => ({ ...it, precoUnit: (parseN(it.custoBase) * m).toFixed(2) })));
+    setItens(prev => prev.map(it => ({
+      ...it,
+      precoUnit: (parseN(it.custoBase) * m).toFixed(2),
+      margemRaw: m.toFixed(2)
+    })));
   };
 
   const handleClienteChange = (e) => setCliente(p => ({ ...p, [e.target.name]: e.target.value }));
 
+  const handleDescontoPercentChange = (rawVal) => {
+    const num = parseN(rawVal);
+    setCliente(p => ({
+      ...p,
+      temDesconto: num > 0,
+      descontoPercent: rawVal
+    }));
+  };
 
   const updateItem = (idx, field, value) =>
     setItens(prev => {
@@ -580,29 +620,39 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
     });
 
   const itensSelected = itens.filter(it => parseN(it.qtd) > 0);
+  const totalQtdPecas = itensSelected.reduce((s, it) => s + parseN(it.qtd), 0);
 
   const totalBruto = itensSelected.reduce((s, it) => s + (parseN(it.precoUnit) * parseN(it.qtd)), 0);
-  const temDesconto = Boolean(cliente.temDesconto);
-  const percDesconto = temDesconto ? Math.min(100, Math.max(0, parseN(cliente.descontoPercent))) : 0;
-  const valorDesconto = temDesconto && percDesconto > 0 ? (totalBruto * percDesconto) / 100 : 0;
+  const percDesconto = Math.min(100, Math.max(0, parseN(cliente.descontoPercent)));
+  const temDesconto = percDesconto > 0;
+  const fatorDesconto = 1 - percDesconto / 100;
+  const valorDesconto = temDesconto ? (totalBruto * percDesconto) / 100 : 0;
   const totalVenda = Math.max(0, totalBruto - valorDesconto);
   const totalCusto = itensSelected.reduce((s, it) => s + (parseN(it.custoBase) * parseN(it.qtd)), 0);
   const totalLucro = totalVenda - totalCusto;
   const margemPerc = totalVenda > 0 ? (totalLucro / totalVenda) * 100 : 0;
 
   const totalTime = itensSelected.reduce((acc, it) => {
-    const baseFt = fts.find(f => f.indiceFt === it.indiceFt);
-    if (!baseFt) return acc;
-    return acc + (getUnitProductionTime(baseFt) * parseN(it.qtd));
+    const baseFt = Array.isArray(fts) ? fts.find(f => f.indiceFt === it.indiceFt) : null;
+    const orcData = it._rawOrcData || (baseFt ? baseFt._rawOrcData : null);
+    const timeSource = orcData || baseFt;
+    if (!timeSource) return acc;
+    return acc + (getUnitProductionTime(timeSource) * parseN(it.qtd));
   }, 0);
 
   const handleSave = () => {
     if (!cliente.nome.trim()) { alert('Informe o nome do cliente.'); return; }
     if (itensSelected.length === 0) { alert('Adicione pelo menos 1 item com quantidade > 0.'); return; }
-    onSave({ id: initialData?.id, cliente, itens: itensSelected });
+    onSave({
+      id: initialData?.id,
+      cliente: {
+        ...cliente,
+        temDesconto: percDesconto > 0,
+        descontoPercent: percDesconto > 0 ? String(cliente.descontoPercent) : ''
+      },
+      itens: itensSelected
+    });
   };
-
-
 
   return (
     <div className="modal-fullscreen">
@@ -611,8 +661,8 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
         <div className="modal-topbar-left">
           <button className="btn-outline btn-sm" onClick={onCancel}>✕ Fechar</button>
           <div>
-            <h2 className="modal-title">Novo Documento</h2>
-            <p className="modal-sub">Preencha os dados do cliente e configure os itens</p>
+            <h2 className="modal-title">{initialData?.id ? 'Editar Documento' : 'Novo Documento'}</h2>
+            <p className="modal-sub">Preencha os dados do cliente e busque os produtos para adicionar ao pedido</p>
           </div>
         </div>
         <div className="modal-topbar-right">
@@ -622,14 +672,14 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
 
       {/* ── Corpo com scroll ── */}
       <div className="modal-scroll-body">
-        <div className="modal-content-grid">
+        <div className="modal-content-grid" style={{ maxWidth: '100%' }}>
 
-          {/* ── Seção 1: Dados do Cliente ── */}
-          <section className="modal-section card">
+          {/* ── Seção 1: Dados do Cliente (Largura Total) ── */}
+          <section className="modal-section card span-full">
             <h3 className="section-heading">
               <span className="section-num">1</span> Dados do Cliente
             </h3>
-            <div className="form-grid-2">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem 1.1rem' }}>
               <div className="form-group">
                 <label htmlFor="nome">Nome / Razão Social *</label>
                 <input id="nome" name="nome" value={cliente.nome} onChange={handleClienteChange} placeholder="Nome completo ou empresa" />
@@ -646,273 +696,470 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                 <label htmlFor="endereco">Endereço de Entrega</label>
                 <input id="endereco" name="endereco" value={cliente.endereco} onChange={handleClienteChange} placeholder="Rua, nº, bairro, cidade" />
               </div>
-              <div className="form-group span-2">
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label htmlFor="obs">Observações</label>
                 <textarea id="obs" name="obs" value={cliente.obs} onChange={handleClienteChange} rows={2} placeholder="Prazo, condições de pagamento, etc." />
               </div>
             </div>
           </section>
 
-          {/* ── Seção 2: Markup Global & Desconto ── */}
-          <section className="modal-section card">
-            <h3 className="section-heading">
-              <span className="section-num">2</span> Markup de Vendas
-            </h3>
-            <div className="markup-bar">
-              <div className="form-group" style={{ flex: 1 }}>
-                <label htmlFor="markup">Multiplicador global (ex: 3 = custo × 3)</label>
-                <input
-                  id="markup"
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  value={markup}
-                  onChange={e => setMarkup(e.target.value)}
-                  placeholder="3"
-                />
-              </div>
-              <button className="btn-apply" onClick={applyMarkup}>
-                ⚡ Aplicar a todos
-              </button>
-            </div>
-            <p className="markup-hint">O preço final pode ser sobrescrito individualmente na tabela abaixo.</p>
+          {/* ── Seção 2: Tabela de Itens Adicionados ── */}
+          <section className="modal-section card span-full">
+            <div
+              className="section-header-flex"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1rem',
+                flexWrap: 'wrap',
+                gap: '1rem'
+              }}
+            >
+              <h3 className="section-heading" style={{ marginBottom: 0, borderBottom: 'none', paddingBottom: 0 }}>
+                <span className="section-num">2</span> Itens do Pedido ({itens.length})
+              </h3>
 
-            <div style={{ marginTop: '1.1rem', paddingTop: '0.9rem', borderTop: '1px solid var(--border-color)' }}>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                <input
-                  type="checkbox"
-                  checked={Boolean(cliente.temDesconto)}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setCliente(p => ({
-                      ...p,
-                      temDesconto: checked,
-                      descontoPercent: checked ? (p.descontoPercent || '') : ''
-                    }));
-                  }}
-                  style={{ width: '17px', height: '17px', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
-                />
-                <span>Desconto</span>
-              </label>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+                {/* Busca de Produtos com Dropdown para adicionar somente o escolhido */}
+                <div className="search-box-wrap" style={{ position: 'relative', width: '420px', maxWidth: '100%' }}>
+                  <input
+                    type="text"
+                    placeholder="🔍 Buscar FT ou produto por nome ou ID para adicionar..."
+                    value={searchTerm}
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setIsSearchFocused(false), 180)}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setIsSearchFocused(true);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && searchResults.length > 0) {
+                        e.preventDefault();
+                        handleAddFtFromSearch(searchResults[0]);
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.62rem 1rem',
+                      borderRadius: '8px',
+                      border: '1.5px solid var(--accent-primary)',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
+                      fontWeight: 600
+                    }}
+                  />
 
-              {cliente.temDesconto && (
-                <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                  <div className="form-group" style={{ margin: 0, width: '160px' }}>
-                    <label htmlFor="descontoPercent">Porcentagem (%)</label>
-                    <input
-                      id="descontoPercent"
-                      name="descontoPercent"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      value={cliente.descontoPercent || ''}
-                      onChange={handleClienteChange}
-                      placeholder="Ex: 10"
-                      autoFocus
-                    />
-                  </div>
-                  {percDesconto > 0 && totalBruto > 0 && (
-                    <div style={{ fontSize: '0.84rem', color: '#DC2626', fontWeight: 700, marginTop: '18px' }}>
-                      - R$ {fmt(valorDesconto)} de desconto
+                  {isSearchFocused && searchTerm.trim() !== '' && (
+                    <div className="search-results-dropdown">
+                      {searchResults.length === 0 ? (
+                        <div style={{ padding: '0.85rem 1rem', color: 'var(--text-secondary)', fontSize: '0.84rem' }}>
+                          Nenhum produto encontrado para &ldquo;{searchTerm}&rdquo;.
+                        </div>
+                      ) : (
+                        searchResults.map((ft) => {
+                          const jaNoPedido = itens.find(i => i.indiceFt === ft.indiceFt);
+                          const m = parseN(markup) > 0 ? parseN(markup) : 3;
+                          const sugPreco = ft.isOrcamento
+                            ? (ft.precoSugerido || 0)
+                            : (parseN(ft._custoFinal) || 0) * m;
+                          return (
+                            <div
+                              key={ft.indiceFt}
+                              className="search-result-item"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleAddFtFromSearch(ft);
+                              }}
+                            >
+                              <span
+                                className="sr-id"
+                                style={ft.isOrcamento ? { background: '#FEF3C7', color: '#D97706' } : {}}
+                              >
+                                {ft.indiceFt}
+                              </span>
+                              <div className="sr-name">
+                                <div style={{ fontWeight: 700 }}>{ft.nomePeca}</div>
+                                <div style={{ fontSize: '0.73rem', color: 'var(--text-secondary)' }}>
+                                  Custo: R$ {fmt(ft._custoFinal || 0)} • Sugerido: R$ {fmt(sugPreco)}
+                                  {jaNoPedido ? ` • Já no pedido (${jaNoPedido.qtd} un.)` : ''}
+                                </div>
+                              </div>
+                              <button type="button" className="btn-add-item">
+                                {jaNoPedido ? '+1 un.' : '+ Adicionar'}
+                              </button>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          </section>
 
-          {/* ── Seção 3: Tabela de Itens ── */}
-          <section className="modal-section card span-full">
-            <div className="section-header-flex" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem'}}>
-              <h3 className="section-heading" style={{marginBottom: 0}}>
-                <span className="section-num">3</span> Itens do Pedido
-                {fts.length === 0 && <span className="no-fts-warn"> — Nenhum item cadastrado ainda.</span>}
-              </h3>
-              
-              <div style={{display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap'}}>
-                <button className="btn-secondary btn-sm" onClick={() => setShowCustomModal(true)} style={{ padding: '0.6rem 1rem', height: '100%', borderRadius: '8px' }}>
+                <button
+                  type="button"
+                  className="btn-primary btn-sm"
+                  onClick={() => {
+                    setEditingCft(null);
+                    setShowCustomModal(true);
+                  }}
+                  style={{
+                    padding: '0.62rem 1.05rem',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #7C3AED, #2563EB)',
+                    fontWeight: 700
+                  }}
+                >
                   + Novo Produto Customizado
                 </button>
-                <div className="search-box-wrap" style={{width: '300px'}}>
-                  <input 
-                    type="text" 
-                    placeholder="🔍 Buscar produto por nome ou ID..." 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    style={{width: '100%', padding: '0.6rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)'}}
-                  />
-                </div>
               </div>
             </div>
 
-            {fts.length > 0 && (
-              <div className="items-table-wrap">
+            {itens.length === 0 ? (
+              <div
+                style={{
+                  padding: '2.5rem 1.5rem',
+                  textAlign: 'center',
+                  background: 'var(--bg-primary)',
+                  border: '1.5px dashed var(--border-color)',
+                  borderRadius: '12px',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                <div style={{ fontSize: '2rem', marginBottom: '0.4rem' }}>🛒</div>
+                <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>
+                  Nenhum item adicionado a este pedido ainda
+                </strong>
+                <span style={{ fontSize: '0.85rem' }}>
+                  Use o campo <strong>&ldquo;🔍 Buscar FT ou produto...&rdquo;</strong> acima ou clique em <strong>&ldquo;+ Novo Produto Customizado&rdquo;</strong> para incluir itens na lista.
+                </span>
+              </div>
+            ) : (
+              <div className="items-table-wrap" style={{ maxHeight: '56vh', overflowY: 'auto' }}>
                 <table className="items-table">
-                  <thead>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 4 }}>
                     <tr>
-                      <th>ID</th>
-                      <th>Nome</th>
-                      <th>Custo Prod.</th>
-                      <th>Tempo Unit.</th>
-                      <th style={{ width: 90, textAlign: 'center' }}>Margem (x)</th>
-                      <th style={{ width: 120 }}>Preço Unit. (R$)</th>
-                      <th style={{ width: 80, textAlign: 'center' }}>Qtd</th>
-                      <th style={{ textAlign: 'right' }}>Subtotal</th>
-                      <th style={{ textAlign: 'right', color: 'var(--success)' }}>Lucro Unit.</th>
-                      <th style={{ textAlign: 'right', color: 'var(--success)' }}>Lucro Total</th>
+                      <th style={{ width: '75px' }}>ID</th>
+                      <th>Nome do Produto</th>
+                      <th style={{ width: '105px', textAlign: 'right' }}>Custo Prod.</th>
+                      <th style={{ width: '95px', textAlign: 'center' }}>Tempo Unit.</th>
+                      <th style={{ width: '95px', textAlign: 'center' }}>Margem (x)</th>
+                      <th style={{ width: '120px', textAlign: 'right' }}>Preço Unit. (R$)</th>
+                      <th style={{ width: '80px', textAlign: 'center' }}>Qtd</th>
+                      <th style={{ width: '120px', textAlign: 'right' }}>Subtotal</th>
+                      <th style={{ width: '125px', textAlign: 'right', color: '#7C3AED' }}>
+                        Unit. c/ Desc.
+                      </th>
+                      <th style={{ width: '130px', textAlign: 'right', color: '#7C3AED' }}>
+                        Subtotal c/ Desc.
+                      </th>
+                      <th style={{ width: '110px', textAlign: 'right', color: '#059669' }}>Lucro Unit.</th>
+                      <th style={{ width: '125px', textAlign: 'right', color: '#059669' }}>Lucro Total</th>
+                      <th style={{ width: '50px', textAlign: 'center' }}>Ação</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {Array.isArray(itens) && itens
-                      .filter(it => 
-                        (it.nomePeca || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
-                        String(it.indiceFt || '').toLowerCase().includes((searchTerm || '').toLowerCase())
-                      )
-                      .sort((a, b) => {
-                        const qA = parseN(a.qtd) > 0 ? 1 : 0;
-                        const qB = parseN(b.qtd) > 0 ? 1 : 0;
-                        if (qA !== qB) return qB - qA;
-                        return String(a.indiceFt || '').localeCompare(String(b.indiceFt || ''), undefined, { numeric: true });
-                      })
-                      .map((it) => {
-                        const originalIdx = itens.findIndex(original => original._uid === it._uid);
-                        const qty = parseN(it.qtd);
-                        const preco = parseN(it.precoUnit);
-                        const sub = preco * qty;
-                        const custoBase = parseN(it.custoBase);
-                        const lucroUnit = preco - custoBase;
-                        const lucroTotal = lucroUnit * qty;
-                        const active = qty > 0;
-                        
-                        // Busca a FT original para pegar o tempo
-                        const ftOriginal = Array.isArray(fts) ? fts.find(f => f.indiceFt === it.indiceFt) : null;
-                        const orcData = it._rawOrcData || (ftOriginal ? ftOriginal._rawOrcData : null);
-                        const timeSource = orcData || ftOriginal;
-                        const tempoUnit = timeSource ? getUnitProductionTime(timeSource) : 0;
+                    {itens.map((it, originalIdx) => {
+                      const qty = parseN(it.qtd);
+                      const preco = parseN(it.precoUnit);
+                      const sub = preco * qty;
+                      const precoComDesc = preco * fatorDesconto;
+                      const subComDesc = sub * fatorDesconto;
+                      const custoBase = parseN(it.custoBase);
+                      const lucroUnit = precoComDesc - custoBase;
+                      const lucroTotal = lucroUnit * qty;
 
-                        return (
-                          <tr key={it._uid || Math.random()} className={active ? 'row-active' : ''}>
-                            <td>
-                              <span className="badge-sm" style={it.isOrcamento ? { background: '#FEF3C7', color: '#D97706' } : {}}>
-                                {it.indiceFt}
-                              </span>
-                            </td>
-                              <td>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  {it.nomePeca}
-                                  {it.indiceFt?.startsWith('CFT-') && it._rawOrcData && (
-                                    <>
-                                      <button 
-                                        className="btn-icon" 
-                                        title="Editar Custos do Produto Customizado"
-                                        onClick={() => {
-                                          setEditingCft(it);
-                                          setShowCustomModal(true);
-                                        }}
-                                        style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--accent-primary)' }}
-                                      >
-                                        <Edit2 size={14} />
-                                      </button>
-                                      <button 
-                                        className="btn-icon" 
-                                        title="Excluir Produto Customizado"
-                                        onClick={() => handleDeleteCft(it)}
-                                        style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#EF4444' }}
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </td>
-                            <td className="cost-cell">R$ {fmt(custoBase)}</td>
-                            <td className="cost-cell">{formatTime(tempoUnit)}</td>
-                              <td>
-                                <input
-                                  type="number"
-                                  className="cell-input"
-                                  style={{ width: "60px", textAlign: "center" }}
-                                  value={it.margemRaw ?? (custoBase > 0 ? (preco / custoBase).toFixed(2) : "0.00")}
-                                  onChange={e => {
-                                    const raw = e.target.value;
-                                    const m = parseFloat(raw) || 0;
-                                    setItens(prev => {
-                                      const next = [...prev];
-                                      next[originalIdx] = { ...next[originalIdx], precoUnit: (custoBase * m).toFixed(2), margemRaw: raw };
-                                      return next;
-                                    });
-                                  }}
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  type="number"
-                                  className="cell-input"
-                                  value={it.precoUnit}
-                                  onChange={e => {
-                                    setItens(prev => {
-                                      const next = [...prev];
-                                      next[originalIdx] = { ...next[originalIdx], precoUnit: e.target.value, margemRaw: undefined };
-                                      return next;
-                                    });
-                                  }}
-                                />
-                              </td>
-                            <td>{active ? <input type='number' className='cell-input cell-qty' value={it.qtd} onChange={e => updateItem(originalIdx, 'qtd', e.target.value)} title='Digite 0 para remover' /> : <button className='btn-primary' style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '4px', background: 'var(--accent-primary)', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => updateItem(originalIdx, 'qtd', 1)}>+ Adicionar</button>}</td>
-                            <td style={{ textAlign: 'right' }} className={active ? 'subtotal-active' : ''}>
-                              {active ? `R$ ${fmt(sub)}` : '—'}
-                            </td>
-                            <td style={{ textAlign: 'right' }} className={lucroUnit >= 0 ? 'lucro-pos' : 'lucro-neg'}>
-                              R$ {fmt(lucroUnit)}
-                            </td>
-                            <td style={{ textAlign: 'right' }} className={active ? (lucroTotal >= 0 ? 'lucro-pos lucro-bold' : 'lucro-neg lucro-bold') : ''}>
-                              {active ? `R$ ${fmt(lucroTotal)}` : '—'}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      const ftOriginal = Array.isArray(fts) ? fts.find(f => f.indiceFt === it.indiceFt) : null;
+                      const orcData = it._rawOrcData || (ftOriginal ? ftOriginal._rawOrcData : null);
+                      const timeSource = orcData || ftOriginal;
+                      const tempoUnit = timeSource ? getUnitProductionTime(timeSource) : 0;
 
+                      return (
+                        <tr key={it._uid} className="row-active">
+                          <td>
+                            <span className="badge-sm" style={it.isOrcamento ? { background: '#FEF3C7', color: '#D97706' } : {}}>
+                              {it.indiceFt}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700 }}>
+                              <span>{it.nomePeca}</span>
+                              {it.indiceFt?.startsWith('CFT-') && it._rawOrcData && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn-icon"
+                                    title="Editar Custos do Produto Customizado"
+                                    onClick={() => {
+                                      setEditingCft(it);
+                                      setShowCustomModal(true);
+                                    }}
+                                    style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--accent-primary)' }}
+                                  >
+                                    <Edit2 size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-icon"
+                                    title="Excluir Produto Customizado do Sistema"
+                                    onClick={() => handleDeleteCft(it)}
+                                    style={{ padding: '4px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#EF4444' }}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                          <td className="cost-cell" style={{ textAlign: 'right' }}>R$ {fmt(custoBase)}</td>
+                          <td className="cost-cell" style={{ textAlign: 'center' }}>{formatTime(tempoUnit)}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <input
+                              type="number"
+                              step="0.1"
+                              className="cell-input"
+                              style={{ width: '68px', textAlign: 'center' }}
+                              value={it.margemRaw ?? (custoBase > 0 ? (preco / custoBase).toFixed(2) : '0.00')}
+                              onChange={e => {
+                                const raw = e.target.value;
+                                const m = parseFloat(raw) || 0;
+                                setItens(prev => {
+                                  const next = [...prev];
+                                  next[originalIdx] = { ...next[originalIdx], precoUnit: (custoBase * m).toFixed(2), margemRaw: raw };
+                                  return next;
+                                });
+                              }}
+                            />
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="cell-input"
+                              style={{ width: '96px', textAlign: 'right' }}
+                              value={it.precoUnit}
+                              onChange={e => {
+                                setItens(prev => {
+                                  const next = [...prev];
+                                  next[originalIdx] = { ...next[originalIdx], precoUnit: e.target.value, margemRaw: undefined };
+                                  return next;
+                                });
+                              }}
+                            />
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <input
+                              type="number"
+                              min="1"
+                              className="cell-input cell-qty"
+                              value={it.qtd}
+                              onChange={e => {
+                                const v = e.target.value;
+                                if (v !== '' && parseN(v) <= 0) {
+                                  handleRemoveOrderItem(it._uid);
+                                } else {
+                                  updateItem(originalIdx, 'qtd', v);
+                                }
+                              }}
+                            />
+                          </td>
+                          <td style={{ textAlign: 'right', color: percDesconto > 0 ? 'var(--text-secondary)' : 'var(--text-primary)', textDecoration: percDesconto > 0 ? 'line-through' : 'none' }}>
+                            R$ {fmt(sub)}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 700, color: '#7C3AED', background: percDesconto > 0 ? 'rgba(139, 92, 246, 0.06)' : 'transparent' }}>
+                            R$ {fmt(precoComDesc)}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 800, color: '#6D28D9', background: percDesconto > 0 ? 'rgba(139, 92, 246, 0.09)' : 'transparent' }}>
+                            R$ {fmt(subComDesc)}
+                          </td>
+                          <td style={{ textAlign: 'right' }} className={lucroUnit >= 0 ? 'lucro-pos' : 'lucro-neg'}>
+                            R$ {fmt(lucroUnit)}
+                          </td>
+                          <td style={{ textAlign: 'right' }} className={lucroTotal >= 0 ? 'lucro-pos lucro-bold' : 'lucro-neg lucro-bold'}>
+                            R$ {fmt(lucroTotal)}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveOrderItem(it._uid)}
+                              title="Remover item do pedido"
+                              style={{
+                                padding: '4px 7px',
+                                borderRadius: '6px',
+                                border: '1px solid #FECACA',
+                                background: '#FEF2F2',
+                                color: '#DC2626',
+                                cursor: 'pointer',
+                                fontWeight: 700
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
+
+                  {/* ── Linha Fixa Alinhada às Colunas da Tabela (Totais, Markup Global e Desconto %) ── */}
+                  <tfoot
+                    style={{
+                      position: 'sticky',
+                      bottom: 0,
+                      zIndex: 4,
+                      background: 'linear-gradient(135deg, #F5F3FF 0%, #EFF6FF 100%)',
+                      borderTop: '2px solid var(--accent-primary)',
+                      boxShadow: '0 -3px 10px rgba(139, 92, 246, 0.1)'
+                    }}
+                  >
+                    <tr>
+                      {/* Col 1 & 2: Total de Itens */}
+                      <td colSpan={2} style={{ padding: '0.75rem 0.85rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        TOTAL ({itensSelected.length} {itensSelected.length === 1 ? 'produto' : 'produtos'})
+                      </td>
+
+                      {/* Col 3: Total Custo Prod. */}
+                      <td style={{ padding: '0.75rem 0.85rem', textAlign: 'right', fontWeight: 800, color: 'var(--text-secondary)' }}>
+                        <div style={{ fontSize: '0.68rem', textTransform: 'uppercase' }}>Custo Total</div>
+                        <div>R$ {fmt(totalCusto)}</div>
+                      </td>
+
+                      {/* Col 4: Tempo Total */}
+                      <td style={{ padding: '0.75rem 0.85rem', textAlign: 'center', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Tempo Total</div>
+                        <div>⏱️ {formatTime(totalTime)}</div>
+                      </td>
+
+                      {/* Col 5: Markup Global na Linha Fixa */}
+                      <td style={{ padding: '0.6rem 0.5rem', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '3px', textTransform: 'uppercase' }}>
+                          Markup Global
+                        </div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <input
+                            type="number"
+                            min="0.1"
+                            step="0.1"
+                            value={markup}
+                            onChange={e => setMarkup(e.target.value)}
+                            className="cell-input"
+                            style={{ width: '54px', textAlign: 'center', padding: '3px 4px', fontWeight: 700 }}
+                            title="Multiplicador global sobre o custo"
+                          />
+                          <button
+                            type="button"
+                            onClick={applyMarkup}
+                            title="Aplicar este Markup em todos os produtos do pedido"
+                            style={{
+                              padding: '4px 7px',
+                              borderRadius: '5px',
+                              background: 'var(--accent-primary)',
+                              color: '#fff',
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ⚡
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* Col 6: Espaço Preço Unit. */}
+                      <td style={{ padding: '0.75rem 0.85rem', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                        —
+                      </td>
+
+                      {/* Col 7: Soma das Quantidades */}
+                      <td style={{ padding: '0.75rem 0.85rem', textAlign: 'center', fontWeight: 900, fontSize: '0.95rem' }}>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Peças</div>
+                        <div>{totalQtdPecas}</div>
+                      </td>
+
+                      {/* Col 8: Total Subtotal Bruto (Abaixo da coluna Subtotal) */}
+                      <td style={{ padding: '0.75rem 0.85rem', textAlign: 'right', fontWeight: 800 }}>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Subtotal Bruto</div>
+                        <div style={{ textDecoration: percDesconto > 0 ? 'line-through' : 'none', color: percDesconto > 0 ? 'var(--text-secondary)' : 'var(--text-primary)' }}>
+                          R$ {fmt(totalBruto)}
+                        </div>
+                      </td>
+
+                      {/* Col 9: Input de Desconto (%) que aplica automaticamente em todos os produtos */}
+                      <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', background: 'rgba(139, 92, 246, 0.08)' }}>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#6D28D9', marginBottom: '3px', textTransform: 'uppercase' }}>
+                          Desconto (%)
+                        </div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.5"
+                            placeholder="0"
+                            value={cliente.descontoPercent || ''}
+                            onChange={e => handleDescontoPercentChange(e.target.value)}
+                            className="cell-input"
+                            style={{
+                              width: '64px',
+                              textAlign: 'right',
+                              padding: '3px 6px',
+                              fontWeight: 800,
+                              borderColor: percDesconto > 0 ? '#7C3AED' : 'var(--border-color)',
+                              color: '#6D28D9'
+                            }}
+                            title="Digite a % de desconto para aplicar automaticamente em todos os produtos"
+                          />
+                          <span style={{ fontWeight: 800, color: '#6D28D9', fontSize: '0.8rem' }}>%</span>
+                        </div>
+                        {percDesconto > 0 && (
+                          <div style={{ fontSize: '0.68rem', color: '#DC2626', fontWeight: 700, marginTop: '2px' }}>
+                            -R$ {fmt(valorDesconto)}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Col 10: Total Final c/ Desconto (Abaixo da coluna Subtotal c/ Desc.) */}
+                      <td style={{ padding: '0.75rem 0.85rem', textAlign: 'right', fontWeight: 900, background: 'rgba(139, 92, 246, 0.12)', color: '#5B21B6' }}>
+                        <div style={{ fontSize: '0.68rem', textTransform: 'uppercase' }}>Total Final</div>
+                        <div style={{ fontSize: '1rem' }}>R$ {fmt(totalVenda)}</div>
+                      </td>
+
+                      {/* Col 11: Margem Média */}
+                      <td style={{ padding: '0.75rem 0.85rem', textAlign: 'right', fontWeight: 800, color: totalLucro >= 0 ? '#059669' : '#DC2626' }}>
+                        <div style={{ fontSize: '0.68rem', textTransform: 'uppercase' }}>Margem</div>
+                        <div>{margemPerc.toFixed(1)}%</div>
+                      </td>
+
+                      {/* Col 12: Lucro Total (Abaixo da coluna Lucro Total) */}
+                      <td style={{ padding: '0.75rem 0.85rem', textAlign: 'right', fontWeight: 900, color: totalLucro >= 0 ? '#047857' : '#DC2626', background: totalLucro >= 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)' }}>
+                        <div style={{ fontSize: '0.68rem', textTransform: 'uppercase' }}>Lucro Total</div>
+                        <div style={{ fontSize: '0.96rem' }}>R$ {fmt(totalLucro)}</div>
+                      </td>
+
+                      {/* Col 13: Vazio Ação */}
+                      <td />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}
           </section>
 
-
-
         </div>
       </div>
 
-      {/* ── Rodapé fixo com totalizadores ── */}
-      <div className="modal-footer-bar">
-        <div className="totals-row">
-          <div className="total-chip">
-            <span className="tc-label">Itens</span>
-            <span className="tc-value">{itens.length}</span>
-          </div>
-          {temDesconto && percDesconto > 0 && (
-            <div className="total-chip chip-red">
-              <span className="tc-label">Desconto ({percDesconto}%)</span>
-              <span className="tc-value">- R$ {fmt(valorDesconto)}</span>
-            </div>
+      {/* ── Rodapé de ações ── */}
+      <div className="modal-footer-bar" style={{ justifyContent: 'space-between' }}>
+        <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+          {itensSelected.length > 0 ? (
+            <span>
+              📦 <strong>{itensSelected.length}</strong> {itensSelected.length === 1 ? 'item' : 'itens'} ({totalQtdPecas} peças) • Total Final:{' '}
+              <strong style={{ color: 'var(--accent-primary)', fontSize: '0.95rem' }}>R$ {fmt(totalVenda)}</strong>
+              {percDesconto > 0 ? ` (${percDesconto}% OFF aplicado)` : ''}
+            </span>
+          ) : (
+            <span>Busque um produto acima para montar o pedido.</span>
           )}
-          <div className="total-chip">
-            <span className="tc-label">Total Venda</span>
-            <span className="tc-value accent">R$ {fmt(totalVenda)}</span>
-          </div>
-          <div className="total-chip">
-            <span className="tc-label">Total Custo</span>
-            <span className="tc-value muted">R$ {fmt(totalCusto)}</span>
-          </div>
-          <div className="total-chip">
-            <span className="tc-label">Tempo de Produção</span>
-            <span className="tc-value">⏱️ {formatTime(totalTime)}</span>
-          </div>
-          <div className={`total-chip ${totalLucro >= 0 ? 'chip-green' : 'chip-red'}`}>
-            <span className="tc-label">Lucro Estimado</span>
-            <span className="tc-value">R$ {fmt(totalLucro)} ({margemPerc.toFixed(1)}%)</span>
-          </div>
         </div>
         <div className="modal-footer-actions">
           <button className="btn-outline" onClick={onCancel}>Cancelar</button>
