@@ -106,6 +106,39 @@ export default function AdsIa() {
       return {};
     }
   });
+  const persistAdsIaConfigToCloud = async (patch = {}) => {
+    try {
+      const currentCloud = channelDefaults?.ads_ia_config || {};
+      const nextSettings = {
+        ...currentCloud,
+        rules: patch.rules || rules,
+        shopeeAdsGroupMap: patch.shopeeAdsGroupMap || shopeeAdsGroupMap,
+        adsMetricsMap: patch.adsMetricsMap || adsMetricsMap,
+        rampState: patch.rampState || rampState,
+        updatedAt: new Date().toISOString(),
+      };
+      setChannelDefaults((prev) => ({
+        ...prev,
+        ads_ia_config: nextSettings,
+      }));
+      await fetch(`${SUPA_URL}/rest/v1/ecommerce_channel_defaults?on_conflict=channel_id`, {
+        method: 'POST',
+        headers: {
+          ...getHeaders(),
+          Prefer: 'resolution=merge-duplicates,return=minimal',
+        },
+        body: JSON.stringify({
+          channel_id: 'ads_ia_config',
+          nome: 'Configurações Globais IA de Ads & Escudo de Margem',
+          settings: nextSettings,
+          empresa_id: profile?.empresa_id || 'a0d8e8fc-66de-4e31-8c4d-eb4044c3c3a9',
+        }),
+      });
+    } catch (e) {
+      console.warn('[AdsIA] Falha ao sincronizar configurações na nuvem:', e);
+    }
+  };
+
   const handleShopeeAdsGroupChange = (rowIdKey, groupVal) => {
     setShopeeAdsGroupMap((prev) => {
       const next = { ...prev, [rowIdKey]: groupVal };
@@ -114,6 +147,7 @@ export default function AdsIa() {
       } catch {
         // ignore
       }
+      persistAdsIaConfigToCloud({ shopeeAdsGroupMap: next });
       return next;
     });
   };
@@ -142,6 +176,7 @@ export default function AdsIa() {
         next[rowKey] = new Date().toISOString();
       }
       saveRampState(next);
+      persistAdsIaConfigToCloud({ rampState: next });
       return next;
     });
   };
@@ -187,6 +222,41 @@ export default function AdsIa() {
       defData.forEach((d) => {
         nextDefaults[d.channel_id] = d.settings;
       });
+
+      // Hidrata as configurações globais da IA de Ads salvas na nuvem (qualquer PC puxa sempre a última salva)
+      const cloudConfig = nextDefaults.ads_ia_config;
+      if (cloudConfig && typeof cloudConfig === 'object') {
+        if (cloudConfig.rules && typeof cloudConfig.rules === 'object') {
+          const mergedRules = { ...loadAdsIaRules(), ...cloudConfig.rules };
+          setRules(mergedRules);
+          saveAdsIaRules(mergedRules);
+        }
+        if (cloudConfig.shopeeAdsGroupMap && Object.keys(cloudConfig.shopeeAdsGroupMap).length > 0) {
+          setShopeeAdsGroupMap((prev) => {
+            const merged = { ...prev, ...cloudConfig.shopeeAdsGroupMap };
+            try {
+              localStorage.setItem('am3d_shopee_ads_group_v1', JSON.stringify(merged));
+            } catch {
+              // ignore
+            }
+            return merged;
+          });
+        }
+        if (cloudConfig.adsMetricsMap && Object.keys(cloudConfig.adsMetricsMap).length > 0) {
+          setAdsMetricsMap((prev) => {
+            const merged = { ...prev, ...cloudConfig.adsMetricsMap };
+            saveManualAdsMetrics(merged);
+            return merged;
+          });
+        }
+        if (cloudConfig.rampState && Object.keys(cloudConfig.rampState).length > 0) {
+          setRampState((prev) => {
+            const merged = { ...prev, ...cloudConfig.rampState };
+            saveRampState(merged);
+            return merged;
+          });
+        }
+      }
 
       const nextOverrides = {};
       overData.forEach((o) => {
@@ -257,6 +327,7 @@ export default function AdsIa() {
         if (healthyN < minN) next.margemSaudavelPerc = val;
       }
       saveAdsIaRules(next);
+      persistAdsIaConfigToCloud({ rules: next });
       return next;
     });
   };
@@ -344,6 +415,7 @@ export default function AdsIa() {
         },
       };
       saveManualAdsMetrics(next);
+      persistAdsIaConfigToCloud({ adsMetricsMap: next });
       return next;
     });
   };
