@@ -492,6 +492,8 @@ export default function Consignados() {
   const [editBatchNewItems, setEditBatchNewItems] = useState([]); // new items to add
   const [editBatchSearch, setEditBatchSearch] = useState('');
   const [expandedBatches, setExpandedBatches] = useState({});
+  const [showExtractDetails, setShowExtractDetails] = useState(false);
+  const [showPaymentsDetails, setShowPaymentsDetails] = useState(false);
 
   const toggleBatchExpand = (batchId) => {
     setExpandedBatches(prev => ({
@@ -1500,97 +1502,254 @@ export default function Consignados() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-          {/* Extrato de Itens */}
-          <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0 }}>Extrato de Itens</h3>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button className="btn-outline btn-sm" onClick={openGlobalWithdrawModal} style={{ borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }} title="Retirar Itens Devolvidos pelo Cliente">
-                  ↩️ Retirar Itens
-                </button>
-                <button className="btn-outline btn-sm" onClick={() => openPrintExtractWindow(aggregatedItems, selectedAccount.cliente, stats, profile?.tenants)} title="Imprimir Extrato Completo (Todos os itens)">
-                  <Printer size={16} /> Extrato Total
-                </button>
-                <button className="btn-outline btn-sm" onClick={() => openPrintBalanceWindow(aggregatedItems, selectedAccount.cliente, stats, profile?.tenants)} title="Imprimir Apenas Saldo em Aberto">
-                  <Printer size={16} /> Saldo Aberto
-                </button>
-                <button className="btn-primary btn-sm" onClick={openBatchModal}>+ Nova Remessa</button>
-              </div>
-            </div>
-            {Object.keys(aggregatedItems).length === 0 ? (
-              <p style={{ color: 'var(--text-muted)' }}>Nenhum item enviado ainda.</p>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    <th style={{ padding: '0.5rem' }}>Item</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center' }}>Enviados</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', color: '#3b82f6' }}>Retirados</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--success)' }}>Pagos</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--danger)' }}>Aberto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.values(aggregatedItems).map(it => {
-                    const emAberto = it.totalQtd - it.totalPago - it.totalRetirado;
-                    return (
-                      <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '0.75rem 0.5rem' }}>
-                          <span className="badge-sm" style={{ marginRight: '8px' }}>{it.indiceFt}</span>
-                          {it.nomePeca}
-                        </td>
-                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', fontWeight: 'bold' }}>{it.totalQtd}</td>
-                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: '#3b82f6', fontWeight: 'bold' }}>{it.totalRetirado}</td>
-                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: 'var(--success)', fontWeight: 'bold' }}>{it.totalPago}</td>
-                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: emAberto > 0 ? 'var(--danger)' : 'var(--text-muted)', fontWeight: 'bold' }}>{emAberto}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
+        {(() => {
+          const aggList = Object.values(aggregatedItems);
+          const totalSkus = aggList.length;
+          const totalEnviados = aggList.reduce((acc, it) => acc + parseN(it.totalQtd), 0);
+          const totalRetirados = aggList.reduce((acc, it) => acc + parseN(it.totalRetirado), 0);
+          const totalPagos = aggList.reduce((acc, it) => acc + parseN(it.totalPago), 0);
+          const totalAberto = aggList.reduce((acc, it) => acc + Math.max(0, parseN(it.totalQtd) - parseN(it.totalPago) - parseN(it.totalRetirado)), 0);
 
-          {/* Pagamentos */}
-          <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0 }}>Histórico de Pagamentos</h3>
-              <button className="btn-primary btn-sm" onClick={openPaymentModal}>+ Registrar Pgto</button>
-            </div>
-            {(selectedAccount.payments || []).length === 0 ? (
-              <p style={{ color: 'var(--text-muted)' }}>Nenhum pagamento registrado.</p>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    <th style={{ padding: '0.5rem' }}>Data</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'right' }}>Valor</th>
-                    <th style={{ padding: '0.5rem' }}>Itens Pagos</th>
-                    <th style={{ padding: '0.5rem', width: '30px' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...(selectedAccount.payments || [])].sort((a,b) => new Date(b.date) - new Date(a.date)).map(p => (
-                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '0.75rem 0.5rem' }}>{new Date(p.date).toLocaleDateString('pt-BR')}</td>
-                      <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', color: 'var(--success)', fontWeight: 'bold' }}>R$ {fmt(p.amount)}</td>
-                      <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        {(p.itemsPaid || []).map((it, i) => (
-                          <div key={i}>{it.qtd}x {it.nomePeca}</div>
-                        ))}
-                        {p.obs && <div style={{ marginTop: '4px', fontStyle: 'italic' }}>Obs: {p.obs}</div>}
-                      </td>
-                      <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                          <button
-                            className="btn-icon"
-                            title="Imprimir Recibo de Pagamento"
-                            onClick={() => {
-                              const cliente = selectedAccount.cliente;
-                              const tenant = profile?.tenants || {};
-                              const itensList = (p.itemsPaid || []).map(it => `<tr><td>${it.nomePeca}</td><td style="text-align:center">${it.qtd}</td></tr>`).join('');
-                              const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recibo de Pagamento</title>
+          const paymentsList = [...(selectedAccount.payments || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
+          const lastPay = paymentsList[0];
+
+          return (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              {/* Extrato de Itens (Resumo Clicável) */}
+              <div
+                className="card"
+                style={{
+                  border: showExtractDetails ? '1.5px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div
+                  onClick={() => setShowExtractDetails(prev => !prev)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.75rem',
+                    cursor: 'pointer',
+                    userSelect: 'none'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span
+                        style={{
+                          fontSize: '0.82rem',
+                          fontWeight: 800,
+                          color: 'var(--accent-primary)',
+                          display: 'inline-block',
+                          transition: 'transform 0.2s ease',
+                          transform: showExtractDetails ? 'rotate(90deg)' : 'rotate(0deg)'
+                        }}
+                      >
+                        ▶
+                      </span>
+                      <h3 style={{ margin: 0 }}>📦 Extrato de Itens ({totalSkus} produtos)</h3>
+                    </div>
+
+                    <div
+                      style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button className="btn-outline btn-sm" onClick={openGlobalWithdrawModal} style={{ borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }} title="Retirar Itens Devolvidos pelo Cliente">
+                        ↩️ Retirar Itens
+                      </button>
+                      <button className="btn-outline btn-sm" onClick={() => openPrintExtractWindow(aggregatedItems, selectedAccount.cliente, stats, profile?.tenants)} title="Imprimir Extrato Completo (Todos os itens)">
+                        <Printer size={15} /> Extrato Total
+                      </button>
+                      <button className="btn-outline btn-sm" onClick={() => openPrintBalanceWindow(aggregatedItems, selectedAccount.cliente, stats, profile?.tenants)} title="Imprimir Apenas Saldo em Aberto">
+                        <Printer size={15} /> Saldo Aberto
+                      </button>
+                      <button className="btn-primary btn-sm" onClick={openBatchModal}>+ Nova Remessa</button>
+                    </div>
+                  </div>
+
+                  {/* Resumo compacto do Extrato de Itens */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(4, 1fr)',
+                      gap: '8px',
+                      background: 'var(--bg-secondary)',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      fontSize: '0.8rem'
+                    }}
+                  >
+                    <div>
+                      <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.72rem' }}>Enviados</span>
+                      <strong style={{ fontSize: '0.95rem' }}>{totalEnviados} un.</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#3b82f6', display: 'block', fontSize: '0.72rem' }}>Retirados</span>
+                      <strong style={{ fontSize: '0.95rem', color: '#3b82f6' }}>{totalRetirados} un.</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#059669', display: 'block', fontSize: '0.72rem' }}>Pagos</span>
+                      <strong style={{ fontSize: '0.95rem', color: '#059669' }}>{totalPagos} un.</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#dc2626', display: 'block', fontSize: '0.72rem' }}>Em Aberto</span>
+                      <strong style={{ fontSize: '0.95rem', color: totalAberto > 0 ? '#dc2626' : 'var(--text-secondary)' }}>{totalAberto} un.</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '0.75rem', color: 'var(--accent-primary)', fontWeight: 700 }}>
+                    {showExtractDetails ? '▲ Clique para recolher a lista de itens' : '▼ Clique aqui para abrir e ver todos os itens do extrato'}
+                  </div>
+                </div>
+
+                {showExtractDetails && (
+                  <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
+                    {aggList.length === 0 ? (
+                      <p style={{ color: 'var(--text-muted)' }}>Nenhum item enviado ainda.</p>
+                    ) : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                            <th style={{ padding: '0.5rem' }}>Item</th>
+                            <th style={{ padding: '0.5rem', textAlign: 'center' }}>Enviados</th>
+                            <th style={{ padding: '0.5rem', textAlign: 'center', color: '#3b82f6' }}>Retirados</th>
+                            <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--success)' }}>Pagos</th>
+                            <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--danger)' }}>Aberto</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {aggList.map(it => {
+                            const emAberto = it.totalQtd - it.totalPago - it.totalRetirado;
+                            return (
+                              <tr key={it.indiceFt} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <td style={{ padding: '0.65rem 0.5rem' }}>
+                                  <span className="badge-sm" style={{ marginRight: '8px' }}>{it.indiceFt}</span>
+                                  {it.nomePeca}
+                                </td>
+                                <td style={{ padding: '0.65rem 0.5rem', textAlign: 'center', fontWeight: 'bold' }}>{it.totalQtd}</td>
+                                <td style={{ padding: '0.65rem 0.5rem', textAlign: 'center', color: '#3b82f6', fontWeight: 'bold' }}>{it.totalRetirado}</td>
+                                <td style={{ padding: '0.65rem 0.5rem', textAlign: 'center', color: 'var(--success)', fontWeight: 'bold' }}>{it.totalPago}</td>
+                                <td style={{ padding: '0.65rem 0.5rem', textAlign: 'center', color: emAberto > 0 ? 'var(--danger)' : 'var(--text-muted)', fontWeight: 'bold' }}>{emAberto}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Histórico de Pagamentos (Resumo Clicável) */}
+              <div
+                className="card"
+                style={{
+                  border: showPaymentsDetails ? '1.5px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div
+                  onClick={() => setShowPaymentsDetails(prev => !prev)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.75rem',
+                    cursor: 'pointer',
+                    userSelect: 'none'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span
+                        style={{
+                          fontSize: '0.82rem',
+                          fontWeight: 800,
+                          color: 'var(--accent-primary)',
+                          display: 'inline-block',
+                          transition: 'transform 0.2s ease',
+                          transform: showPaymentsDetails ? 'rotate(90deg)' : 'rotate(0deg)'
+                        }}
+                      >
+                        ▶
+                      </span>
+                      <h3 style={{ margin: 0 }}>💰 Histórico de Pagamentos ({paymentsList.length})</h3>
+                    </div>
+
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <button className="btn-primary btn-sm" onClick={openPaymentModal}>+ Registrar Pgto</button>
+                    </div>
+                  </div>
+
+                  {/* Resumo compacto de Pagamentos */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: '8px',
+                      background: 'var(--bg-secondary)',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      fontSize: '0.8rem'
+                    }}
+                  >
+                    <div>
+                      <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.72rem' }}>Acertos Realizados</span>
+                      <strong style={{ fontSize: '0.95rem' }}>{paymentsList.length} {paymentsList.length === 1 ? 'pagamento' : 'pagamentos'}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#059669', display: 'block', fontSize: '0.72rem' }}>Total Recebido</span>
+                      <strong style={{ fontSize: '0.95rem', color: '#059669' }}>R$ {fmt(stats.totalPaid)}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.72rem' }}>Último Pagamento</span>
+                      <strong style={{ fontSize: '0.88rem' }}>
+                        {lastPay ? `${new Date(lastPay.date).toLocaleDateString('pt-BR')} (R$ ${fmt(lastPay.amount)})` : '—'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '0.75rem', color: 'var(--accent-primary)', fontWeight: 700 }}>
+                    {showPaymentsDetails ? '▲ Clique para recolher os pagamentos' : '▼ Clique aqui para abrir e ver todos os recibos e itens pagos'}
+                  </div>
+                </div>
+
+                {showPaymentsDetails && (
+                  <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
+                    {paymentsList.length === 0 ? (
+                      <p style={{ color: 'var(--text-muted)' }}>Nenhum pagamento registrado.</p>
+                    ) : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                            <th style={{ padding: '0.5rem' }}>Data</th>
+                            <th style={{ padding: '0.5rem', textAlign: 'right' }}>Valor</th>
+                            <th style={{ padding: '0.5rem' }}>Itens Pagos</th>
+                            <th style={{ padding: '0.5rem', width: '30px' }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paymentsList.map(p => (
+                            <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                              <td style={{ padding: '0.75rem 0.5rem' }}>{new Date(p.date).toLocaleDateString('pt-BR')}</td>
+                              <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', color: 'var(--success)', fontWeight: 'bold' }}>R$ {fmt(p.amount)}</td>
+                              <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                                {(p.itemsPaid || []).map((it, i) => (
+                                  <div key={i}>{it.qtd}x {it.nomePeca}</div>
+                                ))}
+                                {p.obs && <div style={{ marginTop: '4px', fontStyle: 'italic' }}>Obs: {p.obs}</div>}
+                              </td>
+                              <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>
+                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                  <button
+                                    className="btn-icon"
+                                    title="Imprimir Recibo de Pagamento"
+                                    onClick={() => {
+                                      const cliente = selectedAccount.cliente;
+                                      const tenant = profile?.tenants || {};
+                                      const itensList = (p.itemsPaid || []).map(it => `<tr><td>${it.nomePeca}</td><td style="text-align:center">${it.qtd}</td></tr>`).join('');
+                                      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recibo de Pagamento</title>
 <style>
   @media print { body { margin: 0; } .no-print { display: none; } }
   body { font-family: Arial, sans-serif; color: #1e293b; padding: 2rem; }
@@ -1616,25 +1775,29 @@ export default function Consignados() {
   <div class="footer">${tenant.name || 'AM3D'} — Gerado em ${new Date().toLocaleString('pt-BR')}</div>
   <script>window.onload = () => window.print();<\/script>
 </body></html>`;
-                              const win = window.open('', '_blank', 'width=700,height=600');
-                              win.document.write(html);
-                              win.document.close();
-                            }}
-                          >
-                            <Printer size={16} />
-                          </button>
-                          <button className="btn-icon" onClick={() => handleDeletePayment(p.id)} title="Excluir Pagamento">
-                            <Trash2 size={16} color="var(--danger)" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
+                                      const win = window.open('', '_blank', 'width=700,height=600');
+                                      win.document.write(html);
+                                      win.document.close();
+                                    }}
+                                  >
+                                    <Printer size={16} />
+                                  </button>
+                                  <button className="btn-icon" onClick={() => handleDeletePayment(p.id)} title="Excluir Pagamento">
+                                    <Trash2 size={16} color="var(--danger)" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Historico de Remessas */}
         <div className="card" style={{ marginTop: '1.5rem' }}>
