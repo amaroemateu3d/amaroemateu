@@ -514,19 +514,28 @@ export default function Consignados() {
       }
 
       const ftsData = ftsResp.status === 'fulfilled' && ftsResp.value.ok ? await ftsResp.value.json() : [];
-      const cleanFts = ftsData.map(r => r.data || r).filter(f => f && f.indiceFt);
+      const cleanFts = ftsData
+        .map(r => r.data || r)
+        .filter(f => f && f.indiceFt)
+        .map(f => {
+          const ftRes = getResultados(f);
+          const realCost = parseN(f._custoFinal) > 0 ? parseN(f._custoFinal) : (ftRes?.custoFisicoUnit || 0);
+          return { ...f, _custoFinal: realCost };
+        });
       cleanFts.sort((a, b) => String(a.indiceFt).localeCompare(String(b.indiceFt), undefined, { numeric: true }));
       
       const orcsData = orcsResp.status === 'fulfilled' && orcsResp.value.ok ? await orcsResp.value.json() : [];
       const cleanOrcs = orcsData.map(r => {
         const orcResults = r.data ? getResultados(r.data) : null;
         const custoUnit = orcResults?.custoFisicoUnit || 0;
+        const isCft = String(r.id || '').startsWith('CFT-');
         const precoCalc = parseN(r.data?.precoVendaManual) || orcResults?.precoPraticado || parseN(r.data?.price) || (custoUnit * 3) || 0;
         return {
           indiceFt: r.id,
-          nomePeca: r.name,
+          nomePeca: r.name || r.data?.nomePeca || r.id,
           _custoFinal: custoUnit,
-          isOrcamento: true,
+          isOrcamento: !isCft && custoUnit <= 0,
+          isCft,
           precoSugerido: precoCalc
         };
       });

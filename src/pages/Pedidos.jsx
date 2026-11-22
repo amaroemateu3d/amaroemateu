@@ -449,15 +449,20 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
       initialData.itens.forEach(savedItem => {
         if (parseN(savedItem.qtd) <= 0) return;
         const originalFt = Array.isArray(fts) ? fts.find(f => f.indiceFt === savedItem.indiceFt) : null;
+        const rawOrc = savedItem._rawOrcData || (originalFt ? originalFt._rawOrcData : null);
+        const calcRes = rawOrc ? getResultados(rawOrc) : (originalFt ? getResultados(originalFt) : null);
+        const realCusto = parseN(savedItem.custoBase) > 0
+          ? parseN(savedItem.custoBase)
+          : (parseN(originalFt?._custoFinal) > 0 ? parseN(originalFt._custoFinal) : (calcRes?.custoFisicoUnit || 0));
         finalItems.push({
           _uid: Math.random().toString(36).substring(2, 9),
           indiceFt: savedItem.indiceFt,
           nomePeca: savedItem.nomePeca || 'Item Excluído',
-          custoBase: savedItem.custoBase || (originalFt ? originalFt._custoFinal || 0 : 0),
+          custoBase: realCusto,
           precoUnit: savedItem.precoUnit || 0,
           qtd: savedItem.qtd || 1,
           isOrcamento: Boolean(savedItem.isOrcamento),
-          _rawOrcData: savedItem._rawOrcData || (originalFt ? originalFt._rawOrcData : null),
+          _rawOrcData: rawOrc,
           _isSaved: true
         });
       });
@@ -490,17 +495,20 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
       });
     } else {
       const m = parseN(markup) > 0 ? parseN(markup) : 3;
-      const defaultPreco = ft.isOrcamento
-        ? (ft.precoSugerido ? Number(ft.precoSugerido).toFixed(2) : '0.00')
-        : ((parseN(ft._custoFinal) || 0) * m).toFixed(2);
+      const calcRes = ft._rawOrcData ? getResultados(ft._rawOrcData) : getResultados(ft);
+      const realCusto = parseN(ft._custoFinal) > 0 ? parseN(ft._custoFinal) : (calcRes?.custoFisicoUnit || 0);
+      const defaultPreco = realCusto > 0
+        ? (realCusto * m).toFixed(2)
+        : (ft.precoSugerido ? Number(ft.precoSugerido).toFixed(2) : '0.00');
       setItens(prev => [
         ...prev,
         {
           _uid: Math.random().toString(36).substring(2, 9),
           indiceFt: ft.indiceFt,
           nomePeca: ft.nomePeca || 'Sem Nome',
-          custoBase: ft._custoFinal || 0,
+          custoBase: realCusto,
           precoUnit: defaultPreco,
+          margemRaw: realCusto > 0 ? m.toFixed(2) : undefined,
           qtd: 1,
           isOrcamento: Boolean(ft.isOrcamento),
           _rawOrcData: ft._rawOrcData || null
@@ -561,23 +569,35 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
       });
       
       const results = getResultados(customInputs);
-      const precoFinal = parseN(customInputs.precoVendaManual) || results.precoPraticado || (results.custoFisicoUnit * 3) || 0;
+      const custoReal = results.custoFisicoUnit || 0;
+      const m = parseN(markup) > 0 ? parseN(markup) : 3;
+      const precoFinal = parseN(customInputs.precoVendaManual) || results.precoPraticado || (custoReal * m) || 0;
+      const margemInicial = custoReal > 0 ? (precoFinal / custoReal).toFixed(2) : m.toFixed(2);
       
       if (editUid) {
-        setItens(prev => prev.map(it => it._uid === editUid ? {
-          ...it,
-          nomePeca: customInputs.nomePeca,
-          custoBase: results.custoFisicoUnit,
-          precoUnit: precoFinal.toFixed(2),
-          _rawOrcData: customInputs
-        } : it));
+        setItens(prev => prev.map(it => {
+          if (it._uid !== editUid) return it;
+          const mAtual = parseN(it.margemRaw) > 0 ? parseN(it.margemRaw) : parseFloat(margemInicial) || m;
+          const novoPreco = parseN(customInputs.precoVendaManual) > 0
+            ? parseN(customInputs.precoVendaManual)
+            : (custoReal * mAtual);
+          return {
+            ...it,
+            nomePeca: customInputs.nomePeca,
+            custoBase: custoReal,
+            precoUnit: novoPreco.toFixed(2),
+            margemRaw: custoReal > 0 ? (novoPreco / custoReal).toFixed(2) : it.margemRaw,
+            _rawOrcData: customInputs
+          };
+        }));
       } else {
         setItens(prev => [...prev, {
           _uid: Math.random().toString(36).substring(2, 9),
           indiceFt: customInputs.indiceFt,
           nomePeca: customInputs.nomePeca,
-          custoBase: results.custoFisicoUnit,
+          custoBase: custoReal,
           precoUnit: precoFinal.toFixed(2),
+          margemRaw: margemInicial,
           qtd: 1,
           isOrcamento: true,
           _rawOrcData: customInputs
@@ -594,11 +614,22 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
   const applyMarkup = () => {
     const m = parseN(markup);
     if (m <= 0) return;
-    setItens(prev => prev.map(it => ({
-      ...it,
-      precoUnit: (parseN(it.custoBase) * m).toFixed(2),
-      margemRaw: m.toFixed(2)
-    })));
+    setItens(prev => prev.map(it => {
+      const ftOriginal = Array.isArray(fts) ? fts.find(f => f.indiceFt === it.indiceFt) : null;
+      const orcData = it._rawOrcData || (ftOriginal ? ftOriginal._rawOrcData : null);
+      const timeSource = orcData || ftOriginal;
+      const c = parseN(it.custoBase) > 0
+        ? parseN(it.custoBase)
+        : (parseN(ftOriginal?._custoFinal) > 0
+          ? parseN(ftOriginal._custoFinal)
+          : (timeSource ? (getResultados(timeSource)?.custoFisicoUnit || 0) : 0));
+      return {
+        ...it,
+        custoBase: c,
+        precoUnit: (c * m).toFixed(2),
+        margemRaw: m.toFixed(2)
+      };
+    }));
   };
 
   const handleClienteChange = (e) => setCliente(p => ({ ...p, [e.target.name]: e.target.value }));
@@ -864,14 +895,18 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                       const sub = preco * qty;
                       const precoComDesc = preco * fatorDesconto;
                       const subComDesc = sub * fatorDesconto;
-                      const custoBase = parseN(it.custoBase);
-                      const lucroUnit = precoComDesc - custoBase;
-                      const lucroTotal = lucroUnit * qty;
-
                       const ftOriginal = Array.isArray(fts) ? fts.find(f => f.indiceFt === it.indiceFt) : null;
                       const orcData = it._rawOrcData || (ftOriginal ? ftOriginal._rawOrcData : null);
                       const timeSource = orcData || ftOriginal;
                       const tempoUnit = timeSource ? getUnitProductionTime(timeSource) : 0;
+                      const realCustoRow = parseN(it.custoBase) > 0
+                        ? parseN(it.custoBase)
+                        : (parseN(ftOriginal?._custoFinal) > 0
+                          ? parseN(ftOriginal._custoFinal)
+                          : (timeSource ? (getResultados(timeSource)?.custoFisicoUnit || 0) : 0));
+                      const custoBase = realCustoRow;
+                      const lucroUnit = precoComDesc - custoBase;
+                      const lucroTotal = lucroUnit * qty;
 
                       return (
                         <tr key={it._uid} className="row-active">
@@ -921,10 +956,15 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                               value={it.margemRaw ?? (custoBase > 0 ? (preco / custoBase).toFixed(2) : '0.00')}
                               onChange={e => {
                                 const raw = e.target.value;
-                                const m = parseFloat(raw) || 0;
+                                const m = parseN(raw);
                                 setItens(prev => {
                                   const next = [...prev];
-                                  next[originalIdx] = { ...next[originalIdx], precoUnit: (custoBase * m).toFixed(2), margemRaw: raw };
+                                  next[originalIdx] = {
+                                    ...next[originalIdx],
+                                    custoBase,
+                                    precoUnit: (custoBase * m).toFixed(2),
+                                    margemRaw: raw
+                                  };
                                   return next;
                                 });
                               }}
@@ -1233,20 +1273,33 @@ export default function Pedidos() {
       ]);
 
       const ftsData = ftsResp.status === 'fulfilled' && ftsResp.value.ok ? await ftsResp.value.json() : [];
-      // Mapeia garantindo que pegamos o objeto da FT (seja da coluna 'data' ou do root)
-      const cleanFts = ftsData.map(r => r.data || r).filter(f => f && f.indiceFt);
+      // Mapeia garantindo que pegamos o objeto da FT (seja da coluna 'data' ou do root) e calculamos _custoFinal real
+      const cleanFts = ftsData
+        .map(r => r.data || r)
+        .filter(f => f && f.indiceFt)
+        .map(f => {
+          const ftRes = getResultados(f);
+          const realCost = parseN(f._custoFinal) > 0 ? parseN(f._custoFinal) : (ftRes?.custoFisicoUnit || 0);
+          return {
+            ...f,
+            _custoFinal: realCost
+          };
+        });
       cleanFts.sort((a, b) => String(a.indiceFt).localeCompare(String(b.indiceFt), undefined, { numeric: true }));
       
       const orcsData = orcsResp.status === 'fulfilled' && orcsResp.value.ok ? await orcsResp.value.json() : [];
       const cleanOrcs = orcsData.map(r => {
         const orcResults = r.data ? getResultados(r.data) : null;
         const custoUnit = orcResults?.custoFisicoUnit || 0;
+        const isCft = String(r.id || '').startsWith('CFT-');
         const precoCalc = parseN(r.data?.precoVendaManual) || orcResults?.precoPraticado || parseN(r.data?.price) || (custoUnit * 3) || 0;
         return {
+          ...(isCft && r.data ? r.data : {}),
           indiceFt: r.id,
-          nomePeca: r.name,
+          nomePeca: r.name || r.data?.nomePeca || r.id,
           _custoFinal: custoUnit,
           isOrcamento: true,
+          isCft,
           precoSugerido: precoCalc,
           _rawOrcData: r.data
         };
