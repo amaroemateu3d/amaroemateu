@@ -709,20 +709,19 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
               className="section-header-flex"
               style={{
                 display: 'flex',
-                justifyContent: 'space-between',
+                justifyContent: 'flex-start',
                 alignItems: 'center',
                 marginBottom: '1rem',
                 flexWrap: 'wrap',
                 gap: '1rem'
               }}
             >
-              <h3 className="section-heading" style={{ marginBottom: 0, borderBottom: 'none', paddingBottom: 0 }}>
+              <h3 className="section-heading" style={{ marginBottom: 0, borderBottom: 'none', paddingBottom: 0, whiteSpace: 'nowrap' }}>
                 <span className="section-num">2</span> Itens do Pedido ({itens.length})
               </h3>
 
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
-                {/* Busca de Produtos com Dropdown para adicionar somente o escolhido */}
-                <div className="search-box-wrap" style={{ position: 'relative', width: '420px', maxWidth: '100%' }}>
+              {/* Busca de Produtos logo após Itens do Pedido com o dobro da largura */}
+              <div className="search-box-wrap" style={{ position: 'relative', flex: '1 1 600px', maxWidth: '880px' }}>
                   <input
                     type="text"
                     placeholder="🔍 Buscar FT ou produto por nome ou ID para adicionar..."
@@ -807,12 +806,12 @@ function ModalPedido({ fts, onSave, onCancel, initialData }) {
                     padding: '0.62rem 1.05rem',
                     borderRadius: '8px',
                     background: 'linear-gradient(135deg, #7C3AED, #2563EB)',
-                    fontWeight: 700
+                    fontWeight: 700,
+                    flexShrink: 0
                   }}
                 >
                   + Novo Produto Customizado
                 </button>
-              </div>
             </div>
 
             {itens.length === 0 ? (
