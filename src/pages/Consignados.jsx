@@ -491,6 +491,14 @@ export default function Consignados() {
   const [editBatchItems, setEditBatchItems] = useState([]);    // existing items (editable qty)
   const [editBatchNewItems, setEditBatchNewItems] = useState([]); // new items to add
   const [editBatchSearch, setEditBatchSearch] = useState('');
+  const [expandedBatches, setExpandedBatches] = useState({});
+
+  const toggleBatchExpand = (batchId) => {
+    setExpandedBatches(prev => ({
+      ...prev,
+      [batchId]: !prev[batchId]
+    }));
+  };
 
   useEffect(() => {
     fetchData();
@@ -1630,56 +1638,164 @@ export default function Consignados() {
 
         {/* Historico de Remessas */}
         <div className="card" style={{ marginTop: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>Histórico de Remessas (Lotes Enviados)</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '8px' }}>
+            <h3 style={{ margin: 0 }}>
+              Histórico de Remessas (Lotes Enviados) ({(selectedAccount.batches || []).length})
+            </h3>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              💡 Clique em uma remessa para abrir ou fechar os itens
+            </span>
+          </div>
           {(selectedAccount.batches || []).length === 0 ? (
             <p style={{ color: 'var(--text-muted)' }}>Nenhuma remessa registrada.</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {[...(selectedAccount.batches || [])].sort((a,b) => new Date(b.date) - new Date(a.date)).map(batch => (
-                <div key={batch.id} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', alignItems: 'center' }}>
-                    <div style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>
-                      Data de Envio: {new Date(batch.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                    </div>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <button className="btn-outline btn-sm" onClick={() => openPrintBatchWindow(batch, selectedAccount.cliente, profile?.tenants)} title="Imprimir Guia da Remessa">
-                        <Printer size={16} /> Imprimir
-                      </button>
-                      <button className="btn-outline btn-sm" onClick={() => openEditBatchModal(batch)} style={{ borderColor: '#f59e0b', color: '#f59e0b' }} title="Editar itens desta remessa">
-                        ✏️ Editar
-                      </button>
-                      <button className="btn-outline btn-sm" onClick={() => openWithdrawModal(batch)} style={{ borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }} title="Retirar Itens Devolvidos">
-                        ↩️ Retirar Itens
-                      </button>
-                      <button className="btn-icon" onClick={() => handleDeleteBatch(batch.id)} title="Excluir Remessa inteira">
-                        <Trash2 size={16} color="var(--danger)" />
-                      </button>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                    {batch.items.map((it, i) => {
-                      const qTotal = parseN(it.qtd);
-                      const qPago = parseN(it.qtdPago);
-                      const qRetirado = parseN(it.qtdRetirado);
-                      const open = qTotal - qPago - qRetirado;
-                      return (
-                        <span key={i} style={{ 
-                          background: open === 0 ? 'rgba(52, 211, 153, 0.1)' : 'var(--bg-secondary)', 
-                          border: open === 0 ? '1px solid rgba(52, 211, 153, 0.3)' : '1px solid transparent',
-                          padding: '0.4rem 0.8rem', 
-                          borderRadius: '6px', 
-                          fontSize: '0.85rem' 
-                        }}>
-                          <strong>{qTotal}x</strong> {it.nomePeca} (R$ {fmt(it.precoUnit)}) 
-                          <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: open === 0 ? 'var(--success)' : 'var(--text-muted)' }}>
-                            [{qPago} pagos / {qRetirado} retirados / {open} abertos]
-                          </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {[...(selectedAccount.batches || [])].sort((a,b) => new Date(b.date) - new Date(a.date)).map(batch => {
+                const isExpanded = Boolean(expandedBatches[batch.id]);
+                const items = Array.isArray(batch.items) ? batch.items : [];
+                let totalPecas = 0;
+                let totalPagas = 0;
+                let totalRetiradas = 0;
+                let totalAbertas = 0;
+                let valorAberto = 0;
+                let valorTotalRemessa = 0;
+
+                items.forEach(it => {
+                  const qTotal = parseN(it.qtd);
+                  const qPago = parseN(it.qtdPago);
+                  const qRetirado = parseN(it.qtdRetirado);
+                  const open = Math.max(0, qTotal - qPago - qRetirado);
+                  const pUnit = parseN(it.precoUnit);
+                  totalPecas += qTotal;
+                  totalPagas += qPago;
+                  totalRetiradas += qRetirado;
+                  totalAbertas += open;
+                  valorAberto += open * pUnit;
+                  valorTotalRemessa += qTotal * pUnit;
+                });
+
+                const quitada = totalAbertas === 0;
+
+                return (
+                  <div
+                    key={batch.id}
+                    style={{
+                      border: isExpanded ? '1.5px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      background: isExpanded ? 'rgba(139, 92, 246, 0.03)' : 'var(--bg-surface)',
+                      overflow: 'hidden',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {/* Linha clicável da remessa */}
+                    <div
+                      onClick={() => toggleBatchExpand(batch.id)}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '0.65rem 1rem',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        gap: '1rem',
+                        flexWrap: 'wrap',
+                        background: isExpanded ? 'var(--bg-secondary)' : 'transparent'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        <span
+                          style={{
+                            fontSize: '0.78rem',
+                            fontWeight: 800,
+                            color: 'var(--accent-primary)',
+                            width: '18px',
+                            display: 'inline-block',
+                            transition: 'transform 0.2s ease',
+                            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
+                          }}
+                        >
+                          ▶
                         </span>
-                      )
-                    })}
+                        <span style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                          📅 {new Date(batch.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            background: quitada ? 'rgba(16, 185, 129, 0.14)' : 'rgba(245, 158, 11, 0.14)',
+                            color: quitada ? '#059669' : '#D97706'
+                          }}
+                        >
+                          {quitada ? '✅ Quitada' : `⏳ ${totalAbertas} em aberto (R$ ${fmt(valorAberto)})`}
+                        </span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          • <strong>{items.length}</strong> {items.length === 1 ? 'produto' : 'produtos'} ({totalPecas} peças) • Total: <strong>R$ {fmt(valorTotalRemessa)}</strong>
+                          {totalPagas > 0 || totalRetiradas > 0 ? ` (${totalPagas} pagas / ${totalRetiradas} retiradas)` : ''}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{ display: 'flex', gap: '8px', alignItems: 'center' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button className="btn-outline btn-sm" onClick={() => openPrintBatchWindow(batch, selectedAccount.cliente, profile?.tenants)} title="Imprimir Guia da Remessa">
+                          <Printer size={15} /> Imprimir
+                        </button>
+                        <button className="btn-outline btn-sm" onClick={() => openEditBatchModal(batch)} style={{ borderColor: '#f59e0b', color: '#f59e0b' }} title="Editar itens desta remessa">
+                          ✏️ Editar
+                        </button>
+                        <button className="btn-outline btn-sm" onClick={() => openWithdrawModal(batch)} style={{ borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }} title="Retirar Itens Devolvidos">
+                          ↩️ Retirar Itens
+                        </button>
+                        <button className="btn-icon" onClick={() => handleDeleteBatch(batch.id)} title="Excluir Remessa inteira">
+                          <Trash2 size={15} color="var(--danger)" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Itens da remessa (só aparece quando clicada/aberta) */}
+                    {isExpanded && (
+                      <div
+                        style={{
+                          padding: '0.85rem 1rem',
+                          borderTop: '1px solid var(--border-color)',
+                          display: 'flex',
+                          gap: '0.65rem',
+                          flexWrap: 'wrap',
+                          background: 'var(--bg-surface)'
+                        }}
+                      >
+                        {items.map((it, i) => {
+                          const qTotal = parseN(it.qtd);
+                          const qPago = parseN(it.qtdPago);
+                          const qRetirado = parseN(it.qtdRetirado);
+                          const open = qTotal - qPago - qRetirado;
+                          return (
+                            <span
+                              key={i}
+                              style={{
+                                background: open === 0 ? 'rgba(52, 211, 153, 0.1)' : 'var(--bg-secondary)',
+                                border: open === 0 ? '1px solid rgba(52, 211, 153, 0.3)' : '1px solid var(--border-color)',
+                                padding: '0.4rem 0.8rem',
+                                borderRadius: '6px',
+                                fontSize: '0.84rem'
+                              }}
+                            >
+                              <strong>{qTotal}x</strong> {it.nomePeca} (R$ {fmt(it.precoUnit)})
+                              <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: open === 0 ? 'var(--success)' : 'var(--text-muted)' }}>
+                                [{qPago} pagos / {qRetirado} retirados / {open} abertos]
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
