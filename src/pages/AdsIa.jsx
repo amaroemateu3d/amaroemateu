@@ -163,6 +163,7 @@ export default function AdsIa() {
   const [savingCamp, setSavingCamp] = useState(false);
   const [rampState, setRampState] = useState(() => loadRampState());
   const [showStandardizeModal, setShowStandardizeModal] = useState(false);
+  const [showTutorialModal, setShowTutorialModal] = useState(false);
   const [targetBaseMargin, setTargetBaseMargin] = useState(35);
   const [standardizingBusy, setStandardizingBusy] = useState(false);
   const [standardizeProgress, setStandardizeProgress] = useState('');
@@ -1825,6 +1826,26 @@ export default function AdsIa() {
               fontWeight: 700,
             }}
           />
+          <button
+            type="button"
+            onClick={() => setShowTutorialModal(true)}
+            style={{
+              padding: '0.52rem 0.95rem',
+              borderRadius: '8px',
+              border: '1.5px solid #7C3AED',
+              background: 'rgba(139, 92, 246, 0.1)',
+              color: '#6D28D9',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 800,
+              fontSize: '0.84rem',
+              cursor: 'pointer',
+            }}
+            title="Abrir manual completo explicando cada coluna, campo e estratégia da tela de IA e Ads"
+          >
+            📘 Tutorial &amp; Manual
+          </button>
           <button
             type="button"
             onClick={() => setShowDailySalesPanel((p) => !p)}
@@ -4667,6 +4688,196 @@ export default function AdsIa() {
                 {minMarginAlert.fixingAll
                   ? '⏳ Ajustando nos Marketplaces...'
                   : `🚀 Ajustar Todos p/ Piso (${minMarginAlert.targetMin}%)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Tutorial & Manual Completo da IA e Ads */}
+      {showTutorialModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            zIndex: 130,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={(e) => e.target === e.currentTarget && setShowTutorialModal(false)}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: '940px',
+              width: '100%',
+              maxHeight: '88vh',
+              overflowY: 'auto',
+              padding: '1.5rem 1.75rem',
+              border: '2px solid #7C3AED',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.1rem',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.85rem' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📘 Tutorial &amp; Manual Prático — IA de Vendas, Preços &amp; Ads (AM3D)
+                </h2>
+                <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
+                  Guia rápido de referência para entender cada coluna, botão e regra estratégica do sistema no Mercado Livre e Shopee.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTutorialModal(false)}
+                style={{ border: 'none', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '4px 10px', cursor: 'pointer', fontSize: '1.1rem', fontWeight: 800 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Bloco 1: Coluna Gasto Ads (R$) / ACOS (O que você perguntou no print) */}
+            <div style={{ background: 'rgba(139, 92, 246, 0.06)', border: '1px solid rgba(139, 92, 246, 0.25)', borderRadius: '12px', padding: '1rem 1.15rem' }}>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.98rem', color: '#6D28D9' }}>
+                1. O que é a coluna &ldquo;GASTO ADS (R$) / ACOS&rdquo; (com o campo R$ 0,00 e Grupo Shopee Ads)?
+              </h3>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.84rem', lineHeight: 1.6, color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <li>
+                  <strong>No Mercado Livre:</strong> O sistema puxa automaticamente via API quanto cada anúncio gastou em Product Ads nos últimos <strong>7, 15 e 30 dias</strong>, quantos cliques teve e qual o <strong>ACOS (%)</strong> (quanto % do faturamento daquele item foi gasto com anúncio). Além disso, você pode trocar o produto de campanha ou ativar/pausar o anúncio direto pelo seletor.
+                </li>
+                <li>
+                  <strong>Na Shopee (o seu print):</strong> A API oficial da Shopee não libera o gasto de Ads separado por anúncio gratuitamente. Por isso existem dois controles nessa coluna:
+                  <ul style={{ marginTop: '4px', paddingLeft: '1.2rem' }}>
+                    <li>
+                      <strong>Campo <code>R$ 0,00</code>:</strong> Serve para você digitar (opcionalmente) quanto aquele produto gastou em Shopee Ads no mês. Ao digitar um valor ali, o sistema desconta esse gasto do seu lucro e recalcula na hora a <strong>Margem Real Pós-Ads</strong> daquele produto!
+                    </li>
+                    <li>
+                      <strong>Seletor <code>Grupo Shopee Ads...</code>:</strong> Serve para você marcar e lembrar em qual dos <strong>4 Grupos de ROAS</strong> aquele produto está cadastrado lá no painel do Shopee Ads (<em>Campeões ROAS 12.5x</em>, <em>Giro de Estoque ROAS 8.3x</em>, <em>Lançamentos ROAS 6.7x</em> ou <em>Kit Pombinhas ROAS 16.5x</em>). Tudo o que você seleciona ali fica salvo na nuvem para todos os computadores.
+                    </li>
+                  </ul>
+                </li>
+              </ul>
+            </div>
+
+            {/* Bloco 2: Escudo de Margem (Mínima vs Saudável) */}
+            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1rem 1.15rem' }}>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.98rem', color: 'var(--text-primary)' }}>
+                2. 🛡️ Como funciona o Escudo de Margem (Margem Mínima vs. Margem Saudável)?
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px', fontSize: '0.83rem', lineHeight: 1.5 }}>
+                <div style={{ background: 'var(--bg-surface)', padding: '0.75rem', borderRadius: '8px', borderLeft: '4px solid #EF4444' }}>
+                  <strong style={{ color: '#DC2626', display: 'block', marginBottom: '3px' }}>🔴 Margem Mínima (%) — Trava Rígida</strong>
+                  É o seu <strong>Preço Piso</strong>. O sistema soma Custo Físico da FT + Embalagem + Taxa Fixa + Comissão do Marketplace + sua Margem Mínima. Se um anúncio ou convite de promoção do ML/Shopee ficar abaixo dessa margem, a linha fica <strong>Vermelha</strong> e a IA avisa para não entrar ou subir para o Piso.
+                </div>
+                <div style={{ background: 'var(--bg-surface)', padding: '0.75rem', borderRadius: '8px', borderLeft: '4px solid #F59E0B' }}>
+                  <strong style={{ color: '#D97706', display: 'block', marginBottom: '3px' }}>🟡 Zona de Atenção (Entre Mínima e Saudável)</strong>
+                  Quando o produto está acima da Margem Mínima (não dá prejuízo), mas abaixo da sua meta de Margem Saudável. Fica em <strong>Amarelo</strong> para você acompanhar.
+                </div>
+                <div style={{ background: 'var(--bg-surface)', padding: '0.75rem', borderRadius: '8px', borderLeft: '4px solid #10B981' }}>
+                  <strong style={{ color: '#059669', display: 'block', marginBottom: '3px' }}>🟢 Margem Saudável (%) — Meta Ideal</strong>
+                  Quando o lucro líquido após todas as taxas e Ads atinge ou supera sua meta saudável (ex: 30%). A linha fica <strong>Verde</strong> e liberada para escalar em Ads.
+                </div>
+              </div>
+            </div>
+
+            {/* Bloco 3: Explicação de Cada Coluna da Tabela de Controles */}
+            <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1rem 1.15rem' }}>
+              <h3 style={{ margin: '0 0 0.6rem 0', fontSize: '0.98rem', color: 'var(--text-primary)' }}>
+                3. 📋 O que significa cada coluna da Tabela de Controles?
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                <div>
+                  <strong>• ID / PRODUTO:</strong> Código da FT, variação (cor/modelo), SKU e código do anúncio no ML (`MLB...`) ou Shopee.
+                </div>
+                <div>
+                  <strong>• EST. / VENDAS:</strong> Saldo de estoque físico atual daquela variação e quantas unidades ela vendeu no mês selecionado.
+                </div>
+                <div>
+                  <strong>• 🛡️ PREÇO PISO:</strong> Mostra o preço mínimo para garantir a Margem Mínima, o preço de Margem Saudável e o preço de Custo Zero (0% lucro).
+                </div>
+                <div>
+                  <strong>• PREÇO ATUAL &amp; FOLGA:</strong> Por quanto o produto está sendo vendido hoje no site, qual o preço cheio riscado e quantos % de folga você ainda tem até bater no Preço Piso.
+                </div>
+                <div>
+                  <strong>• MARGEM REAL:</strong> Quanto sobra líquido no seu bolso em <strong>R$</strong> e em <strong>%</strong> a cada venda daquele item no preço atual.
+                </div>
+                <div>
+                  <strong>• 🏷️ PROMOÇÃO VIGENTE:</strong> Mostra se o anúncio está com promoção ativa (`-30% OFF`), permite sair da promoção ou aceitar convites de Oferta Relâmpago / Campanha do ML com 1 clique.
+                </div>
+                <div style={{ gridColumn: '1 / -1', background: 'rgba(16, 185, 129, 0.07)', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+                  <strong>• 🎯 Campo &ldquo;Valor desejado&rdquo; + Botão &ldquo;Aplicar Promo&rdquo; (na última coluna):</strong> Quer colocar um preço específico em um produto (ex: R$ 24,90)? Basta digitar <code>24,90</code> no campo <strong>Valor desejado</strong>: o sistema mostra na hora qual será a % OFF e qual será sua margem líquida, e ao clicar em <strong>Aplicar Promo</strong> ele já envia o novo preço promocional direto para o Mercado Livre ou Shopee!
+                </div>
+              </div>
+            </div>
+
+            {/* Bloco 4: Os 4 Grupos Estratégicos de ROAS (ML e Shopee) */}
+            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1rem 1.15rem' }}>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.98rem', color: 'var(--text-primary)' }}>
+                4. 🚀 Como funcionam os 4 Grupos de Ads (ROAS / ACOS)?
+              </h3>
+              <p style={{ margin: '0 0 0.6rem 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                <strong>ROAS</strong> significa quantos reais voltam em vendas para cada R$ 1,00 colocado em anúncio (Ex: ROAS 12.5 = cada R$ 1 em Ads gera R$ 12,50 em vendas, ou seja, você gasta apenas 8% da venda com anúncio):
+              </p>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', background: 'var(--bg-surface)', borderRadius: '8px', overflow: 'hidden' }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(139, 92, 246, 0.12)', textAlign: 'left' }}>
+                      <th style={{ padding: '8px 10px' }}>Grupo Estratégico</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center' }}>Meta ROAS</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center' }}>ACOS Máx.</th>
+                      <th style={{ padding: '8px 10px' }}>Quando usar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '7px 10px', fontWeight: 800 }}>🏆 1. Campeões (Escala)</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'center', fontWeight: 800, color: '#059669' }}>12.5x</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'center' }}>8%</td>
+                      <td style={{ padding: '7px 10px' }}>Produtos que já vendem bem e têm margem saudável (≥ 25%).</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '7px 10px', fontWeight: 800 }}>📦 2. Giro de Estoque</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'center', fontWeight: 800, color: '#2563EB' }}>8.3x</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'center' }}>12%</td>
+                      <td style={{ padding: '7px 10px' }}>Produtos com bastante estoque acumulado que precisam girar mais rápido.</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '7px 10px', fontWeight: 800 }}>🚀 3. Lançamentos (Rankear)</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'center', fontWeight: 800, color: '#7C3AED' }}>6.7x</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'center' }}>15%</td>
+                      <td style={{ padding: '7px 10px' }}>Anúncios novos ou com menos de 10 vendas para ganhar posição nas buscas.</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '7px 10px', fontWeight: 800 }}>🛡️ 4. Kit Pombinhas / Margem Curta</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'center', fontWeight: 800, color: '#D97706' }}>16.5x</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'center' }}>6%</td>
+                      <td style={{ padding: '7px 10px' }}>Produtos com margem mais justa onde o anúncio só pode gastar até 6% da venda.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setShowTutorialModal(false)}
+                style={{
+                  padding: '0.6rem 1.4rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #7C3AED, #2563EB)',
+                  color: '#fff',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                Entendi, Fechar Tutorial
               </button>
             </div>
           </div>
