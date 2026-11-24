@@ -698,6 +698,161 @@ async function processPlatformOrders({
 }
 
 // ============================================================================
+// SINCRONIZAÇÃO DE ESTOQUE ATUAL DOS ANÚNCIOS (ML & SHOPEE -> marketplace_listings)
+// ============================================================================
+
+async function syncMlListingsStocks(tokenObj, allListings) {
+  const mlRows = (allListings || []).filter((l) => (!l.platform || l.platform === 'ml') && l.ml_item_id);
+  if (mlRows.length === 0) return 0;
+
+  const attributesList = ['id', 'price', 'base_price', 'original_price', 'available_quantity', 'status', 'variations'].join(',');
+  const updates = [];
+  const nowIso = new Date().toISOString();
+
+  for (let i = 0; i < mlRows.length; i += 20) {
+    const chunk = mlRows.slice(i, i + 20);
+    const idsStr = chunk.map((r) => r.ml_item_id).join(',');
+    const resp = await fetch(`${ML_API_BASE}/items?ids=${encodeURIComponent(idsStr)}&attributes=${encodeURIComponent(attributesList)}`, {
+      headers: { Authorization: `Bearer ${tokenObj.access_token}`, Accept: 'application/json' }
+    });
+    if (!resp.ok) continue;
+    const multiData = await resp.json();
+    if (!Array.isArray(multiData)) continue;
+
+    for (const entry of multiData) {
+      const body = entry?.body;
+      if (!body || !body.id) continue;
+      const prev = chunk.find((r) => String(r.ml_item_id) === String(body.id));
+      if (!prev) continue;
+
+      const rawVars = Array.isArray(body.variations) ? body.variations : [];
+      const prevVars = Array.isArray(prev.variations) ? prev.variations : [];
+      let nextVars = prevVars;
+      let nextStockMl = Number(body.available_quantity ?? prev.stock_ml ?? 0);
+
+      if (rawVars.length > 0 && prevVars.length > 0) {
+        const liveMap = new Map(rawVars.map((rv) => [String(rv.id), rv]));
+        nextVars = prevVars.map((pv) => {
+          const lv = liveMap.get(String(pv.id));
+          if (!lv) return pv;
+          return {
+            ...pv,
+            stock_ml: Number(lv.available_quantity ?? pv.stock_ml ?? 0),
+            price: Number(lv.price ?? body.price ?? pv.price ?? 0)
+          };
+        });
+        nextStockMl = nextVars.reduce((acc, v) => acc + Number(v.stock_ml || 0), 0);
+      }
+
+      if (nextStockMl !== Number(prev.stock_ml) || body.status !== prev.status || JSON.stringify(nextVars) !== JSON.stringify(prevVars)) {
+        updates.push({
+          ...prev,
+          status: body.status || prev.status,
+          stock_ml: nextStockMl,
+          variations: nextVars,
+          updated_at: nowIso
+        });
+      }
+    }
+  }
+
+  if (updates.length > 0) {
+    await supaFetch('marketplace_listings?on_conflict=ml_item_id', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify(updates)
+    });
+  }
+  return updates.length;
+}
+
+async function syncShopeeListingsStocks(tokenObj, allListings) {
+  const shopeeRows = (allListings || []).filter((l) => l.platform === 'shopee' && l.ml_item_id);
+  if (shopeeRows.length === 0) return 0;
+
+  const shopId = Number(tokenObj.ml_user_id);
+  const accessToken = tokenObj.access_token;
+  const updates = [];
+  const nowIso = new Date().toISOString();
+
+  for (let i = 0; i < shopeeRows.length; i += 40) {
+    const chunk = shopeeRows.slice(i, i + 40);
+    const idListStr = chunk.map((r) => r.ml_item_id).join(',');
+    try {
+      const baseResp = await shopeeSignedFetch('/api/v2/product/get_item_base_info', {
+        method: 'GET',
+        token: accessToken,
+        shopId,
+        query: { item_id_list: idListStr }
+      });
+      const itemList = baseResp?.response?.item_list || [];
+      for (const item of itemList) {
+        const itemIdStr = String(item.item_id);
+        const prev = chunk.find((r) => String(r.ml_item_id) === itemIdStr);
+        if (!prev) continue;
+
+        let nextVars = Array.isArray(prev.variations) ? [...prev.variations] : [];
+        let nextStock = Number(
+          item?.stock_info_v2?.summary_info?.total_available_stock ??
+          item?.stock_info?.[0]?.current_stock ??
+          prev.stock_ml ??
+          0
+        );
+
+        if (item.has_model && nextVars.length > 0) {
+          try {
+            const modelResp = await shopeeSignedFetch('/api/v2/product/get_model_list', {
+              method: 'GET',
+              token: accessToken,
+              shopId,
+              query: { item_id: itemIdStr }
+            });
+            const models = modelResp?.response?.model || [];
+            if (models.length > 0) {
+              const mMap = new Map(models.map((m) => [String(m.model_id), m]));
+              nextVars = nextVars.map((pv) => {
+                const lm = mMap.get(String(pv.id || pv.model_id));
+                if (!lm) return pv;
+                const st = Number(
+                  lm?.stock_info_v2?.summary_info?.total_available_stock ??
+                  lm?.stock_info?.[0]?.current_stock ??
+                  pv.stock ??
+                  0
+                );
+                return { ...pv, stock: st, stock_ml: st };
+              });
+              nextStock = nextVars.reduce((acc, v) => acc + Number(v.stock ?? v.stock_ml ?? 0), 0);
+            }
+          } catch {
+            // ignore single model error
+          }
+        }
+
+        if (nextStock !== Number(prev.stock_ml) || JSON.stringify(nextVars) !== JSON.stringify(prev.variations)) {
+          updates.push({
+            ...prev,
+            stock_ml: nextStock,
+            variations: nextVars,
+            updated_at: nowIso
+          });
+        }
+      }
+    } catch {
+      // ignore chunk error
+    }
+  }
+
+  if (updates.length > 0) {
+    await supaFetch('marketplace_listings?on_conflict=ml_item_id', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify(updates)
+    });
+  }
+  return updates.length;
+}
+
+// ============================================================================
 // HANDLER PRINCIPAL
 // ============================================================================
 
@@ -799,7 +954,8 @@ export default async function handler(req, res) {
           existingSyncedMap,
           overridesByFt: mlOverridesByFt
         });
-        summary.ml = mlRes;
+        const mlStocksSynced = await syncMlListingsStocks(mlToken, allListings);
+        summary.ml = { ...mlRes, listingsStockSynced: mlStocksSynced };
         summary.stockDeductedUnits += mlRes.stockDeductedUnits;
         summary.stockRestoredUnits += mlRes.stockRestoredUnits;
       }
@@ -826,7 +982,8 @@ export default async function handler(req, res) {
           existingSyncedMap,
           overridesByFt: shopeeOverridesByFt
         });
-        summary.shopee = shopeeRes;
+        const shopeeStocksSynced = await syncShopeeListingsStocks(shopeeToken, allListings);
+        summary.shopee = { ...shopeeRes, listingsStockSynced: shopeeStocksSynced };
         summary.stockDeductedUnits += shopeeRes.stockDeductedUnits;
         summary.stockRestoredUnits += shopeeRes.stockRestoredUnits;
       }

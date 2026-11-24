@@ -190,6 +190,11 @@ export default function Estoque() {
         }
       });
       setExpandedMlItems(exp);
+      if (typeof storedTok !== 'undefined' && storedTok?.access_token) {
+        syncListingsFromML(empresaId).then(({ listings }) => {
+          if (Array.isArray(listings) && listings.length > 0) setMlListings(listings);
+        }).catch(() => {});
+      }
     } catch (e) {
       console.warn('Erro ao inicializar dados ML no estoque:', e);
     }
@@ -203,6 +208,11 @@ export default function Estoque() {
       ]);
       if (storedTok) setShopeeToken(storedTok);
       if (Array.isArray(storedList)) setShopeeListings(storedList);
+      if (storedTok?.access_token) {
+        syncListingsFromShopee(empresaId).then((res) => {
+          if (Array.isArray(res?.listings) && res.listings.length > 0) setShopeeListings(res.listings);
+        }).catch(() => {});
+      }
     } catch (e) {
       console.warn('Erro ao inicializar dados Shopee no estoque:', e);
     }
@@ -582,6 +592,11 @@ export default function Estoque() {
         }
       });
       setExpandedMlItems(exp);
+      if (typeof storedTok !== 'undefined' && storedTok?.access_token) {
+        syncListingsFromML(empresaId).then(({ listings }) => {
+          if (Array.isArray(listings) && listings.length > 0) setMlListings(listings);
+        }).catch(() => {});
+      }
 
       // Se encontrou itens/variações sem vínculo (1ª vez), abre automaticamente o modal de seleção de FT!
       if (Array.isArray(unmappedItems) && unmappedItems.length > 0) {
