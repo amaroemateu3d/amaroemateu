@@ -1438,6 +1438,9 @@ export async function applyMlSellerPromotion({
   if (eligible.id && eligible.id !== eligible.type) {
     payload.promotion_id = eligible.id;
   }
+  if ((eligible.type === 'LIGHTNING' || eligible.type === 'SMART' || eligible.type === 'PRE_NEGOTIATED') && eligible.ref_id) {
+    payload.offer_id = eligible.ref_id;
+  }
   if (eligible.type === 'PRICE_DISCOUNT' && !payload.promotion_id) {
     // Usa sempre a data local do Brasil (GMT-3) para iniciar imediatamente mesmo após as 21h!
     const brNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
@@ -1447,7 +1450,7 @@ export async function applyMlSellerPromotion({
   }
 
   try {
-    // Caso 1: Se for PRICE_DISCOUNT e já estiver "started", o ML exige DELETE primeiro, aguardar ~1.5s para virar "candidate" e então POST
+    // Caso 1: Se for PRICE_DISCOUNT e já estiver "started", o ML exige DELETE primeiro, aguardar virar "candidate" e então POST
     if (eligible.type === 'PRICE_DISCOUNT' && eligible.status === 'started') {
       await removeMlSellerPromotion({
         mlItemId,
@@ -1455,7 +1458,7 @@ export async function applyMlSellerPromotion({
         promotionType: 'PRICE_DISCOUNT',
         empresaId,
       });
-      await new Promise((r) => setTimeout(r, 1600));
+      await new Promise((r) => setTimeout(r, 1800));
       // Se também houver uma DEAL ativa (ex: Black Friday) que aceita esse preço, atualiza ela via PUT também
       const activeDeal = promoList.find(
         (p) => (p.type === 'DEAL' || p.type === 'SELLER_CAMPAIGN') && p.status === 'started'
@@ -1487,14 +1490,35 @@ export async function applyMlSellerPromotion({
         ? 'PUT'
         : 'POST';
 
-    const res = await mlProxyFetch(
-      `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
-      {
-        method: httpMethod,
-        headers,
-        body: JSON.stringify(payload),
+    let res;
+    try {
+      res = await mlProxyFetch(
+        `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+        {
+          method: httpMethod,
+          headers,
+          body: JSON.stringify(payload),
+        }
+      );
+    } catch (firstPostErr) {
+      // Se deu "No candidates found for item" logo após o DELETE do PRICE_DISCOUNT, aguarda mais 2s e tenta novamente
+      if (
+        eligible.type === 'PRICE_DISCOUNT' &&
+        String(firstPostErr?.message || '').toLowerCase().includes('no candidates')
+      ) {
+        await new Promise((r) => setTimeout(r, 2200));
+        res = await mlProxyFetch(
+          `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+          {
+            method: httpMethod,
+            headers,
+            body: JSON.stringify(payload),
+          }
+        );
+      } else {
+        throw firstPostErr;
       }
-    );
+    }
 
     return {
       appliedAs: 'promotion',
@@ -1503,6 +1527,56 @@ export async function applyMlSellerPromotion({
       result: res,
     };
   } catch (postErr) {
+    // Fallback A: se o usuário clicou em um convite expirado (LIGHTNING / DEAL / SMART que deu "No candidates found"), aplica como PRICE_DISCOUNT (Desconto Individual)!
+    if (
+      eligible.type !== 'PRICE_DISCOUNT' &&
+      String(postErr?.message || '').toLowerCase().includes('no candidates')
+    ) {
+      try {
+        const freshList = await fetchPromos();
+        const indiv = freshList.find(
+          (p) => p.type === 'PRICE_DISCOUNT' && (p.status === 'started' || p.status === 'candidate')
+        );
+        if (indiv) {
+          if (indiv.status === 'started') {
+            await removeMlSellerPromotion({
+              mlItemId,
+              promotionId: indiv.id,
+              promotionType: 'PRICE_DISCOUNT',
+              empresaId,
+            });
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+          const brNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
+          const brEnd = new Date(brNow.getTime() + 14 * 24 * 60 * 60 * 1000);
+          const indivPayload = {
+            deal_price: cleanTarget,
+            promotion_type: 'PRICE_DISCOUNT',
+            start_date: `${brNow.toISOString().slice(0, 10)}T00:00:00`,
+            finish_date: `${brEnd.toISOString().slice(0, 10)}T23:59:59`,
+          };
+          if (indiv.id && indiv.id !== 'PRICE_DISCOUNT') {
+            indivPayload.promotion_id = indiv.id;
+          }
+          const indivRes = await mlProxyFetch(
+            `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
+            {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(indivPayload),
+            }
+          );
+          return {
+            appliedAs: 'promotion',
+            promotion: { ...indiv, name: 'Desconto Individual (Convite expirado convertido)' },
+            removedBlocking,
+            result: indivRes,
+          };
+        }
+      } catch {
+        // segue para próximo fallback
+      }
+    }
     // Fallback: se o POST de PRICE_DISCOUNT deu "No candidates found", mas há uma DEAL ativa (ex: Black Friday), atualiza a DEAL com PUT!
     const fallbackDeal = promoList.find(
       (p) => (p.type === 'DEAL' || p.type === 'SELLER_CAMPAIGN') && p.status === 'started'
@@ -1546,11 +1620,17 @@ export async function applyMlSellerPromotion({
           (p) => p.type === 'PRICE_DISCOUNT' && (p.status === 'started' || p.status === 'candidate')
         );
         if (indiv) {
+          const brNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
+          const brEnd = new Date(brNow.getTime() + 14 * 24 * 60 * 60 * 1000);
           const retryPayload = {
             deal_price: cleanTarget,
-            promotion_id: indiv.id,
             promotion_type: 'PRICE_DISCOUNT',
+            start_date: `${brNow.toISOString().slice(0, 10)}T00:00:00`,
+            finish_date: `${brEnd.toISOString().slice(0, 10)}T23:59:59`,
           };
+          if (indiv.id && indiv.id !== 'PRICE_DISCOUNT') {
+            retryPayload.promotion_id = indiv.id;
+          }
           const retryRes = await mlProxyFetch(
             `/seller-promotions/items/${encodeURIComponent(mlItemId)}?app_version=v2`,
             {
