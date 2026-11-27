@@ -853,6 +853,264 @@ async function syncShopeeListingsStocks(tokenObj, allListings) {
 }
 
 // ============================================================================
+// RESTAURAÇÃO AUTOMÁTICA DOS PREÇOS ORIGINAIS (30% MARGEM) PÓS-BLACK FRIDAY
+// ============================================================================
+
+const BF_RESTORE_ML_ITEMS = [
+  { ml_item_id: 'MLB6732508408', name: 'Porta Batom Preto', cadastro_price: 39.50, standard_30_promo: 25.22 },
+  { ml_item_id: 'MLB7789081214', name: 'Porta Batom Vermelho', cadastro_price: 39.50, standard_30_promo: 25.22 },
+  { ml_item_id: 'MLB7944045080', name: 'Porta Batom Branco', cadastro_price: 39.50, standard_30_promo: 25.22 },
+  { ml_item_id: 'MLB7944020420', name: 'Porta Batom Rosa', cadastro_price: 39.50, standard_30_promo: 25.22 },
+  { ml_item_id: 'MLB5574487999', name: 'Porta Batom Lilás', cadastro_price: 39.50, standard_30_promo: 22.92 },
+  { ml_item_id: 'MLB7819713322', name: 'Kit 2 Anjos LED Branco', cadastro_price: 107.53, standard_30_promo: 68.24 },
+  { ml_item_id: 'MLB7631321526', name: 'Kit 2 Anjos LED Bege', cadastro_price: 107.53, standard_30_promo: 68.24 },
+  { ml_item_id: 'MLB7173617702', name: 'Chaveiro Jesus 1x', cadastro_price: 52.44, standard_30_promo: 33.28 },
+  { ml_item_id: 'MLB6670964742', name: 'Kit 3x Chaveiro Jesus', cadastro_price: 66.07, standard_30_promo: 41.93 },
+  { ml_item_id: 'MLB4896838819', name: 'Kit 5x Chaveiro Jesus', cadastro_price: 81.44, standard_30_promo: 51.68 },
+  { ml_item_id: 'MLB5027077455', name: 'Kit Organizador Rosa', cadastro_price: 103.99, standard_30_promo: 65.99 },
+  { ml_item_id: 'MLB5027078453', name: 'Kit Organizador Branco', cadastro_price: 103.99, standard_30_promo: 65.99 },
+  { ml_item_id: 'MLB5291611721', name: 'Kit Decoração Natalina 3pçs', cadastro_price: 100.49, standard_30_promo: 63.77 }
+];
+
+const BF_RESTORE_SHOPEE_ITEMS = [
+  {
+    discount_id: 520691988508944,
+    item_id: 58259430292,
+    name: 'FT-16 Porta Batom c/ Espelho Coração',
+    top_price: 36.60,
+    top_promo: 23.06,
+    models: [
+      { model_id: 169420790597, standard_30_promo: 23.06 },
+      { model_id: 169420790598, standard_30_promo: 23.06 },
+      { model_id: 199197271113, standard_30_promo: 23.06 },
+      { model_id: 209196667974, standard_30_promo: 23.06 },
+      { model_id: 209196667975, standard_30_promo: 23.06 }
+    ]
+  },
+  {
+    discount_id: 520707650040074,
+    item_id: 58218019640,
+    name: 'FT-153 / 141 / 142 Anjos Decorativos Luminária LED',
+    top_price: 51.76,
+    top_promo: 32.60,
+    models: [
+      { model_id: 219628216353, standard_30_promo: 43.52 },
+      { model_id: 219628216354, standard_30_promo: 64.12 },
+      { model_id: 219628216355, standard_30_promo: 32.60 },
+      { model_id: 219628216356, standard_30_promo: 32.60 },
+      { model_id: 219628216357, standard_30_promo: 43.52 },
+      { model_id: 219628216358, standard_30_promo: 64.12 }
+    ]
+  },
+  {
+    discount_id: 520692135313576,
+    item_id: 58264089270,
+    name: 'FT-25 / 43 / 95 Kits Chaveiro Jesus 1x, 3x, 5x',
+    top_price: 23.67,
+    top_promo: 13.49,
+    models: [
+      { model_id: 239446278482, standard_30_promo: 13.49 },
+      { model_id: 239446278483, standard_30_promo: 29.90 },
+      { model_id: 179418588329, standard_30_promo: 44.90 }
+    ]
+  },
+  {
+    discount_id: 520691766210807,
+    item_id: 58215864725,
+    name: 'FT-131 / 130 / 129 Kit Organização Mesa Escritório',
+    top_price: 49.69,
+    top_promo: 31.30,
+    models: [
+      { model_id: 139658188810, standard_30_promo: 31.30 },
+      { model_id: 139658188811, standard_30_promo: 31.30 },
+      { model_id: 139658188812, standard_30_promo: 51.91 },
+      { model_id: 139658188813, standard_30_promo: 31.30 },
+      { model_id: 139658188814, standard_30_promo: 51.91 },
+      { model_id: 139841519284, standard_30_promo: 31.30 },
+      { model_id: 139841519285, standard_30_promo: 29.57 },
+      { model_id: 139841519286, standard_30_promo: 51.91 },
+      { model_id: 139841519287, standard_30_promo: 29.57 },
+      { model_id: 229449289257, standard_30_promo: 51.91 },
+      { model_id: 229449289258, standard_30_promo: 51.91 },
+      { model_id: 229449289259, standard_30_promo: 51.91 }
+    ]
+  },
+  {
+    discount_id: 520695272653043,
+    item_id: 22795158244,
+    name: 'FT-111 / 112 Kit Pombinhas do Espírito Santo (25 e 50 un)',
+    top_price: 36.39,
+    top_promo: 22.92,
+    models: [
+      { model_id: 109729862711, standard_30_promo: 16.97 },
+      { model_id: 109729862712, standard_30_promo: 22.92 }
+    ]
+  },
+  {
+    discount_id: 522878441439283,
+    item_id: 58218992080,
+    name: 'FT-161 Kit Enfeites de Natal Decoração Mesa',
+    top_price: 69.80,
+    top_promo: 43.97,
+    models: [
+      { model_id: 209627356128, standard_30_promo: 29.80 },
+      { model_id: 209627356129, standard_30_promo: 24.86 },
+      { model_id: 209627356130, standard_30_promo: 25.57 },
+      { model_id: 209627356131, standard_30_promo: 59.23 },
+      { model_id: 209627356132, standard_30_promo: 48.57 },
+      { model_id: 209627356133, standard_30_promo: 45.35 },
+      { model_id: 209627356134, standard_30_promo: 43.97 }
+    ]
+  }
+];
+
+async function executeBlackFridayRestore(allListings = []) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const mlResults = [];
+  const shopeeResults = [];
+  const listingUpdates = [];
+  const listingsById = new Map((allListings || []).map((l) => [String(l.ml_item_id), l]));
+
+  // 1. Restaura Mercado Livre
+  const mlToken = await getValidMlToken();
+  if (mlToken?.access_token) {
+    const mlHeaders = {
+      Authorization: `Bearer ${mlToken.access_token}`,
+      'Content-Type': 'application/json'
+    };
+    const brNow = getBrazilNow();
+    const brEnd = new Date(brNow.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const startDate = `${brNow.toISOString().slice(0, 10)}T00:00:00`;
+    const finishDate = `${brEnd.toISOString().slice(0, 10)}T23:59:59`;
+
+    for (const item of BF_RESTORE_ML_ITEMS) {
+      try {
+        const prResp = await fetch(`${ML_API_BASE}/seller-promotions/items/${item.ml_item_id}?app_version=v2`, {
+          headers: mlHeaders
+        });
+        const prData = await prResp.json().catch(() => []);
+        const promos = Array.isArray(prData) ? prData : (prData?.results || []);
+
+        const started = promos.filter((p) => p.status === 'started');
+        for (const sp of started) {
+          const qs = new URLSearchParams({ promotion_type: sp.type, app_version: 'v2' });
+          if (sp.id && sp.id !== sp.type) qs.set('promotion_id', sp.id);
+          const offerId = sp.ref_id || sp.offer_id || (Array.isArray(sp.offers) && sp.offers[0]?.id) || null;
+          if (offerId) qs.set('offer_id', offerId);
+          await fetch(`${ML_API_BASE}/seller-promotions/items/${item.ml_item_id}?${qs.toString()}`, {
+            method: 'DELETE',
+            headers: mlHeaders
+          });
+          await sleep(1600);
+        }
+
+        let applied = false;
+        for (let attempt = 1; attempt <= 2 && !applied; attempt++) {
+          const postResp = await fetch(`${ML_API_BASE}/seller-promotions/items/${item.ml_item_id}?app_version=v2`, {
+            method: 'POST',
+            headers: mlHeaders,
+            body: JSON.stringify({
+              promotion_type: 'PRICE_DISCOUNT',
+              deal_price: item.standard_30_promo,
+              start_date: startDate,
+              finish_date: finishDate
+            })
+          });
+          if (postResp.ok) {
+            applied = true;
+          } else {
+            await sleep(1800);
+          }
+        }
+
+        mlResults.push({ ml_item_id: item.ml_item_id, restored_to: item.standard_30_promo, ok: applied });
+        const existingListing = listingsById.get(String(item.ml_item_id));
+        if (existingListing) {
+          listingUpdates.push({
+            ...existingListing,
+            price: item.cadastro_price,
+            price_promo: item.standard_30_promo,
+            updated_at: new Date().toISOString()
+          });
+        }
+      } catch (err) {
+        mlResults.push({ ml_item_id: item.ml_item_id, error: err?.message || String(err) });
+      }
+    }
+  }
+
+  // 2. Restaura Shopee
+  const shopeeToken = await getValidShopeeToken();
+  if (shopeeToken?.access_token) {
+    const token = shopeeToken.access_token;
+    const shopId = Number(shopeeToken.ml_user_id);
+
+    for (const camp of BF_RESTORE_SHOPEE_ITEMS) {
+      try {
+        const modelListPayload = camp.models.map((m) => ({
+          model_id: Number(m.model_id),
+          model_promotion_price: Number(m.standard_30_promo)
+        }));
+        await shopeeSignedFetch('/api/v2/discount/update_discount_item', {
+          method: 'POST',
+          token,
+          shopId,
+          body: {
+            discount_id: Number(camp.discount_id),
+            item_list: [
+              {
+                item_id: Number(camp.item_id),
+                purchase_limit: 0,
+                model_list: modelListPayload
+              }
+            ]
+          }
+        });
+        shopeeResults.push({ item_id: camp.item_id, discount_id: camp.discount_id, ok: true });
+
+        const existingListing = listingsById.get(String(camp.item_id));
+        if (existingListing) {
+          const promoMap = new Map(camp.models.map((m) => [String(m.model_id), Number(m.standard_30_promo)]));
+          const nextVars = Array.isArray(existingListing.variations)
+            ? existingListing.variations.map((v) => {
+                const vId = String(v.model_id || v.id);
+                return promoMap.has(vId)
+                  ? { ...v, price_promo: promoMap.get(vId) }
+                  : v;
+              })
+            : existingListing.variations;
+
+          listingUpdates.push({
+            ...existingListing,
+            price: camp.top_price,
+            price_promo: camp.top_promo,
+            variations: nextVars,
+            updated_at: new Date().toISOString()
+          });
+        }
+      } catch (err) {
+        shopeeResults.push({ item_id: camp.item_id, error: err?.message || String(err) });
+      }
+    }
+  }
+
+  if (listingUpdates.length > 0) {
+    await supaFetch('marketplace_listings?on_conflict=ml_item_id', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify(listingUpdates)
+    });
+  }
+
+  return {
+    restoredAt: new Date().toISOString(),
+    mlResults,
+    shopeeResults,
+    listingsUpdated: listingUpdates.length
+  };
+}
+
+// ============================================================================
 // HANDLER PRINCIPAL
 // ============================================================================
 
@@ -882,6 +1140,29 @@ export default async function handler(req, res) {
     const runType = String(req.query?.source || req.body?.source || (mode === 'baseline' ? 'baseline' : 'cron'));
     const isBaseline = mode === 'baseline';
     const monthStr = String(req.query?.month || req.body?.month || getCurrentBrazilMonth());
+
+    if (mode === 'restore_bf') {
+      const snapshot = await supaFetch('rpc/sync_get_catalog_snapshot', { method: 'POST', body: '{}' });
+      const allListings = snapshot?.listings || [];
+      const restoreRes = await executeBlackFridayRestore(allListings);
+      await supaFetch('marketplace_sync_logs', {
+        method: 'POST',
+        body: JSON.stringify({
+          empresa_id: DEFAULT_EMPRESA_ID,
+          run_type: 'restore_bf_22h',
+          month: monthStr,
+          ml_new_orders: 0,
+          ml_cancelled_orders: 0,
+          shopee_new_orders: 0,
+          shopee_cancelled_orders: 0,
+          stock_deducted_units: 0,
+          stock_restored_units: 0,
+          status: 'ok',
+          details: restoreRes
+        })
+      });
+      return res.status(200).json({ ok: true, mode: 'restore_bf', ...restoreRes });
+    }
 
     // 1. Carrega FTs, Listings, Overrides (via RPC seguro) e Pedidos já sincronizados do mês
     const [snapshot, existingSynced] = await Promise.all([
